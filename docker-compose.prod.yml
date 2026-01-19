@@ -1,0 +1,133 @@
+# Production Docker Compose for t3.small EC2 Instance
+# Optimized for 2 GB RAM with RDS PostgreSQL
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: placement_redis
+    command: redis-server --maxmemory 100mb --maxmemory-policy allkeys-lru --save 60 1
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - placement_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  backend:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: placement_backend
+    command: gunicorn app.main:app -c gunicorn.conf.py
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.production
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - PYTHONUNBUFFERED=1
+      - ENVIRONMENT=production
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - placement_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  celery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: placement_celery
+    # Combined worker + beat in single container to save RAM
+    command: >
+      sh -c "celery -A app.workers.celery_app beat --loglevel=info --logfile=/var/log/celery/beat.log --detach &&
+             celery -A app.workers.celery_app worker --loglevel=info --concurrency=1 --max-memory-per-child=350000 --max-tasks-per-child=50"
+    env_file:
+      - .env.production
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - PYTHONUNBUFFERED=1
+      - ENVIRONMENT=production
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - placement_network
+    volumes:
+      - celery_logs:/var/log/celery
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app inspect ping -d celery@$$HOSTNAME || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Nginx reverse proxy with SSL support
+  nginx:
+    image: nginx:alpine
+    container_name: placement_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - placement_network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  placement_network:
+    driver: bridge
+
+volumes:
+  redis_data:
+    driver: local
+  celery_logs:
+    driver: local
+  nginx_logs:
+    driver: local
