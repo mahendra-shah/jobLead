@@ -89,6 +89,15 @@ def get_sync_db() -> Generator[Session, None, None]:
 async def init_db():
     """Initialize database tables."""
     async with engine.begin() as conn:
+        # Enable pgvector extension (required for ML recommendations)
+        from sqlalchemy import text
+        try:
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+            print("✅ pgvector extension enabled")
+        except Exception as e:
+            print(f"⚠️  Could not enable pgvector: {e}")
+            print("   This is OK if the extension is already enabled or not available.")
+        
         # Import all models to register them
         from app.models import application, channel, company, job, student, user
 
