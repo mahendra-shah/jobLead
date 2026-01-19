@@ -115,12 +115,12 @@ ml_processing_output.txt
 # ===================================
 # ML Models
 # ===================================
-*.bin
-*.pkl
-*.h5
-*.ckpt
-*.pth
-*.joblib
+# *.bin
+# *.pkl
+# *.h5
+# *.ckpt
+# *.pth
+# *.joblib
 
 # ===================================
 # Database Files

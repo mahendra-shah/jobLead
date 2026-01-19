@@ -91,6 +91,10 @@ class Settings(BaseSettings):
     OPENROUTER_API_KEY: str = ""
     APP_URL: str = "https://placement-dashboard.com"  # For OpenRouter referer
 
+    # Celery (Optional - for background task queuing)
+    CELERY_BROKER_URL: str = "redis://redis:6379/0"
+    CELERY_RESULT_BACKEND: str = "redis://redis:6379/0"
+    
     # File Upload
     MAX_UPLOAD_SIZE: int = 10485760  # 10MB
     ALLOWED_RESUME_EXTENSIONS: Union[str, List[str]] = ["pdf", "docx"]  # Accepts both formats
