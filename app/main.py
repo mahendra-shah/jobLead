@@ -38,7 +38,7 @@ app = FastAPI(
     servers=[
         {"url": "http://localhost:8000", "description": "Local Development (HTTP)"},
         {"url": "https://localhost:8000", "description": "Local Development (HTTPS)"},
-        {"url": "http://api.yourdomain.com", "description": "Production (HTTP)"},
+        {"url": "http://65.0.6.163", "description": "dev (HTTP)"},
         {"url": "https://api.yourdomain.com", "description": "Production (HTTPS)"},
     ],
     swagger_ui_parameters={
