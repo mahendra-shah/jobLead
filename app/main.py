@@ -36,10 +36,8 @@ app = FastAPI(
     openapi_url="/openapi.json",
     # Add HTTP and HTTPS schemes for production SSL support
     servers=[
+        {"url": "http://65.0.6.163", "description": "Dev Server (HTTP)"},
         {"url": "http://localhost:8000", "description": "Local Development (HTTP)"},
-        {"url": "https://localhost:8000", "description": "Local Development (HTTPS)"},
-        {"url": "http://65.0.6.163", "description": "dev (HTTP)"},
-        {"url": "https://api.yourdomain.com", "description": "Production (HTTPS)"},
     ],
     swagger_ui_parameters={
         "persistAuthorization": True,  # Persist authorization after page refresh
