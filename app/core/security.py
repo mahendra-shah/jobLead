@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Optional, Union
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 import bcrypt
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,12 +15,8 @@ from app.config import settings
 from app.db.session import get_db
 from app.models.user import User
 
-# OAuth2 scheme for Swagger UI authentication (shows "Authorize" button)
-# Using tokenUrl pointing to login endpoint
-oauth2_scheme = OAuth2PasswordBearer(
-    tokenUrl="api/v1/auth/login",
-    scheme_name="Bearer Authentication"
-)
+# HTTPBearer for simple token authentication in Swagger (just paste the access token)
+security = HTTPBearer()
 
 
 class Role(str, Enum):
@@ -147,10 +143,11 @@ def decode_token(token: str) -> dict:
 
 
 async def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    credentials: HTTPAuthorizationCredentials = Depends(security),
     db: AsyncSession = Depends(get_db),
 ) -> User:
     """Get current authenticated user from Bearer token."""
+    token = credentials.credentials
     payload = decode_token(token)
 
     user_id: str = payload.get("sub")

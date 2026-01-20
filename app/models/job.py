@@ -22,15 +22,13 @@ class Job(Base):
     experience_required = Column(String(50))  # "0-2 years", "2-5 years" (legacy)
     salary_range = Column(JSONB, default=dict)  # {"min": 50000, "max": 80000, "currency": "USD"} (legacy)
     
-    # Structured experience fields (new - for filtering and stats)
-    min_experience = Column(Float, nullable=True, index=True)  # Minimum years (supports 0.5 for months)
-    max_experience = Column(Float, nullable=True, index=True)  # Maximum years (NULL for "5+")
-    is_fresher = Column(Boolean, default=False, nullable=False, index=True)  # 0-6 months
-    
-    # Structured salary fields (new - denormalized for performance)
-    min_salary = Column(Integer, nullable=True)  # Minimum salary
-    max_salary = Column(Integer, nullable=True)  # Maximum salary  
-    salary_currency = Column(String(3), default='INR', nullable=False)  # Currency code (INR, USD, etc.)
+    # Structured fields (new - for filtering and stats)
+    is_fresher = Column(Boolean, nullable=True, index=True)  # True for fresher jobs (0-1 year)
+    work_type = Column(String(50), nullable=True)  # remote, on-site, hybrid
+    experience_min = Column(Integer, nullable=True, index=True)  # Minimum years
+    experience_max = Column(Integer, nullable=True, index=True)  # Maximum years
+    salary_min = Column(Float, nullable=True)  # Minimum salary (in INR)
+    salary_max = Column(Float, nullable=True)  # Maximum salary (in INR)
     
     # Location
     location = Column(String(255))

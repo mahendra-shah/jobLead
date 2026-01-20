@@ -25,8 +25,19 @@ class JobBase(BaseModel):
     company_name: str
     description: Optional[str] = None
     skills_required: List[str] = Field(default_factory=list)
+    
+    # Legacy fields (kept for backward compatibility)
     experience_required: Optional[str] = None
     salary_range: Dict[str, Any] = Field(default_factory=dict)
+    
+    # New structured fields
+    is_fresher: Optional[bool] = None
+    work_type: Optional[str] = None  # remote, on-site, hybrid
+    experience_min: Optional[int] = None
+    experience_max: Optional[int] = None
+    salary_min: Optional[float] = None
+    salary_max: Optional[float] = None
+    
     location: Optional[str] = None
     job_type: Optional[str] = None
     employment_type: Optional[str] = None
