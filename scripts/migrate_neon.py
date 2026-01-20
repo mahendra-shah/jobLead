@@ -1,8 +1,15 @@
 """
 Direct migration script for Neon database
 Adds the new stats columns and indexes to the jobs table
+Run from project root: python -m scripts.migrate_neon
 """
+import sys
 import asyncio
+from pathlib import Path
+
+# Add parent directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from sqlalchemy import text
 from app.db.session import AsyncSessionLocal
 

@@ -1,8 +1,15 @@
 """
 Simple backfill script for Neon database using raw SQL
 Works around ORM/model differences
+Run from project root: python -m scripts.backfill_neon_simple
 """
+import sys
 import asyncio
+from pathlib import Path
+
+# Add parent directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from sqlalchemy import text
 from app.db.session import AsyncSessionLocal
 from app.ml.enhanced_extractor import EnhancedJobExtractor
