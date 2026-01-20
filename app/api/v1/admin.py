@@ -26,6 +26,9 @@ from app.schemas.admin import (
     TelegramGroupHealthHistoryResponse,
     HealthScoreHistory,
     DashboardStats,
+    JobExperienceBreakdown,
+    ScrapingStats,
+    JobStats,
     TriggerScrapeRequest,
     TriggerScrapeResponse,
 )
@@ -543,6 +546,73 @@ async def get_dashboard_stats(
     # Estimate monthly cost (today * 30)
     estimated_cost_month = estimated_cost_today * 30
     
+    # ===== EXPERIENCE BREAKDOWN (NEW) =====
+    
+    # Fresher jobs (0-6 months, is_fresher = true)
+    result = await db.execute(
+        select(func.count())
+        .select_from(Job)
+        .where(Job.is_fresher.is_(True))
+    )
+    fresher_count = result.scalar() or 0
+    
+    # Junior jobs (0-2 years)
+    result = await db.execute(
+        select(func.count())
+        .select_from(Job)
+        .where(
+            and_(
+                Job.min_experience.isnot(None),
+                Job.min_experience >= 0,
+                Job.max_experience <= 2
+            )
+        )
+    )
+    junior_count = result.scalar() or 0
+    
+    # Mid-level jobs (2-5 years)
+    result = await db.execute(
+        select(func.count())
+        .select_from(Job)
+        .where(
+            and_(
+                Job.min_experience.isnot(None),
+                Job.min_experience > 2,
+                Job.max_experience <= 5
+            )
+        )
+    )
+    mid_count = result.scalar() or 0
+    
+    # Senior jobs (5+ years)
+    result = await db.execute(
+        select(func.count())
+        .select_from(Job)
+        .where(
+            and_(
+                Job.min_experience.isnot(None),
+                Job.min_experience > 5
+            )
+        )
+    )
+    senior_count = result.scalar() or 0
+    
+    # Jobs with no experience specified
+    result = await db.execute(
+        select(func.count())
+        .select_from(Job)
+        .where(Job.min_experience.is_(None))
+    )
+    not_specified_count = result.scalar() or 0
+    
+    experience_breakdown = JobExperienceBreakdown(
+        fresher=fresher_count,
+        junior=junior_count,
+        mid=mid_count,
+        senior=senior_count,
+        not_specified=not_specified_count
+    )
+    
     return DashboardStats(
         total_jobs=total_jobs,
         total_jobs_today=total_jobs_today,
@@ -554,6 +624,7 @@ async def get_dashboard_stats(
         active_groups=active_groups,
         joined_groups=joined_groups,
         average_health_score=average_health_score,
+        experience_breakdown=experience_breakdown,  # NEW FIELD
         last_group_join=last_group_join,
         last_message_scrape=last_message_scrape,
         last_job_extraction=last_job_extraction,
@@ -562,6 +633,356 @@ async def get_dashboard_stats(
         messages_scraped_last_24h=messages_scraped_last_24h,
         estimated_cost_today=estimated_cost_today,
         estimated_cost_month=estimated_cost_month,
+    )
+
+
+# ==================== Scraping Stats ====================
+
+@router.get("/stats/scraping", response_model=ScrapingStats)
+async def get_scraping_stats(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_superuser),
+):
+    """Get detailed Telegram scraping statistics."""
+    today = datetime.utcnow().date()
+    since_7_days = datetime.utcnow() - timedelta(days=7)
+    since_30_days = datetime.utcnow() - timedelta(days=30)
+    
+    # Account stats
+    result = await db.execute(select(func.count()).select_from(TelegramAccount))
+    total_accounts = result.scalar() or 0
+    
+    result = await db.execute(
+        select(func.count())
+        .select_from(TelegramAccount)
+        .where(TelegramAccount.is_active.is_(True))
+    )
+    active_accounts = result.scalar() or 0
+    
+    result = await db.execute(
+        select(func.count())
+        .select_from(TelegramAccount)
+        .where(TelegramAccount.is_banned.is_(True))
+    )
+    banned_accounts = result.scalar() or 0
+    
+    result = await db.execute(
+        select(func.count(TelegramAccount.id.distinct()))
+        .select_from(TelegramAccount)
+        .where(func.date(TelegramAccount.last_used_at) == today)
+    )
+    accounts_used_today = result.scalar() or 0
+    
+    # Channel/Group stats
+    result = await db.execute(select(func.count()).select_from(TelegramGroup))
+    total_channels = result.scalar() or 0
+    
+    result = await db.execute(
+        select(func.count())
+        .select_from(TelegramGroup)
+        .where(TelegramGroup.is_active.is_(True))
+    )
+    active_channels = result.scalar() or 0
+    
+    result = await db.execute(
+        select(func.count())
+        .select_from(TelegramGroup)
+        .where(TelegramGroup.is_joined.is_(True))
+    )
+    joined_channels = result.scalar() or 0
+    
+    result = await db.execute(
+        select(func.count())
+        .select_from(TelegramGroup)
+        .where(func.date(TelegramGroup.last_scraped_at) == today)
+    )
+    channels_scraped_today = result.scalar() or 0
+    
+    # Message stats
+    result = await db.execute(select(func.count()).select_from(RawTelegramMessage))
+    total_messages = result.scalar() or 0
+    
+    result = await db.execute(
+        select(func.count())
+        .select_from(RawTelegramMessage)
+        .where(RawTelegramMessage.created_at >= since_7_days)
+    )
+    messages_last_7_days = result.scalar() or 0
+    
+    result = await db.execute(
+        select(func.count())
+        .select_from(RawTelegramMessage)
+        .where(RawTelegramMessage.created_at >= since_30_days)
+    )
+    messages_last_30_days = result.scalar() or 0
+    
+    result = await db.execute(
+        select(func.count())
+        .select_from(RawTelegramMessage)
+        .where(func.date(RawTelegramMessage.created_at) == today)
+    )
+    messages_today = result.scalar() or 0
+    
+    # Average health score
+    result = await db.execute(
+        select(func.avg(TelegramGroup.health_score))
+        .select_from(TelegramGroup)
+        .where(
+            and_(
+                TelegramGroup.is_joined.is_(True),
+                TelegramGroup.health_score.isnot(None)
+            )
+        )
+    )
+    average_health_score = result.scalar()
+    
+    # Top 5 channels by quality
+    result = await db.execute(
+        select(
+            TelegramGroup.username,
+            TelegramGroup.title,
+            TelegramGroup.health_score,
+            TelegramGroup.quality_jobs_found
+        )
+        .where(
+            and_(
+                TelegramGroup.is_joined.is_(True),
+                TelegramGroup.health_score.isnot(None)
+            )
+        )
+        .order_by(desc(TelegramGroup.health_score))
+        .limit(5)
+    )
+    top_channels_data = result.fetchall()
+    top_channels = [
+        {
+            "username": row[0],
+            "title": row[1],
+            "health_score": float(row[2]) if row[2] else 0.0,
+            "quality_jobs": row[3] or 0
+        }
+        for row in top_channels_data
+    ]
+    
+    return ScrapingStats(
+        total_accounts=total_accounts,
+        active_accounts=active_accounts,
+        banned_accounts=banned_accounts,
+        accounts_used_today=accounts_used_today,
+        total_channels=total_channels,
+        active_channels=active_channels,
+        joined_channels=joined_channels,
+        channels_scraped_today=channels_scraped_today,
+        total_messages=total_messages,
+        messages_last_7_days=messages_last_7_days,
+        messages_last_30_days=messages_last_30_days,
+        messages_today=messages_today,
+        average_health_score=average_health_score,
+        top_channels=top_channels,
+    )
+
+
+# ==================== Job Stats ====================
+
+@router.get("/stats/jobs", response_model=JobStats)
+async def get_job_stats(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_superuser),
+):
+    """Get detailed job statistics with experience and salary breakdown."""
+    today = datetime.utcnow().date()
+    since_7_days = datetime.utcnow() - timedelta(days=7)
+    since_30_days = datetime.utcnow() - timedelta(days=30)
+    
+    # Overall job stats
+    result = await db.execute(select(func.count()).select_from(Job))
+    total_jobs = result.scalar() or 0
+    
+    result = await db.execute(
+        select(func.count())
+        .select_from(Job)
+        .where(Job.is_active.is_(True))
+    )
+    active_jobs = result.scalar() or 0
+    
+    result = await db.execute(
+        select(func.count())
+        .select_from(Job)
+        .where(Job.is_verified.is_(True))
+    )
+    verified_jobs = result.scalar() or 0
+    
+    result = await db.execute(
+        select(func.count())
+        .select_from(Job)
+        .where(func.date(Job.created_at) == today)
+    )
+    jobs_today = result.scalar() or 0
+    
+    result = await db.execute(
+        select(func.count())
+        .select_from(Job)
+        .where(Job.created_at >= since_7_days)
+    )
+    jobs_last_7_days = result.scalar() or 0
+    
+    result = await db.execute(
+        select(func.count())
+        .select_from(Job)
+        .where(Job.created_at >= since_30_days)
+    )
+    jobs_last_30_days = result.scalar() or 0
+    
+    # Experience breakdown
+    result = await db.execute(
+        select(func.count())
+        .select_from(Job)
+        .where(Job.is_fresher.is_(True))
+    )
+    fresher_count = result.scalar() or 0
+    
+    result = await db.execute(
+        select(func.count())
+        .select_from(Job)
+        .where(
+            and_(
+                Job.min_experience.isnot(None),
+                Job.min_experience >= 0,
+                Job.max_experience <= 2
+            )
+        )
+    )
+    junior_count = result.scalar() or 0
+    
+    result = await db.execute(
+        select(func.count())
+        .select_from(Job)
+        .where(
+            and_(
+                Job.min_experience.isnot(None),
+                Job.min_experience > 2,
+                Job.max_experience <= 5
+            )
+        )
+    )
+    mid_count = result.scalar() or 0
+    
+    result = await db.execute(
+        select(func.count())
+        .select_from(Job)
+        .where(
+            and_(
+                Job.min_experience.isnot(None),
+                Job.min_experience > 5
+            )
+        )
+    )
+    senior_count = result.scalar() or 0
+    
+    result = await db.execute(
+        select(func.count())
+        .select_from(Job)
+        .where(Job.min_experience.is_(None))
+    )
+    not_specified_count = result.scalar() or 0
+    
+    experience_breakdown = JobExperienceBreakdown(
+        fresher=fresher_count,
+        junior=junior_count,
+        mid=mid_count,
+        senior=senior_count,
+        not_specified=not_specified_count
+    )
+    
+    # Salary stats
+    result = await db.execute(
+        select(func.count())
+        .select_from(Job)
+        .where(Job.min_salary.isnot(None))
+    )
+    jobs_with_salary = result.scalar() or 0
+    
+    result = await db.execute(
+        select(func.avg(Job.min_salary))
+        .select_from(Job)
+        .where(Job.min_salary.isnot(None))
+    )
+    avg_min_salary = result.scalar()
+    
+    result = await db.execute(
+        select(func.avg(Job.max_salary))
+        .select_from(Job)
+        .where(Job.max_salary.isnot(None))
+    )
+    avg_max_salary = result.scalar()
+    
+    # Top 5 locations
+    result = await db.execute(
+        select(Job.location, func.count(Job.id).label('count'))
+        .where(Job.location.isnot(None))
+        .group_by(Job.location)
+        .order_by(desc('count'))
+        .limit(5)
+    )
+    top_locations_data = result.fetchall()
+    top_locations = [
+        {"location": row[0], "count": row[1]}
+        for row in top_locations_data
+    ]
+    
+    # Top 5 companies
+    from app.models.company import Company
+    result = await db.execute(
+        select(Company.name, func.count(Job.id).label('count'))
+        .join(Job, Job.company_id == Company.id)
+        .group_by(Company.name)
+        .order_by(desc('count'))
+        .limit(5)
+    )
+    top_companies_data = result.fetchall()
+    top_companies = [
+        {"company": row[0], "count": row[1]}
+        for row in top_companies_data
+    ]
+    
+    # Job type breakdown
+    result = await db.execute(
+        select(func.count())
+        .select_from(Job)
+        .where(Job.job_type == 'remote')
+    )
+    remote_jobs = result.scalar() or 0
+    
+    result = await db.execute(
+        select(func.count())
+        .select_from(Job)
+        .where(Job.job_type == 'office')
+    )
+    office_jobs = result.scalar() or 0
+    
+    result = await db.execute(
+        select(func.count())
+        .select_from(Job)
+        .where(Job.job_type == 'hybrid')
+    )
+    hybrid_jobs = result.scalar() or 0
+    
+    return JobStats(
+        total_jobs=total_jobs,
+        active_jobs=active_jobs,
+        verified_jobs=verified_jobs,
+        jobs_today=jobs_today,
+        jobs_last_7_days=jobs_last_7_days,
+        jobs_last_30_days=jobs_last_30_days,
+        experience_breakdown=experience_breakdown,
+        jobs_with_salary=jobs_with_salary,
+        avg_min_salary=avg_min_salary,
+        avg_max_salary=avg_max_salary,
+        top_locations=top_locations,
+        top_companies=top_companies,
+        remote_jobs=remote_jobs,
+        office_jobs=office_jobs,
+        hybrid_jobs=hybrid_jobs,
     )
 
 

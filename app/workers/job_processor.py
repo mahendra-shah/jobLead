@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 
 from app.workers.celery_app import celery_app
 from app.workers.optimized_celery import get_job_classifier, log_memory_usage
+from app.utils.job_parser import parse_experience, extract_salary_from_text, parse_salary_from_jsonb
 
 logger = logging.getLogger(__name__)
 
@@ -323,6 +324,15 @@ def process_pending_jobs(limit: int = 100):
                     # Create job record
                     content_hash = deduplication_service.compute_content_hash(message_text)
                     
+                    # Parse structured experience data
+                    exp_data = parse_experience(extraction.experience)
+                    
+                    # Parse structured salary data - try both methods
+                    salary_data = extract_salary_from_text(message_text)
+                    if not salary_data.get('min') and extraction.salary:
+                        # If text parsing didn't work, try the salary field
+                        salary_data = extract_salary_from_text(extraction.salary)
+                    
                     job = Job(
                         id=uuid4(),
                         title=extraction.job_title or "Untitled Position",
@@ -330,7 +340,15 @@ def process_pending_jobs(limit: int = 100):
                         description=message_text,
                         skills_required=extraction.skills or [],
                         experience_required=extraction.experience,
+                        # Structured experience fields (NEW)
+                        min_experience=exp_data.get('min'),
+                        max_experience=exp_data.get('max'),
+                        is_fresher=exp_data.get('is_fresher', False),
                         salary_range={'raw': extraction.salary} if extraction.salary else {},
+                        # Structured salary fields (NEW)
+                        min_salary=salary_data.get('min'),
+                        max_salary=salary_data.get('max'),
+                        salary_currency=salary_data.get('currency', 'INR'),
                         location=extraction.location,
                         job_type=extraction.job_type,
                         employment_type='fulltime',  # Default

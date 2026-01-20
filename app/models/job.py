@@ -1,6 +1,6 @@
 """Job model."""
 
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 from pgvector.sqlalchemy import Vector
@@ -19,8 +19,18 @@ class Job(Base):
     
     # Job details
     skills_required = Column(JSONB, default=list)  # ["Python", "FastAPI", ...]
-    experience_required = Column(String(50))  # "0-2 years", "2-5 years"
-    salary_range = Column(JSONB, default=dict)  # {"min": 50000, "max": 80000, "currency": "USD"}
+    experience_required = Column(String(50))  # "0-2 years", "2-5 years" (legacy)
+    salary_range = Column(JSONB, default=dict)  # {"min": 50000, "max": 80000, "currency": "USD"} (legacy)
+    
+    # Structured experience fields (new - for filtering and stats)
+    min_experience = Column(Float, nullable=True, index=True)  # Minimum years (supports 0.5 for months)
+    max_experience = Column(Float, nullable=True, index=True)  # Maximum years (NULL for "5+")
+    is_fresher = Column(Boolean, default=False, nullable=False, index=True)  # 0-6 months
+    
+    # Structured salary fields (new - denormalized for performance)
+    min_salary = Column(Integer, nullable=True)  # Minimum salary
+    max_salary = Column(Integer, nullable=True)  # Maximum salary  
+    salary_currency = Column(String(3), default='INR', nullable=False)  # Currency code (INR, USD, etc.)
     
     # Location
     location = Column(String(255))
@@ -58,7 +68,8 @@ class Job(Base):
     # Relationships
     company = relationship("Company", back_populates="jobs")
     source_channel = relationship("Channel", back_populates="jobs")
-    applications = relationship("Application", back_populates="job", cascade="all, delete-orphan")
+    # Using forward reference to avoid circular import issues
+    applications = relationship("Application", back_populates="job", cascade="all, delete-orphan", lazy="dynamic")
     
     def __repr__(self):
         return f"<Job {self.title} at {self.company_id}>"

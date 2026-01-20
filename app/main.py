@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
     await engine.dispose()
 
 
-# Create FastAPI app
+# Create FastAPI app with custom OpenAPI configuration
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
@@ -34,6 +34,16 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
+    # Add HTTP and HTTPS schemes for production SSL support
+    servers=[
+        {"url": "http://localhost:8000", "description": "Local Development (HTTP)"},
+        {"url": "https://localhost:8000", "description": "Local Development (HTTPS)"},
+        {"url": "http://api.yourdomain.com", "description": "Production (HTTP)"},
+        {"url": "https://api.yourdomain.com", "description": "Production (HTTPS)"},
+    ],
+    swagger_ui_parameters={
+        "persistAuthorization": True,  # Persist authorization after page refresh
+    },
 )
 
 # CORS middleware

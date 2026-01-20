@@ -4,6 +4,7 @@ Uses TF-IDF + Random Forest for classification
 """
 
 import pickle
+import joblib
 import json
 import os
 import time
@@ -31,7 +32,7 @@ class SklearnClassifier(BaseClassifier):
     Uses TF-IDF for text features + hand-crafted features
     """
     
-    MODEL_DIR = Path(__file__).parent / "training" / "models"
+    MODEL_DIR = Path(__file__).parent / "models"
     MODEL_FILE = MODEL_DIR / "job_classifier.pkl"
     METADATA_FILE = MODEL_DIR / "model_metadata.json"
     
@@ -307,26 +308,26 @@ class SklearnClassifier(BaseClassifier):
     def load_model(self, path: str) -> None:
         """Load trained model from disk"""
         try:
-            with open(path, 'rb') as f:
-                model_data = pickle.load(f)
+            # Use joblib.load for scikit-learn models (supports compression and is faster)
+            model_data = joblib.load(path)
             
             self.vectorizer = model_data['vectorizer']
             self.classifier = model_data['classifier']
             self.feature_names = model_data.get('feature_names')
             self.threshold = model_data.get('threshold', 0.5)
             
-            if self.METADATA_FILE.exists():
-                with open(self.METADATA_FILE, 'r') as f:
-                    metadata = json.load(f)
-                    self.model_version = metadata.get('model_version')
-                    last_trained_str = metadata.get('last_trained')
-                    if last_trained_str:
-                        self.last_trained = datetime.fromisoformat(last_trained_str)
+            # Load metadata from the model file itself (new format)
+            metadata = model_data.get('metadata', {})
+            self.model_version = metadata.get('version')
+            training_date_str = metadata.get('training_date')
+            if training_date_str:
+                self.last_trained = datetime.fromisoformat(training_date_str)
             
             self.is_loaded = True
             print(f"✅ Model loaded from {path}")
             print(f"   Version: {self.model_version}")
             print(f"   Last trained: {self.last_trained}")
+            print(f"   Accuracy: {metadata.get('accuracy', 'N/A')}")
             
         except Exception as e:
             print(f"❌ Failed to load model: {e}")

@@ -127,6 +127,73 @@ class TelegramGroupHealthHistoryResponse(BaseModel):
     history: List[HealthScoreHistory]
 
 
+# Job Experience Breakdown
+class JobExperienceBreakdown(BaseModel):
+    """Job experience breakdown statistics."""
+    fresher: int          # 0-6 months (is_fresher = true)
+    junior: int           # 0-2 years (min_experience <= 2)
+    mid: int              # 2-5 years (min_experience > 2, max_experience <= 5)
+    senior: int           # 5+ years (min_experience > 5 or max_experience is null)
+    not_specified: int    # NULL experience
+
+
+# Scraping Stats
+class ScrapingStats(BaseModel):
+    """Telegram scraping statistics."""
+    # Account stats
+    total_accounts: int
+    active_accounts: int
+    banned_accounts: int
+    accounts_used_today: int
+    
+    # Channel/Group stats
+    total_channels: int
+    active_channels: int
+    joined_channels: int
+    channels_scraped_today: int
+    
+    # Message stats
+    total_messages: int
+    messages_last_7_days: int
+    messages_last_30_days: int
+    messages_today: int
+    
+    # Quality metrics
+    average_health_score: Optional[float]
+    top_channels: List[Dict[str, Any]]  # Top 5 channels by quality
+
+
+# Job Stats
+class JobStats(BaseModel):
+    """Detailed job statistics."""
+    # Overall stats
+    total_jobs: int
+    active_jobs: int
+    verified_jobs: int
+    jobs_today: int
+    jobs_last_7_days: int
+    jobs_last_30_days: int
+    
+    # Experience breakdown
+    experience_breakdown: JobExperienceBreakdown
+    
+    # Salary stats
+    jobs_with_salary: int
+    avg_min_salary: Optional[float]
+    avg_max_salary: Optional[float]
+    
+    # Location breakdown (top 5)
+    top_locations: List[Dict[str, int]]
+    
+    # Company breakdown (top 5)
+    top_companies: List[Dict[str, int]]
+    
+    # Job type breakdown
+    remote_jobs: int
+    office_jobs: int
+    hybrid_jobs: int
+
+
 # Dashboard Stats
 class DashboardStats(BaseModel):
     total_jobs: int
@@ -139,6 +206,9 @@ class DashboardStats(BaseModel):
     active_groups: int
     joined_groups: int
     average_health_score: float
+    
+    # Experience breakdown (NEW)
+    experience_breakdown: JobExperienceBreakdown
     
     # Recent activity
     last_group_join: Optional[datetime]

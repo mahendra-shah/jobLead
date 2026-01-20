@@ -12,11 +12,11 @@ from sqlalchemy.orm import Session
 from app.config import Settings
 from app.db.session import get_sync_db
 from app.db.base import Base  # Import Base to initialize all models
-from app.models.job import Job
-from app.models.company import Company  # Import to resolve foreign key
-from app.models.channel import Channel  # Import to resolve foreign key
+# Import all models at once to ensure proper relationship initialization
+from app.models import Job, Company, Channel, Application, Student, User
 from app.ml.sklearn_classifier import SklearnClassifier
 from app.ml.spacy_extractor import SpacyExtractor
+from app.ml.enhanced_extractor import get_enhanced_extractor
 
 # Load settings
 settings = Settings()
@@ -33,6 +33,7 @@ class MLProcessorService:
         """Initialize ML processor with classifier and MongoDB connection"""
         self.classifier = SklearnClassifier()
         self.extractor = SpacyExtractor()
+        self.enhanced_extractor = get_enhanced_extractor()  # NEW: Enhanced extraction
         
         # MongoDB connection
         self.mongo_client = MongoClient(settings.MONGODB_URI)
@@ -43,6 +44,7 @@ class MLProcessorService:
         logger.info(f"   Classifier loaded: {self.classifier.is_loaded}")
         logger.info(f"   Classifier version: {self.classifier.model_version}")
         logger.info(f"   spaCy extractor: {self.extractor.is_loaded}")
+        logger.info("   Enhanced extractor: True")
     
     def process_unprocessed_messages(
         self,
@@ -83,7 +85,9 @@ class MLProcessorService:
             return {
                 "success": True,
                 "total_messages": 0,
-                "jobs_found": 0,
+                "job_messages": 0,
+                "individual_jobs_created": 0,
+                "companies_created": 0,
                 "non_jobs": 0,
                 "low_confidence": 0,
                 "stored_to_postgres": 0,
@@ -94,10 +98,12 @@ class MLProcessorService:
         # Process messages
         stats = {
             "total_messages": total_messages,
-            "jobs_found": 0,
+            "job_messages": 0,  # Messages classified as jobs
+            "individual_jobs_created": 0,  # Actual job entries (can be > job_messages if splitting)
             "non_jobs": 0,
             "low_confidence": 0,
             "stored_to_postgres": 0,
+            "companies_created": 0,  # New companies added
             "errors": 0,
             "processing_time_ms": 0
         }
@@ -116,11 +122,14 @@ class MLProcessorService:
                     
                     result = self._process_single_message(message, db, min_confidence)
                     
-                    # Update stats
+                    # Update stats with enhanced tracking
                     if result['is_job']:
-                        stats['jobs_found'] += 1
+                        stats['job_messages'] += 1
+                        stats['individual_jobs_created'] += result['jobs_created']
+                        stats['companies_created'] += result['companies_created']
+                        
                         if result['stored_to_postgres']:
-                            stats['stored_to_postgres'] += 1
+                            stats['stored_to_postgres'] += result['jobs_created']
                         if result['low_confidence']:
                             stats['low_confidence'] += 1
                     else:
@@ -175,12 +184,13 @@ class MLProcessorService:
         logger.info("\n" + "=" * 80)
         logger.info("✅ ML Processing Complete!")
         logger.info("=" * 80)
-        logger.info(f"📊 Summary:")
+        logger.info("📊 Summary:")
         logger.info(f"   Total messages processed: {stats['total_messages']}")
-        logger.info(f"   Jobs found: {stats['jobs_found']}")
+        logger.info(f"   Job messages found: {stats['job_messages']}")
+        logger.info(f"   Individual jobs created: {stats['individual_jobs_created']}")
+        logger.info(f"   Companies auto-created: {stats['companies_created']}")
         logger.info(f"   Non-jobs: {stats['non_jobs']}")
         logger.info(f"   Low confidence jobs: {stats['low_confidence']}")
-        logger.info(f"   Stored to PostgreSQL: {stats['stored_to_postgres']}")
         logger.info(f"   Errors: {stats['errors']}")
         logger.info(f"   Processing time: {stats['processing_time_ms']:.2f}ms")
         logger.info(f"   Avg per message: {stats['processing_time_ms']/stats['total_messages']:.2f}ms")
@@ -197,9 +207,10 @@ class MLProcessorService:
         Process a single message: classify, extract, store
         
         Returns:
-            Processing result dict
+            Processing result dict with jobs_created and companies_created counts
         """
         text = message.get("text", "")
+        links = message.get("links", [])
         
         # 1. Classify the message
         classification = self.classifier.classify(text)
@@ -213,7 +224,10 @@ class MLProcessorService:
             "confidence": classification.confidence,
             "reason": classification.reason,
             "low_confidence": classification.confidence < min_confidence,
-            "stored_to_postgres": False
+            "stored_to_postgres": False,
+            "jobs_created": 0,
+            "companies_created": 0,
+            "job_ids": []
         }
         
         # 2. If it's a job, extract details and store
@@ -224,64 +238,96 @@ class MLProcessorService:
                 logger.warning(f"   ⚠️  Low confidence ({classification.confidence:.2f}), "
                              f"still storing but flagging for review")
             
-            # Extract job details
-            extraction = self.classifier.extract(text)
+            # Extract job details using enhanced extractor (returns LIST of jobs)
+            extractions = self.enhanced_extractor.extract_jobs_from_message(text, links)
             
-            # Enhance with spaCy if available
-            if self.extractor.is_loaded:
-                extraction = self.extractor.enhance_extraction(extraction)
+            logger.info(f"   📦 Found {len(extractions)} job(s) in message")
             
-            logger.info(f"   📋 Extracted details:")
-            logger.info(f"      Company: {extraction.company or 'Not found'}")
-            logger.info(f"      Job Title: {extraction.job_title or 'Not found'}")
-            logger.info(f"      Location: {extraction.location or 'Not found'}")
-            logger.info(f"      Skills: {', '.join(extraction.skills[:5]) if extraction.skills else 'None'}")
-            logger.info(f"      Apply Link: {extraction.apply_link or 'Not found'}")
+            # 3. Process each extracted job
+            for idx, extraction in enumerate(extractions, 1):
+                try:
+                    logger.info(f"   📋 Processing job {idx}/{len(extractions)}:")
+                    logger.info(f"      Company: {extraction.company_name or 'Not found'}")
+                    logger.info(f"      Job Title: {extraction.job_title or 'Not found'}")
+                    logger.info(f"      Location: {extraction.location or 'Not found'}")
+                    logger.info(f"      Salary: {extraction.salary_raw or 'Not found'}")
+                    logger.info(f"      Experience: {extraction.experience_raw or 'Not found'}")
+                    logger.info(f"      Skills: {', '.join(extraction.skills[:5]) if extraction.skills else 'None'}")
+                    logger.info(f"      Apply Link: {extraction.apply_link or 'Not found'}")
+                    logger.info(f"      Confidence: {extraction.confidence:.2f}")
+                    
+                    # Get or create company
+                    company = None
+                    if extraction.company_name:
+                        company = self.enhanced_extractor.get_or_create_company(
+                            db, 
+                            extraction.company_name
+                        )
+                        
+                        if company:
+                            # Check if this is a newly created company
+                            if not hasattr(company, '_is_new'):
+                                # Company was fetched from DB
+                                extraction.company_id = company.id
+                                logger.info(f"      🏢 Using existing company: {company.name} (ID: {company.id})")
+                            else:
+                                # Company was just created
+                                extraction.company_id = company.id
+                                result['companies_created'] += 1
+                                logger.info(f"      🏢 Created new company: {company.name} (ID: {company.id})")
+                    
+                    # Create Job entry with all enhanced fields
+                    job = Job(
+                        title=extraction.job_title or extraction.company_name or "Job Opening",
+                        company_id=extraction.company_id,
+                        description=extraction.description[:5000] if extraction.description else text[:5000],
+                        location=extraction.location,
+                        
+                        # Job details with enhanced extraction
+                        skills_required=extraction.skills if extraction.skills else [],
+                        experience_required=extraction.experience_raw,
+                        salary_range={
+                            "min": extraction.salary_min,
+                            "max": extraction.salary_max,
+                            "currency": extraction.salary_currency or "INR",
+                            "raw": extraction.salary_raw
+                        } if extraction.salary_raw else {},
+                        job_type="fulltime",  # Default
+                        employment_type="fulltime",  # Default
+                        
+                        # Source information
+                        source="telegram",
+                        source_url=extraction.apply_link,
+                        raw_text=text,  # Full original message text
+                        source_message_id=str(message.get("message_id")),
+                        
+                        # ML metadata
+                        ml_confidence=str(round(extraction.confidence, 2)),
+                        
+                        # Status
+                        is_active=classification.confidence >= min_confidence,
+                        is_verified=False,
+                        
+                        # Stats
+                        view_count=0,
+                        application_count=0
+                    )
+                    
+                    db.add(job)
+                    db.flush()  # Get the ID
+                    
+                    result['jobs_created'] += 1
+                    result['job_ids'].append(str(job.id))
+                    logger.info(f"      ✅ Stored to PostgreSQL (Job ID: {job.id})")
+                    
+                except Exception as e:
+                    logger.error(f"      ❌ Error storing job {idx} to PostgreSQL: {e}")
+                    # Continue processing other jobs in the message
+                    continue
             
-            # 3. Store to PostgreSQL
-            try:
-                # For now, we'll skip company_id as we don't have a companies table populated
-                # TODO: Extract and match companies from text later
-                job = Job(
-                    title=extraction.job_title or extraction.company or "Job Opening",
-                    description=text[:5000] if len(text) > 5000 else text,  # Limit description
-                    location=extraction.location,
-                    
-                    # Job details
-                    skills_required=extraction.skills if extraction.skills else [],
-                    experience_required=extraction.experience_required,
-                    salary_range={"raw": extraction.salary} if extraction.salary else {},
-                    job_type=extraction.job_type,
-                    employment_type="fulltime",  # Default
-                    
-                    # Source information
-                    source="telegram",
-                    source_url=extraction.apply_link,
-                    raw_text=text,
-                    source_message_id=str(message.get("message_id")),
-                    
-                    # ML metadata
-                    ml_confidence=str(round(classification.confidence, 2)),
-                    
-                    # Status
-                    is_active=classification.confidence >= min_confidence,
-                    is_verified=False,
-                    
-                    # Stats
-                    view_count=0,
-                    application_count=0
-                )
-                
-                db.add(job)
-                db.flush()  # Get the ID
-                
-                logger.info(f"   ✅ Stored to PostgreSQL (Job ID: {job.id})")
+            # Mark as stored if at least one job was created
+            if result['jobs_created'] > 0:
                 result['stored_to_postgres'] = True
-                result['job_id'] = job.id
-                
-            except Exception as e:
-                logger.error(f"   ❌ Error storing to PostgreSQL: {e}")
-                raise
         
         return result
     
