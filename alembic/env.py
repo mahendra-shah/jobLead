@@ -53,9 +53,13 @@ def run_migrations_online() -> None:
     # Convert asyncpg URL to psycopg2 URL for Alembic (synchronous migrations)
     if database_url.startswith("postgresql+asyncpg://"):
         database_url = database_url.replace("postgresql+asyncpg://", "postgresql://")
-        # asyncpg uses 'ssl=false/true', psycopg2 uses 'sslmode=disable/require'
-        database_url = database_url.replace("ssl=false", "sslmode=disable")
-        database_url = database_url.replace("ssl=true", "sslmode=require")
+        # asyncpg uses 'ssl=false/true/require', psycopg2 uses 'sslmode=disable/require'
+        database_url = database_url.replace("?ssl=false", "?sslmode=disable")
+        database_url = database_url.replace("?ssl=true", "?sslmode=require")
+        database_url = database_url.replace("?ssl=require", "?sslmode=require")
+        database_url = database_url.replace("&ssl=false", "&sslmode=disable")
+        database_url = database_url.replace("&ssl=true", "&sslmode=require")
+        database_url = database_url.replace("&ssl=require", "&sslmode=require")
     
     # Update the sqlalchemy.url in the config
     config.set_main_option("sqlalchemy.url", database_url)
