@@ -90,6 +90,9 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     OPENROUTER_API_KEY: str = ""
     APP_URL: str = "https://placement-dashboard.com"  # For OpenRouter referer
+    
+    # Google Sheets
+    SHEET_ID: str = ""  # Google Sheets ID for daily job exports
 
     # Celery (Optional - for background task queuing)
     CELERY_BROKER_URL: str = "redis://redis:6379/0"
