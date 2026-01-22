@@ -57,7 +57,9 @@ class GoogleSheetsService:
             existing_sheets = {sheet['properties']['title'] for sheet in sheet_metadata['sheets']}
             
             if tab_name in existing_sheets:
-                logger.info(f"Tab '{tab_name}' already exists, will append data")
+                logger.info(f"Tab '{tab_name}' already exists")
+                # Ensure headers are present even if tab exists
+                self._add_header_row(tab_name)
                 return tab_name
             
             # Create new tab
@@ -97,19 +99,24 @@ class GoogleSheetsService:
             'ID',
             'Message ID',
             'Date',
-            'Time',
+            # 'Time',  # Commented per user request
             'Company',
             'Job Title',
             'Location',
-            'Experience Min',
-            'Experience Max',
+            # 'Experience Min',  # Commented per user request
+            # 'Experience Max',  # Commented per user request
             'Is Fresher',
-            'Salary Min',
-            'Salary Max',
+            # 'Salary Min',  # Commented per user request
+            # 'Salary Max',  # Commented per user request
             'Work Type',
             'Job Type',
             'Skills',
-            'Source Channel',
+            'Channel Name',           # NEW
+            'Channel URL',            # NEW
+            'Channel ID',             # Fixed - Now shows actual Telegram channel ID
+            'Sender ID',              # NEW - Telegram sender user ID
+            'Account Used',           # NEW
+            'Source Channel',         # OLD - keeping for backward compat
             'Apply Link',
             'Full Message Text'
         ]
@@ -120,7 +127,7 @@ class GoogleSheetsService:
         
         self.sheets.values().update(
             spreadsheetId=self.sheet_id,
-            range=f"{tab_name}!A1:R1",
+            range=f"{tab_name}!A1:R1",  # 18 columns (A-R) - Removed Time, Exp Min/Max, Salary Min/Max, Added Sender ID
             valueInputOption='RAW',
             body=body
         ).execute()
@@ -238,23 +245,37 @@ class GoogleSheetsService:
                 if company:
                     company_name = company.name
             
+            # Get channel metadata (NEW - using source_channel_name)
+            channel_name = job.source_channel_name or ''  # Get from backfilled column
+            channel_url = f"https://t.me/{channel_name}" if channel_name else ''
+            channel_id = job.source_telegram_channel_id or ''  # Fixed - Now shows actual Telegram channel ID
+            sender_id = str(job.sender_id) if job.sender_id else ''  # NEW - Telegram sender user ID
+            
+            # Get account used (NEW) - Show the MongoDB account ID
+            account_used = f"Account {job.fetched_by_account}" if job.fetched_by_account else ''
+            
             row = [
                 str(job.id),  # ID
                 job.source_message_id or '',  # Message ID
                 job.created_at.strftime('%Y-%m-%d'),  # Date
-                job.created_at.strftime('%H:%M:%S'),  # Time
+                # job.created_at.strftime('%H:%M:%S'),  # Time - Commented per user request
                 company_name,  # Company
                 job.title or '',  # Job Title
                 job.location or '',  # Location
-                job.experience_min if job.experience_min is not None else '',  # Experience Min
-                job.experience_max if job.experience_max is not None else '',  # Experience Max
+                # job.experience_min if job.experience_min is not None else '',  # Experience Min - Commented
+                # job.experience_max if job.experience_max is not None else '',  # Experience Max - Commented
                 'Yes' if job.is_fresher else 'No' if job.is_fresher is not None else '',  # Is Fresher
-                f"₹{job.salary_min:,.0f}" if job.salary_min else '',  # Salary Min
-                f"₹{job.salary_max:,.0f}" if job.salary_max else '',  # Salary Max
+                # f"₹{job.salary_min:,.0f}" if job.salary_min else '',  # Salary Min - Commented
+                # f"₹{job.salary_max:,.0f}" if job.salary_max else '',  # Salary Max - Commented
                 job.work_type or '',  # Work Type (remote/on-site/hybrid)
                 job.job_type or '',  # Job Type
                 ', '.join(job.skills_required) if job.skills_required else '',  # Skills
-                job.source or '',  # Source Channel
+                channel_name,  # Channel Name (NEW)
+                channel_url,  # Channel URL (NEW)
+                channel_id,  # Channel ID (Fixed - Now shows actual Telegram channel ID)
+                sender_id,  # Sender ID (NEW)
+                account_used,  # Account Used (NEW)
+                job.source or '',  # Source Channel (OLD - keeping for backward compat)
                 job.source_url or '',  # Apply Link
                 (job.raw_text or '')[:1000]  # Full Message Text (truncated to 1000 chars)
             ]

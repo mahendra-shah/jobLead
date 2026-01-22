@@ -14,6 +14,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from app.config import settings
 from app.services.google_sheets_service import GoogleSheetsService
+# Import models to ensure relationships are configured
+from app.models.job import Job
+from app.models.telegram_group import TelegramGroup
+from app.models.telegram_account import TelegramAccount
 
 
 def export_yesterday_jobs():

@@ -276,6 +276,47 @@ class MLProcessorService:
                                 result['companies_created'] += 1
                                 logger.info(f"      🏢 Created new company: {company.name} (ID: {company.id})")
                     
+                    # Extract telegram metadata from message (NEW)
+                    telegram_group_id = None
+                    scraped_by_account_id = None
+                    fetched_by_account_value = None
+                    sender_id_value = None
+                    channel_id_value = None
+                    
+                    # Get sender_id from message
+                    sender_id = message.get("sender_id")
+                    if sender_id:
+                        sender_id_value = int(sender_id)
+                    
+                    # Get channel_id from message (actual Telegram channel ID)
+                    channel_id = message.get("channel_id")
+                    if channel_id:
+                        channel_id_value = str(channel_id)
+                        # Find telegram_group by MongoDB's channel_id
+                        from app.models.telegram_group import TelegramGroup
+                        from sqlalchemy import select
+                        tg_result = db.execute(
+                            select(TelegramGroup).where(TelegramGroup.id == channel_id)
+                        )
+                        tg_group = tg_result.scalar_one_or_none()
+                        if tg_group:
+                            telegram_group_id = tg_group.id
+                            logger.info(f"      ✅ Linked to telegram_group: {tg_group.username}")
+                    
+                    # Get account ID from message (store the integer value)
+                    fetched_by_account = message.get("fetched_by_account")
+                    if fetched_by_account:
+                        fetched_by_account_value = int(fetched_by_account)
+                        # Also try to find telegram_account by account ID (for future use)
+                        from app.models.telegram_account import TelegramAccount
+                        ta_result = db.execute(
+                            select(TelegramAccount).where(TelegramAccount.id == fetched_by_account)
+                        )
+                        tg_account = ta_result.scalar_one_or_none()
+                        if tg_account:
+                            scraped_by_account_id = tg_account.id
+                            logger.info(f"      ✅ Linked to account: {tg_account.phone}")
+                    
                     # Create Job entry with all enhanced fields
                     job = Job(
                         title=extraction.job_title or extraction.company_name or "Job Opening",
@@ -300,6 +341,11 @@ class MLProcessorService:
                         source_url=extraction.apply_link,
                         raw_text=text,  # Full original message text
                         source_message_id=str(message.get("message_id")),
+                        source_telegram_channel_id=channel_id_value,  # NEW - Actual Telegram channel ID
+                        sender_id=sender_id_value,  # NEW - Sender user ID
+                        telegram_group_id=telegram_group_id,  # NEW
+                        scraped_by_account_id=scraped_by_account_id,  # NEW
+                        fetched_by_account=fetched_by_account_value,  # NEW - Store MongoDB account ID
                         
                         # ML metadata
                         ml_confidence=str(round(extraction.confidence, 2)),

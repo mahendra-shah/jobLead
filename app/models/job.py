@@ -1,6 +1,6 @@
 """Job model."""
 
-from sqlalchemy import Boolean, Column, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, Float, ForeignKey, Integer, String, Text, BigInteger
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 from pgvector.sqlalchemy import Vector
@@ -38,7 +38,13 @@ class Job(Base):
     # Source information
     source = Column(String(100), default="telegram")  # telegram, direct, linkedin, etc.
     source_url = Column(Text)
-    source_channel_id = Column(UUID(as_uuid=True), ForeignKey("channels.id"), nullable=True)  # Made nullable
+    source_channel_id = Column(UUID(as_uuid=True), ForeignKey("channels.id"), nullable=True)  # OLD - deprecated
+    source_channel_name = Column(String(500), nullable=True)  # NEW - Channel username from MongoDB
+    source_telegram_channel_id = Column(String(100), nullable=True)  # NEW - Actual Telegram channel_id from MongoDB
+    sender_id = Column(BigInteger, nullable=True)  # NEW - Sender user ID from MongoDB
+    fetched_by_account = Column(Integer, nullable=True)  # NEW - MongoDB account ID (integer like 1, 2, 3)
+    telegram_group_id = Column(UUID(as_uuid=True), ForeignKey("telegram_groups.id"), nullable=True)  # NEW
+    scraped_by_account_id = Column(UUID(as_uuid=True), ForeignKey("telegram_accounts.id"), nullable=True)  # NEW
     raw_text = Column(Text)  # Original job posting text
     
     # ML & Deduplication
@@ -65,7 +71,9 @@ class Job(Base):
     
     # Relationships
     company = relationship("Company", back_populates="jobs")
-    source_channel = relationship("Channel", back_populates="jobs")
+    source_channel = relationship("Channel", back_populates="jobs")  # OLD - deprecated
+    telegram_group = relationship("TelegramGroup", foreign_keys=[telegram_group_id])  # NEW
+    scraped_by_account = relationship("TelegramAccount", foreign_keys=[scraped_by_account_id])  # NEW
     # Using forward reference to avoid circular import issues
     applications = relationship("Application", back_populates="job", cascade="all, delete-orphan", lazy="dynamic")
     
