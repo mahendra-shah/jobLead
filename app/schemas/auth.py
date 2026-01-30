@@ -15,6 +15,7 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=8, description="Password must be at least 8 characters")
     role: Optional[str] = "student"
+    username: Optional[str] = None
 
 
 class RegisterResponse(BaseModel):
@@ -48,6 +49,7 @@ class UserResponse(BaseModel):
 
     id: UUID
     email: str
+    username: Optional[str] = None
     role: str
     is_active: bool
     created_at: datetime
