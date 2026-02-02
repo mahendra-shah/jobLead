@@ -148,40 +148,13 @@ tmp/
 # ===================================
 # Documentation (Build/Status Files)
 # ===================================
-# Keep only essential docs, ignore detailed status/test reports
-*_STATUS.md
-*_COMPLETE.md
-*_SUCCESS.md
-*_SUMMARY.md
-*_TESTING*.md
-*_IMPLEMENTATION*.md
-*_PROGRESS.md
-BUG_FIX_*.md
-DEPLOYMENT_*.md
-DOCKER_*.md
-LAMBDA_*.md
-ML_*.md
-CHANNEL_*.md
-HYBRID_*.md
-INCREMENTAL_*.md
-JOB_PROCESSING_*.md
-JOBS_API_*.md
-LOCATION_*.md
-MONGODB_*.md
-MULTI_ACCOUNT_*.md
-PHASE_*.md
-PIPELINE_*.md
-POSTGRES_*.md
-PROJECT_STATUS.md
-FINAL_*.md
+# Ignore docs folder (all generated documentation)
+docs/
 
-# But keep these important docs
+# Ignore all markdown files except these in root
+*.md
 !README.md
-!QUICKSTART.md
-!ARCHITECTURE.md
-!API_DOCS.md
-!DEPLOYMENT.md
-!DOCKER_SETUP.md
+!IMPLEMENTATION_SUMMARY.md
 
 # ===================================
 # Test Scripts & Debug Files

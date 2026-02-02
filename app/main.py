@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.v1 import api_router
+from app.routers import monitoring
 from app.config import settings
 from app.core.logging import setup_logging
 from app.db.session import engine, init_db
@@ -56,6 +57,9 @@ app.add_middleware(
 
 # Include API router
 app.include_router(api_router, prefix="/api/v1")
+
+# Include monitoring router (no prefix - uses /api/monitoring)
+app.include_router(monitoring.router)
 
 
 @app.get("/", tags=["Health"])
