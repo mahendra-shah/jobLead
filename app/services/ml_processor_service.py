@@ -277,8 +277,8 @@ class MLProcessorService:
                                 logger.info(f"      🏢 Created new company: {company.name} (ID: {company.id})")
                     
                     # Extract telegram metadata from message (NEW)
-                    telegram_group_id = None
-                    scraped_by_account_id = None
+                    telegram_group_id = None  # Always None - telegram_groups table is empty
+                    scraped_by_account_id = None  # Always None - telegram_accounts table is empty
                     fetched_by_account_value = None
                     sender_id_value = None
                     channel_id_value = None
@@ -292,30 +292,15 @@ class MLProcessorService:
                     channel_id = message.get("channel_id")
                     if channel_id:
                         channel_id_value = str(channel_id)
-                        # Find telegram_group by MongoDB's channel_id
-                        from app.models.telegram_group import TelegramGroup
-                        from sqlalchemy import select
-                        tg_result = db.execute(
-                            select(TelegramGroup).where(TelegramGroup.id == channel_id)
-                        )
-                        tg_group = tg_result.scalar_one_or_none()
-                        if tg_group:
-                            telegram_group_id = tg_group.id
-                            logger.info(f"      ✅ Linked to telegram_group: {tg_group.username}")
+                        # NOTE: We don't link to telegram_groups table because it's empty
+                        # We store the channel_id directly in source_telegram_channel_id
                     
                     # Get account ID from message (store the integer value)
                     fetched_by_account = message.get("fetched_by_account")
                     if fetched_by_account:
                         fetched_by_account_value = int(fetched_by_account)
-                        # Also try to find telegram_account by account ID (for future use)
-                        from app.models.telegram_account import TelegramAccount
-                        ta_result = db.execute(
-                            select(TelegramAccount).where(TelegramAccount.id == fetched_by_account)
-                        )
-                        tg_account = ta_result.scalar_one_or_none()
-                        if tg_account:
-                            scraped_by_account_id = tg_account.id
-                            logger.info(f"      ✅ Linked to account: {tg_account.phone}")
+                        # NOTE: We don't link to telegram_accounts table because it's empty
+                        # We store the account ID directly in fetched_by_account field
                     
                     # Create Job entry with all enhanced fields
                     job = Job(
