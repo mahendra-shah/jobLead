@@ -93,6 +93,8 @@ class Settings(BaseSettings):
     
     # Google Sheets
     SHEET_ID: str = ""  # Google Sheets ID for daily job exports
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
 
     # Celery (Optional - for background task queuing)
     CELERY_BROKER_URL: str = "redis://redis:6379/0"

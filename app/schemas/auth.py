@@ -33,6 +33,9 @@ class LoginRequest(BaseModel):
     email: EmailStr
     password: str
 
+class GoogleLoginRequest(BaseModel):
+   """Google login request schema."""
+   id_token: str = Field(..., min_length=10)
 
 class LoginResponse(BaseModel):
     """Login response schema."""
