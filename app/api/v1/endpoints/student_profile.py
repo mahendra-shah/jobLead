@@ -43,7 +43,7 @@ async def get_my_profile(
     """
     # Get student record by user_id
     result = await db.execute(
-        select(Student).where(Student.user_id == current_user.id)
+        select(Student).where(Student.email == current_user.email)
     )
     student = result.scalar_one_or_none()
     
