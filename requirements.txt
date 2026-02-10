@@ -30,6 +30,7 @@ telethon==1.34.0
 # Task Queue & Scheduling
 celery[redis]==5.3.6  # Async task queue with Redis broker
 redis==5.0.1  # Redis client for Celery
+apscheduler==3.10.4  # In-process task scheduler for periodic jobs
 
 # AI Providers (Multiple options for flexibility)
 openai==1.10.0  # For job extraction and embeddings

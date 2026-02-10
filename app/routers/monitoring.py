@@ -235,7 +235,7 @@ async def get_pipeline_health(
 
 @router.get("/daily-stats")
 async def get_daily_stats(
-    days: int = Query(default=7, ge=1, le=7, description="Number of days to retrieve (max 7, default 7)")
+    days: int = Query(default=7, ge=1, le=7, description="Number of days to retrieve (max 7, default: 7)")
 ):
     """
     Get simplified daily statistics for the last N days
@@ -332,3 +332,105 @@ async def health_check():
             "postgresql": pg_status
         }
     }
+
+
+@router.get("/telegram-scraper")
+async def get_telegram_scraper_stats(
+    days: int = Query(default=7, ge=1, le=30, description="Number of days to retrieve (max 30, default 7)")
+):
+    """
+    Get Telegram scraper statistics for the last N days
+    
+    **Parameters:**
+    - days: Number of days to retrieve (1-30, default: 7)
+    
+    **Returns:**
+    - Daily scraping statistics
+    - Per-account statistics
+    - Channel scraping health
+    - Last scraping time
+    """
+    try:
+        client = get_mongodb_client()
+        db = client.placement_db
+        
+        daily_stats = []
+        
+        for i in range(days):
+            date = datetime.utcnow() - timedelta(days=i)
+            start_of_day = datetime(date.year, date.month, date.day, 0, 0, 0)
+            end_of_day = start_of_day + timedelta(days=1)
+            
+            # Messages fetched that day
+            messages_fetched = db.raw_messages.count_documents({
+                "fetched_at": {"$gte": start_of_day, "$lt": end_of_day}
+            })
+            
+            # Channels scraped (distinct channels that had messages)
+            channels_scraped = len(db.raw_messages.distinct(
+                "channel_username",
+                {"fetched_at": {"$gte": start_of_day, "$lt": end_of_day}}
+            ))
+            
+            # Account usage stats
+            account_usage = {}
+            for account_id in range(1, 6):  # 5 accounts
+                count = db.raw_messages.count_documents({
+                    "fetched_at": {"$gte": start_of_day, "$lt": end_of_day},
+                    "fetched_by_account": account_id
+                })
+                if count > 0:
+                    account_usage[account_id] = count
+            
+            daily_stats.append({
+                "date": start_of_day.strftime("%Y-%m-%d"),
+                "messages_fetched": messages_fetched,
+                "channels_scraped": channels_scraped,
+                "accounts_used": list(account_usage.keys()),
+                "account_distribution": account_usage
+            })
+        
+        # Get last scraping time
+        last_message = db.raw_messages.find_one(
+            {},
+            sort=[("fetched_at", -1)]
+        )
+        last_scraped_at = last_message["fetched_at"] if last_message else None
+        
+        # Get channel statistics
+        total_channels = db.channels.count_documents({"is_active": True})
+        channels_with_messages = len(db.raw_messages.distinct("channel_username"))
+        
+        # Calculate overall health
+        recent_messages = db.raw_messages.count_documents({
+            "fetched_at": {"$gte": datetime.utcnow() - timedelta(hours=24)}
+        })
+        
+        health_status = "healthy"
+        if recent_messages == 0:
+            health_status = "critical"
+        elif recent_messages < 50:
+            health_status = "warning"
+        
+        return {
+            "timestamp": datetime.now().isoformat(),
+            "days_requested": days,
+            "health_status": health_status,
+            "last_scraped_at": last_scraped_at.isoformat() if last_scraped_at else None,
+            "total_active_channels": total_channels,
+            "channels_with_messages": channels_with_messages,
+            "recent_messages_24h": recent_messages,
+            "daily_stats": daily_stats,
+            "summary": {
+                "total_messages": sum(d["messages_fetched"] for d in daily_stats),
+                "avg_messages_per_day": round(sum(d["messages_fetched"] for d in daily_stats) / days, 1),
+                "avg_channels_per_day": round(sum(d["channels_scraped"] for d in daily_stats) / days, 1)
+            }
+        }
+    
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
