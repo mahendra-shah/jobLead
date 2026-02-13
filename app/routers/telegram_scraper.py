@@ -37,7 +37,6 @@ router = APIRouter(
 # Response Models
 class ScrapeResult(BaseModel):
     """Result from a scraping operation."""
-    success: bool
     total_channels: int
     successful: int
     failed: int
@@ -46,6 +45,7 @@ class ScrapeResult(BaseModel):
     started_at: datetime
     completed_at: datetime
     account_stats: Dict[int, Dict[str, int]]
+    results: Optional[list] = None  # Detailed results per channel
 
 
 class ChannelScrapeResult(BaseModel):

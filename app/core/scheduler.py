@@ -101,15 +101,15 @@ def setup_jobs():
     logger.info("⏰ Setting up scheduled jobs...")
     
     # Job 1: Daily Telegram Scraper
-    # Runs at 12:30 AM UTC = 6:00 AM IST
+    # Runs at 5:00 AM UTC = 10:30 AM IST (TESTING)
     scheduler.add_job(
         run_telegram_scraper,
-        CronTrigger(hour=0, minute=30),  # 00:30 UTC
+        CronTrigger(hour=5, minute=0),  # 05:00 UTC = 10:30 AM IST
         id='telegram_scraper_daily',
         name='Daily Telegram Message Scraper',
         replace_existing=True
     )
-    logger.info("   ✅ Added: telegram_scraper_daily (00:30 UTC / 06:00 AM IST)")
+    logger.info("   ✅ Added: telegram_scraper_daily (05:00 UTC / 10:30 AM IST)")
     
     # Job 2: (Optional) More frequent scraping during business hours
     # Uncomment if you want more frequent scraping (every 2 hours)

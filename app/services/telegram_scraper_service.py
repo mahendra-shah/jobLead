@@ -54,13 +54,19 @@ class TelegramScraperService:
     ACCOUNTS_AVAILABLE = 5  # Total number of Telegram accounts
     FIRST_TIME_FETCH_LIMIT = 10  # Only 10 messages on first fetch
     
-    def __init__(self, session_dir: str = "app/sessions"):
+    def __init__(self, session_dir: Optional[str] = None):
         """
         Initialize the Telegram Scraper Service.
         
         Args:
-            session_dir: Path to directory containing session files
+            session_dir: Path to directory containing session files (default: app/sessions)
         """
+        if session_dir is None:
+            # Use absolute path from project root
+            import os
+            project_root = Path(__file__).parent.parent.parent
+            session_dir = str(project_root / "app" / "sessions")
+        
         self.session_dir = Path(session_dir)
         self.clients: Dict[int, TelegramClient] = {}
         self.account_stats = defaultdict(
