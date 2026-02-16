@@ -186,7 +186,8 @@ async def login_google(request: GoogleLoginRequest, db: AsyncSession = Depends(g
         
         # Retry logic to handle username uniqueness with IntegrityError
         # This prevents race conditions when multiple concurrent requests try to create the same username
-        base_username = username
+        # Truncate base username to leave room for counter suffix (e.g., "_123")
+        base_username = username[:140]  # Leave 10 chars for counter suffix
         counter = 1
         max_retries = 10
         
@@ -214,14 +215,25 @@ async def login_google(request: GoogleLoginRequest, db: AsyncSession = Depends(g
                 await db.rollback()
                 
                 # Get the error details to determine the constraint violation
+                # Try to get the constraint name from PostgreSQL-specific error details
+                constraint_name = None
+                if hasattr(e, 'orig') and hasattr(e.orig, 'diag'):
+                    constraint_name = getattr(e.orig.diag, 'constraint_name', None)
+                
+                # Fallback to string matching if constraint name not available
                 error_str = str(e.orig) if hasattr(e, 'orig') else str(e)
                 
                 # Check if it's a username collision (not email collision)
-                # PostgreSQL error messages include the constraint name
-                if "username" in error_str.lower() or "ix_users_username" in error_str.lower():
+                is_username_collision = (
+                    constraint_name == 'ix_users_username' or
+                    "username" in error_str.lower() or 
+                    "ix_users_username" in error_str.lower()
+                )
+                
+                if is_username_collision:
                     logger.warning(f"Username collision for {username} on attempt {attempt + 1}/{max_retries}")
                     # Increment counter and retry with a new username
-                    username = f"{base_username}_{counter}"[:150]
+                    username = f"{base_username}_{counter}"
                     counter += 1
                 else:
                     # Email collision - this shouldn't happen as we already checked
