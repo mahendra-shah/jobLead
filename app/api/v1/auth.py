@@ -212,20 +212,17 @@ async def login_google(request: GoogleLoginRequest, db: AsyncSession = Depends(g
             except IntegrityError as e:
                 # Rollback the failed transaction
                 await db.rollback()
-                logger.warning(f"Username collision for {username}, retrying with incremented counter")
+                
+                # Get the error details to determine the constraint violation
+                error_str = str(e.orig) if hasattr(e, 'orig') else str(e)
                 
                 # Check if it's a username collision (not email collision)
-                if "username" in str(e).lower():
+                # PostgreSQL error messages include the constraint name
+                if "username" in error_str.lower() or "ix_users_username" in error_str.lower():
+                    logger.warning(f"Username collision for {username} on attempt {attempt + 1}/{max_retries}")
                     # Increment counter and retry with a new username
                     username = f"{base_username}_{counter}"[:150]
                     counter += 1
-                    
-                    if attempt == max_retries - 1:
-                        logger.error(f"Max retries reached for username generation for email: {email}")
-                        raise HTTPException(
-                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            detail="Failed to generate unique username after multiple attempts",
-                        )
                 else:
                     # Email collision - this shouldn't happen as we already checked
                     logger.error(f"Email collision during user creation: {email}")
@@ -233,6 +230,13 @@ async def login_google(request: GoogleLoginRequest, db: AsyncSession = Depends(g
                         status_code=status.HTTP_409_CONFLICT,
                         detail="User with this email already exists",
                     )
+        else:
+            # Loop completed without break - all retries exhausted
+            logger.error(f"Max retries reached for username generation for email: {email}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to generate unique username after multiple attempts",
+            )
 
     if not user.is_active:
         raise HTTPException(
