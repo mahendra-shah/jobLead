@@ -4,11 +4,10 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
 from app.config import settings
-
-logger = logging.getLogger(__name__)
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -26,6 +25,8 @@ from app.schemas.auth import (
     UserResponse,
     GoogleLoginRequest,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -173,44 +174,69 @@ async def login_google(request: GoogleLoginRequest, db: AsyncSession = Depends(g
         logger.info(f"Auto-registering new user from Google: {email}")
         
         # Generate username from email or name
-        username = None
+        base_username = None
         if name:
             # Use name as username, make it URL-safe
-            username = name.lower().replace(" ", "_")[:150]
+            base_username = name.lower().replace(" ", "_")[:150]
         elif given_name or family_name:
-            username = f"{given_name}_{family_name}".lower().replace(" ", "_")[:150]
+            base_username = f"{given_name}_{family_name}".lower().replace(" ", "_")[:150]
         else:
             # Fallback to email prefix
-            username = email.split("@")[0][:150]
+            base_username = email.split("@")[0][:150]
         
-        # Ensure username is unique by appending a number if needed
-        base_username = username
-        counter = 1
-        while True:
-            existing_username = await db.execute(
-                select(User).where(User.username == username)
-            )
-            if existing_username.scalar_one_or_none() is None:
+        # Try to create user with retry logic to handle username conflicts
+        # The database unique constraint will catch concurrent conflicts
+        max_retries = 10
+        counter = 0
+        
+        for attempt in range(max_retries):
+            try:
+                # Generate username with counter if needed
+                username = base_username if attempt == 0 else f"{base_username}_{counter}"[:150]
+                
+                # Create new user
+                # OAuth users don't need a password hash
+                new_user = User(
+                    email=email,
+                    username=username,
+                    password_hash=None,  # No password for OAuth users
+                    role="student",  # Default role
+                    is_active=True,
+                    is_verified=True,  # Google verified email
+                )
+                
+                db.add(new_user)
+                await db.commit()
+                await db.refresh(new_user)
+                user = new_user
+                logger.info(f"Successfully auto-registered user: {email} with username: {username}")
                 break
-            username = f"{base_username}_{counter}"[:150]
-            counter += 1
-        
-        # Create new user
-        # OAuth users don't need a password hash
-        new_user = User(
-            email=email,
-            username=username,
-            password_hash=None,  # No password for OAuth users
-            role="student",  # Default role
-            is_active=True,
-            is_verified=True,  # Google verified email
-        )
-        
-        db.add(new_user)
-        await db.commit()
-        await db.refresh(new_user)
-        user = new_user
-        logger.info(f"Successfully auto-registered user: {email} with username: {username}")
+                
+            except IntegrityError as e:
+                # Rollback the failed transaction
+                await db.rollback()
+                
+                # Check if it's a username conflict
+                if "username" in str(e.orig).lower() or "ix_users_username" in str(e.orig).lower():
+                    counter += 1
+                    logger.info(f"Username '{username}' already exists, retrying with counter {counter}")
+                    
+                    if attempt == max_retries - 1:
+                        # Maximum retries reached
+                        logger.error(f"Failed to generate unique username after {max_retries} attempts")
+                        raise HTTPException(
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail="Unable to create user account",
+                        )
+                    # Continue to next iteration
+                    continue
+                else:
+                    # Different integrity error (e.g., email conflict)
+                    logger.error(f"IntegrityError during user creation: {str(e)}", exc_info=True)
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="User account already exists",
+                    )
 
     if not user.is_active:
         raise HTTPException(
