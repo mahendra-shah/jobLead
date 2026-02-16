@@ -7,8 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
 from app.config import settings
-
-logger = logging.getLogger(__name__)
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -26,6 +24,8 @@ from app.schemas.auth import (
     UserResponse,
     GoogleLoginRequest,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
