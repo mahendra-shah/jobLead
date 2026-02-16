@@ -113,6 +113,16 @@ class Settings(BaseSettings):
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"
+    
+    # Channel Scoring & Quality Management
+    CHANNEL_SCORE_LOW_THRESHOLD: int = 40
+    CHANNEL_SCORE_INACTIVE_THRESHOLD: int = 25
+    CHANNEL_MIN_JOBS_FOR_SCORING: int = 5
+    JOB_RELEVANCE_CONFIG_PATH: str = "config/job_relevance_criteria.json"
+    JOB_QUALITY_MIN_SCORE: int = 30
+    SCORING_LOOKBACK_DAYS: int = 30
+    SCORING_UPDATE_FREQUENCY: str = "daily"
+    ENABLE_AUTO_DEACTIVATION: bool = True
 
     @field_validator("ALLOWED_RESUME_EXTENSIONS", mode="before")
     @classmethod

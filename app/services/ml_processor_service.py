@@ -13,10 +13,11 @@ from app.config import Settings
 from app.db.session import get_sync_db
 from app.db.base import Base  # Import Base to initialize all models
 # Import all models at once to ensure proper relationship initialization
-from app.models import Job, Company, Channel, Application, Student, User
+from app.models import Job, Company, Channel, Application, Student, User, TelegramGroup
 from app.ml.sklearn_classifier import SklearnClassifier
 from app.ml.spacy_extractor import SpacyExtractor
 from app.ml.enhanced_extractor import get_enhanced_extractor
+from app.services.job_quality_scorer import get_quality_scorer
 
 # Load settings
 settings = Settings()
@@ -34,6 +35,7 @@ class MLProcessorService:
         self.classifier = SklearnClassifier()
         self.extractor = SpacyExtractor()
         self.enhanced_extractor = get_enhanced_extractor()  # NEW: Enhanced extraction
+        self.quality_scorer = get_quality_scorer()  # NEW: Quality scoring
         
         # MongoDB connection
         self.mongo_client = MongoClient(settings.MONGODB_URI)
@@ -45,6 +47,7 @@ class MLProcessorService:
         logger.info(f"   Classifier version: {self.classifier.model_version}")
         logger.info(f"   spaCy extractor: {self.extractor.is_loaded}")
         logger.info("   Enhanced extractor: True")
+        logger.info("   Quality scorer: True")
     
     def process_unprocessed_messages(
         self,
@@ -104,6 +107,8 @@ class MLProcessorService:
             "low_confidence": 0,
             "stored_to_postgres": 0,
             "companies_created": 0,  # New companies added
+            "quality_filtered": 0,  # Jobs rejected for low quality score
+            "relevant_jobs": 0,  # Jobs meeting relevance criteria
             "errors": 0,
             "processing_time_ms": 0
         }
@@ -127,6 +132,8 @@ class MLProcessorService:
                         stats['job_messages'] += 1
                         stats['individual_jobs_created'] += result['jobs_created']
                         stats['companies_created'] += result['companies_created']
+                        stats['quality_filtered'] += result['quality_filtered']
+                        stats['relevant_jobs'] += result['relevant_jobs']
                         
                         if result['stored_to_postgres']:
                             stats['stored_to_postgres'] += result['jobs_created']
@@ -188,6 +195,8 @@ class MLProcessorService:
         logger.info(f"   Total messages processed: {stats['total_messages']}")
         logger.info(f"   Job messages found: {stats['job_messages']}")
         logger.info(f"   Individual jobs created: {stats['individual_jobs_created']}")
+        logger.info(f"   Relevant jobs: {stats['relevant_jobs']}")
+        logger.info(f"   Quality filtered: {stats['quality_filtered']}")
         logger.info(f"   Companies auto-created: {stats['companies_created']}")
         logger.info(f"   Non-jobs: {stats['non_jobs']}")
         logger.info(f"   Low confidence jobs: {stats['low_confidence']}")
@@ -227,7 +236,10 @@ class MLProcessorService:
             "stored_to_postgres": False,
             "jobs_created": 0,
             "companies_created": 0,
-            "job_ids": []
+            "quality_filtered": 0,
+            "relevant_jobs": 0,
+            "job_ids": [],
+            "channel_id": None  # Track channel for aggregation
         }
         
         # 2. If it's a job, extract details and store
@@ -290,8 +302,12 @@ class MLProcessorService:
                     
                     # Get channel_id from message (actual Telegram channel ID)
                     channel_id = message.get("channel_id")
+                    channel_username = message.get("channel_username")
                     if channel_id:
                         channel_id_value = str(channel_id)
+                        # Store for channel aggregation
+                        result['channel_id'] = channel_id_value
+                        result['channel_username'] = channel_username
                         # NOTE: We don't link to telegram_groups table because it's empty
                         # We store the channel_id directly in source_telegram_channel_id
                     
@@ -344,6 +360,47 @@ class MLProcessorService:
                         application_count=0
                     )
                     
+                    # NEW: Score job quality before storing
+                    job_data = {
+                        "title": job.title,
+                        "description": job.description,
+                        "skills": job.skills_required or [],
+                        "experience": job.experience_required,
+                        "salary": job.salary_range.get("raw") if job.salary_range else None,
+                        "location": job.location,
+                        "apply_link": job.source_url,
+                        "company": company.name if company else None
+                    }
+                    
+                    quality_result = self.quality_scorer.score_job(job_data, extraction.confidence)
+                    
+                    # Set quality scoring fields
+                    job.quality_score = quality_result.quality_score
+                    job.relevance_score = quality_result.relevance_score
+                    job.meets_relevance_criteria = quality_result.meets_criteria
+                    job.quality_breakdown = quality_result.breakdown
+                    job.relevance_reasons = quality_result.reasons
+                    job.extraction_completeness_score = quality_result.breakdown.get("completeness", 0)
+                    job.quality_factors = {
+                        "experience_match": quality_result.breakdown.get("experience_match", 0),
+                        "completeness": quality_result.breakdown.get("completeness", 0),
+                        "skills_value": quality_result.breakdown.get("skills_value", 0)
+                    }
+                    
+                    logger.info(f"      🎯 Quality Score: {quality_result.quality_score:.2f}/100")
+                    logger.info(f"      📊 Relevance: {quality_result.relevance_score:.2f}/100")
+                    logger.info(f"      ✓ Meets Criteria: {quality_result.meets_criteria}")
+                    
+                    # Filter jobs below minimum quality threshold
+                    if quality_result.quality_score < settings.JOB_QUALITY_MIN_SCORE:
+                        logger.warning(f"      ⚠️  Job rejected: Quality score {quality_result.quality_score:.2f} < {settings.JOB_QUALITY_MIN_SCORE}")
+                        result['quality_filtered'] += 1
+                        continue  # Skip this job
+                    
+                    # Track relevant jobs
+                    if quality_result.meets_criteria:
+                        result['relevant_jobs'] += 1
+                    
                     db.add(job)
                     db.flush()  # Get the ID
                     
@@ -359,8 +416,85 @@ class MLProcessorService:
             # Mark as stored if at least one job was created
             if result['jobs_created'] > 0:
                 result['stored_to_postgres'] = True
+                
+                # NEW: Update channel aggregation metrics
+                if result.get('channel_username'):
+                    self._update_channel_metrics(
+                        db, 
+                        result['channel_username'],
+                        jobs_created=result['jobs_created'],
+                        relevant_jobs=result['relevant_jobs']
+                    )
         
         return result
+    
+    def _update_channel_metrics(
+        self,
+        db: Session,
+        channel_username: str,
+        jobs_created: int,
+        relevant_jobs: int
+    ):
+        """
+        Update channel aggregation metrics and recalculate health score
+        
+        Args:
+            db: Database session
+            channel_username: Channel username (e.g., @channelname or channelname)
+            jobs_created: Number of jobs created from this batch
+            relevant_jobs: Number of relevant jobs in this batch
+        """
+        try:
+            # Normalize username (ensure @ prefix)
+            if not channel_username.startswith('@'):
+                channel_username = f'@{channel_username}'
+            
+            # Find or create channel
+            channel = db.query(TelegramGroup).filter(
+                TelegramGroup.username == channel_username
+            ).first()
+            
+            if not channel:
+                logger.warning(f"   ⚠️  Channel {channel_username} not found in telegram_groups table, skipping metrics update")
+                return
+            
+            # Update job counts
+            channel.total_jobs_posted = (channel.total_jobs_posted or 0) + jobs_created
+            channel.relevant_jobs_count = (channel.relevant_jobs_count or 0) + relevant_jobs
+            
+            # Calculate relevance ratio
+            if channel.total_jobs_posted > 0:
+                channel.relevance_ratio = channel.relevant_jobs_count / channel.total_jobs_posted
+            
+            # Calculate average job quality score from all jobs
+            jobs = db.query(Job).filter(
+                Job.source_telegram_channel_id == str(channel.username).replace('@', '')
+            ).all()
+            
+            if jobs:
+                quality_scores = [j.quality_score for j in jobs if j.quality_score is not None]
+                if quality_scores:
+                    channel.avg_job_quality_score = sum(quality_scores) / len(quality_scores)
+            
+            # Update last job posted timestamp
+            from datetime import datetime
+            channel.last_job_posted_at = datetime.now()
+            
+            # Recalculate health score
+            new_score = channel.calculate_health_score()
+            
+            logger.info(f"   📊 Updated channel {channel_username}:")
+            logger.info(f"      Total jobs: {channel.total_jobs_posted}")
+            logger.info(f"      Relevant jobs: {channel.relevant_jobs_count}")
+            logger.info(f"      Relevance ratio: {channel.relevance_ratio:.2%}")
+            logger.info(f"      Avg quality: {channel.avg_job_quality_score:.2f}")
+            logger.info(f"      Health score: {new_score:.2f}")
+            logger.info(f"      Status: {channel.status_label}")
+            
+            db.flush()
+            
+        except Exception as e:
+            logger.error(f"   ❌ Error updating channel metrics for {channel_username}: {e}")
     
     def get_processing_stats(self) -> Dict:
         """Get statistics about processed/unprocessed messages"""

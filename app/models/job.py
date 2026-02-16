@@ -54,6 +54,15 @@ class Job(Base):
     source_message_id = Column(String(255))  # Link to raw messages (MongoDB message_id)
     ml_confidence = Column(String(10))  # Confidence score from ML classifier
     
+    # Job Quality Scoring (NEW - Feb 2026)
+    quality_score = Column(Float, nullable=True, index=True)  # Overall quality 0-100
+    relevance_score = Column(Float, nullable=True)  # Relevance to criteria 0-100
+    extraction_completeness_score = Column(Float, nullable=True)  # Field completeness 0-100
+    meets_relevance_criteria = Column(Boolean, default=False, index=True)  # Passes relevance filters
+    quality_breakdown = Column(JSONB, default=dict)  # Detailed scoring breakdown
+    # Example: {"experience_match": 85, "field_completeness": 70, "skill_relevance": 90}
+    relevance_reasons = Column(JSONB, default=list)  # List of match/mismatch reasons
+    
     # Visibility & Recommendation Tracking
     students_shown_to = Column(JSONB, default=list)  # List of student IDs who saw this job
     max_students_to_show = Column(Integer, default=999)  # Default: show to all

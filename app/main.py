@@ -7,9 +7,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.v1 import api_router
-from app.routers import monitoring
+from app.routers import monitoring, telegram_scraper
 from app.config import settings
 from app.core.logging import setup_logging
+from app.core.scheduler import start_scheduler, stop_scheduler
 from app.db.session import engine, init_db
 
 # Setup logging
@@ -21,8 +22,10 @@ async def lifespan(app: FastAPI):
     """Application lifespan events."""
     # Startup
     await init_db()
+    start_scheduler()  # Start APScheduler for background tasks
     yield
     # Shutdown
+    stop_scheduler()  # Stop scheduler gracefully
     await engine.dispose()
 
 
@@ -60,6 +63,9 @@ app.include_router(api_router, prefix="/api/v1")
 
 # Include monitoring router (no prefix - uses /api/monitoring)
 app.include_router(monitoring.router)
+
+# Include telegram scraper router (no prefix - uses /api/telegram-scraper)
+app.include_router(telegram_scraper.router)
 
 
 @app.get("/", tags=["Health"])

@@ -1,0 +1,150 @@
+{
+  "version": "1.0",
+  "description": "Defines what constitutes a relevant job for channel scoring. Freshers-focused criteria.",
+  "last_updated": "2026-02-13",
+  
+  "experience_criteria": {
+    "max_years": 2,
+    "preferred_min": 0,
+    "preferred_max": 1,
+    "include_internships": true,
+    "include_unspecified": true,
+    "scoring": {
+      "fresher_jobs": 100,
+      "0_2_years": 100,
+      "2_3_years": 70,
+      "3_5_years": 40,
+      "5_plus_years": 10,
+      "unspecified": 70
+    }
+  },
+  
+  "salary_criteria": {
+    "min_expected_inr": 15000,
+    "max_expected_inr": 100000,
+    "currency": "INR",
+    "score_modifier": {
+      "below_min": -20,
+      "within_range": 0,
+      "above_max": 10,
+      "unspecified": -5
+    }
+  },
+  
+  "job_types": {
+    "preferred": ["fulltime", "internship", "contract"],
+    "acceptable": ["parttime"],
+    "excluded": ["freelance"],
+    "scoring": {
+      "preferred": 100,
+      "acceptable": 70,
+      "excluded": 0,
+      "unspecified": 80
+    }
+  },
+  
+  "work_types": {
+    "preferred": ["remote", "hybrid"],
+    "acceptable": ["on-site", "office"],
+    "excluded": [],
+    "scoring": {
+      "preferred": 100,
+      "acceptable": 80,
+      "excluded": 0,
+      "unspecified": 85
+    }
+  },
+  
+  "required_fields": {
+    "must_have": {
+      "fields": ["title", "company"],
+      "weight": 0.60
+    },
+    "should_have": {
+      "fields": ["location", "skills_required"],
+      "weight": 0.30
+    },
+    "nice_to_have": {
+      "fields": ["salary_range", "apply_link", "description"],
+      "weight": 0.10
+    }
+  },
+  
+  "preferred_skills": {
+    "tech": [
+      "python", "java", "javascript", "react", "node", "nodejs", "angular", 
+      "vue", "aws", "azure", "docker", "kubernetes", "sql", "mongodb",
+      "django", "fastapi", "spring", "express", "rest api", "graphql"
+    ],
+    "design": [
+      "figma", "photoshop", "illustrator", "ui/ux", "adobe xd", "sketch",
+      "wireframing", "prototyping", "graphic design", "web design"
+    ],
+    "marketing": [
+      "seo", "content writing", "social media", "digital marketing",
+      "google ads", "facebook ads", "email marketing", "copywriting"
+    ],
+    "data": [
+      "data analysis", "excel", "power bi", "tableau", "sql",
+      "machine learning", "ai", "data science", "analytics"
+    ],
+    "general": [
+      "communication", "teamwork", "problem solving", "time management",
+      "presentation", "microsoft office", "english"
+    ],
+    "scoring": {
+      "tech_match": 100,
+      "design_match": 100,
+      "marketing_match": 100,
+      "data_match": 100,
+      "general_match": 80,
+      "no_match": 50
+    }
+  },
+  
+  "excluded_keywords": {
+    "spam_indicators": [
+      "mlm", "pyramid scheme", "work from home scam", "guaranteed income",
+      "no experience needed easy money", "click here to earn"
+    ],
+    "senior_roles": [
+      "10+ years", "15+ years", "senior architect", "vp of", "director of",
+      "chief", "cto", "ceo", "head of", "senior manager", "principal engineer"
+    ],
+    "non_job": [
+      "looking for job", "job seeker", "resume tips", "interview questions",
+      "job search", "career advice", "hiring freeze", "layoffs"
+    ],
+    "irrelevant": [
+      "only for ladies", "only females", "age above 30", "mba required",
+      "phd required", "govt job", "government job", "bank job"
+    ]
+  },
+  
+  "scoring_weights": {
+    "experience_match": 0.30,
+    "field_completeness": 0.25,
+    "skill_relevance": 0.20,
+    "salary_range": 0.10,
+    "ml_confidence": 0.10,
+    "engagement_potential": 0.05
+  },
+  
+  "channel_health_weights": {
+    "job_quality_avg": 0.40,
+    "relevance_ratio": 0.30,
+    "posting_frequency": 0.15,
+    "engagement_rate": 0.15
+  },
+  
+  "engagement_prediction": {
+    "factors": {
+      "has_apply_link": 20,
+      "has_salary": 15,
+      "has_skills": 10,
+      "freshers_welcome": 20,
+      "remote_work": 15,
+      "complete_details": 20
+    }
+  }
+}

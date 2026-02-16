@@ -151,21 +151,22 @@ tmp/
 # Ignore docs folder (all generated documentation)
 docs/
 
-# Ignore all markdown files except these in root
+# Ignore all markdown files except README.md in root
 *.md
 !README.md
-!IMPLEMENTATION_SUMMARY.md
 
 # ===================================
 # Test Scripts & Debug Files
 # ===================================
-# Root level test/debug/demo scripts
+# Manual/scratch test files
+tests/manual/
+
+# Root level test/debug/demo scripts (shouldn't exist, but just in case)
 test_*.py
 debug_*.py
 demo_*.py
 check_*.py
 investigate_*.py
-# monitor_*.py
 fetch_*.py
 sync_*.py
 add_test_*.py
@@ -181,6 +182,12 @@ switch_aws_*.sh
 data*.json
 output*.json
 test-*.json
+test-*.b64
+
+# Test results and logs
+test_results.log
+test_output/
+test_results/
 
 # But keep essential config files
 !dynamodb-indexes.json
@@ -290,4 +297,29 @@ desktop.ini
 data1.json
 
 credentials.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+
+# Virtual envs
+.venv/
+venv/
+
+# Logs / dumps
+*.log
+*.out
+*.dump
+
+# OS junk
+.DS_Store
+
+
+# Python
+.venv/
+venv/
+__pycache__/
 
