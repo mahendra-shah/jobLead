@@ -45,9 +45,11 @@ def upgrade() -> None:
         # Keep the first one, rename the rest
         for i, user_id in enumerate(user_ids[1:], start=1):
             new_username = f"{username}_{i}"[:150]
-            # Ensure the new username doesn't already exist
+            # Ensure the new username doesn't already exist (with a max retry limit)
             counter = i
-            while True:
+            max_retries = 100
+            retry_count = 0
+            while retry_count < max_retries:
                 check_result = conn.execute(sa.text("""
                     SELECT id FROM users WHERE username = :username
                 """), {"username": new_username})
@@ -55,6 +57,12 @@ def upgrade() -> None:
                     break
                 counter += 1
                 new_username = f"{username}_{counter}"[:150]
+                retry_count += 1
+            
+            if retry_count >= max_retries:
+                raise RuntimeError(
+                    f"Failed to generate unique username for user {user_id} after {max_retries} attempts"
+                )
             
             # Update the duplicate username
             conn.execute(sa.text("""

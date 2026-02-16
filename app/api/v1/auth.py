@@ -187,12 +187,11 @@ async def login_google(request: GoogleLoginRequest, db: AsyncSession = Depends(g
         # Try to create user with retry logic to handle username conflicts
         # The database unique constraint will catch concurrent conflicts
         max_retries = 10
-        counter = 0
         
         for attempt in range(max_retries):
             try:
                 # Generate username with counter if needed
-                username = base_username if attempt == 0 else f"{base_username}_{counter}"[:150]
+                username = base_username if attempt == 0 else f"{base_username}_{attempt}"[:150]
                 
                 # Create new user
                 # OAuth users don't need a password hash
@@ -216,10 +215,16 @@ async def login_google(request: GoogleLoginRequest, db: AsyncSession = Depends(g
                 # Rollback the failed transaction
                 await db.rollback()
                 
-                # Check if it's a username conflict
-                if "username" in str(e.orig).lower() or "ix_users_username" in str(e.orig).lower():
-                    counter += 1
-                    logger.info(f"Username '{username}' already exists, retrying with counter {counter}")
+                # Check if it's a username conflict by examining the error details
+                error_str = str(e.orig).lower()
+                is_username_conflict = (
+                    "username" in error_str or 
+                    "ix_users_username" in error_str or
+                    "unique constraint" in error_str and "users" in error_str
+                )
+                
+                if is_username_conflict:
+                    logger.info(f"Username '{username}' already exists, retrying with attempt {attempt + 2}")
                     
                     if attempt == max_retries - 1:
                         # Maximum retries reached
