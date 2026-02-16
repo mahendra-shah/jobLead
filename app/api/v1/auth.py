@@ -142,7 +142,7 @@ async def login_google(request: GoogleLoginRequest, db: AsyncSession = Depends(g
         # Catch any other exceptions from Google auth library
         logger.error(f"Google token verification failed: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Google token verification failed: {str(e)}",
         )
 
