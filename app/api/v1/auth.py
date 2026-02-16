@@ -10,6 +10,10 @@ from google.oauth2 import id_token as google_id_token
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Username generation constants
+MAX_USERNAME_LENGTH = 150
+COUNTER_SUFFIX_SPACE = 10  # Reserve space for counter suffix like "_9999"
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -177,17 +181,17 @@ async def login_google(request: GoogleLoginRequest, db: AsyncSession = Depends(g
         username = None
         if name:
             # Use name as username, make it URL-safe
-            username = name.lower().replace(" ", "_")[:150]
+            username = name.lower().replace(" ", "_")[:MAX_USERNAME_LENGTH]
         elif given_name or family_name:
-            username = f"{given_name}_{family_name}".lower().replace(" ", "_")[:150]
+            username = f"{given_name}_{family_name}".lower().replace(" ", "_")[:MAX_USERNAME_LENGTH]
         else:
             # Fallback to email prefix
-            username = email.split("@")[0][:150]
+            username = email.split("@")[0][:MAX_USERNAME_LENGTH]
         
         # Retry logic to handle username uniqueness with IntegrityError
         # This prevents race conditions when multiple concurrent requests try to create the same username
-        # Truncate base username to leave room for counter suffix (e.g., "_123")
-        base_username = username[:140]  # Leave 10 chars for counter suffix
+        # Truncate base username to leave room for counter suffix (e.g., "_9999")
+        base_username = username[:MAX_USERNAME_LENGTH - COUNTER_SUFFIX_SPACE]
         counter = 1
         max_retries = 10
         
@@ -220,18 +224,19 @@ async def login_google(request: GoogleLoginRequest, db: AsyncSession = Depends(g
                 if hasattr(e, 'orig') and hasattr(e.orig, 'diag'):
                     constraint_name = getattr(e.orig.diag, 'constraint_name', None)
                 
-                # Fallback to string matching if constraint name not available
-                error_str = str(e.orig) if hasattr(e, 'orig') else str(e)
-                
                 # Check if it's a username collision (not email collision)
-                is_username_collision = (
-                    constraint_name == 'ix_users_username' or
-                    "username" in error_str.lower() or 
-                    "ix_users_username" in error_str.lower()
-                )
+                is_username_collision = False
+                if constraint_name:
+                    # Reliable: Use the actual constraint name from the database
+                    is_username_collision = constraint_name == 'ix_users_username'
+                else:
+                    # Fallback: String matching in error message (less reliable)
+                    error_str = str(e.orig) if hasattr(e, 'orig') else str(e)
+                    is_username_collision = "username" in error_str.lower() or "ix_users_username" in error_str.lower()
+                    logger.debug(f"Using fallback string matching for IntegrityError detection: {error_str[:100]}")
                 
                 if is_username_collision:
-                    logger.warning(f"Username collision for {username} on attempt {attempt + 1}/{max_retries}")
+                    logger.warning(f"Username collision for '{username}' on attempt {attempt + 1}/{max_retries}")
                     # Increment counter and retry with a new username
                     username = f"{base_username}_{counter}"
                     counter += 1
