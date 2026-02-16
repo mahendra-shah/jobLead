@@ -11,6 +11,7 @@ class User(Base):
     __tablename__ = "users"
 
     email = Column(String(255), unique=True, index=True, nullable=False)
+    username = Column(String(150), unique=True, index=True, nullable=True)
     password_hash = Column(String(255), nullable=True)
     role = Column(String(20), nullable=False, default="student")
     is_active = Column(Boolean, default=True, nullable=False)

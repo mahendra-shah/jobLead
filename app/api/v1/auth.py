@@ -40,6 +40,7 @@ async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db))
     # Create new user
     new_user = User(
         email=request.email,
+        username=request.username,
         password_hash=get_password_hash(request.password),
         role=request.role or "student",
     )
@@ -60,6 +61,7 @@ async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db))
         user=UserResponse(
             id=new_user.id,
             email=new_user.email,
+            username=new_user.username,
             role=new_user.role,
             is_active=new_user.is_active,
             created_at=new_user.created_at,
@@ -97,6 +99,7 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
         user=UserResponse(
             id=user.id,
             email=user.email,
+            username=user.username,
             role=user.role,
             is_active=user.is_active,
             created_at=user.created_at,
@@ -110,6 +113,7 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
     return UserResponse(
         id=current_user.id,
         email=current_user.email,
+        username=current_user.username,
         role=current_user.role,
         is_active=current_user.is_active,
         created_at=current_user.created_at,
