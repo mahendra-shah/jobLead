@@ -13,6 +13,8 @@ from app.models.student import Student
 from app.schemas.student import (
     StudentResponse,
     StudentProfileUpdate,
+    StudentProfileCreate,
+    StudentProfileResponse,
     StudentPasswordChange,
     StudentPreferencesUpdate,
     StudentPreferencesResponse,
@@ -27,17 +29,19 @@ router = APIRouter()
 
 # ==================== Student Profile ====================
 
-@router.get("/students/me", response_model=StudentResponse)
+@router.get("/students/me", response_model=StudentProfileResponse)
 async def get_my_profile(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Get current student's profile
+    Get current student's comprehensive profile
     
     **Auth**: Student (JWT required)
+    
+    Returns all profile fields including personal details, education, skills, experience, languages, job preferences, and technical links.
     """
-    # Get student record
+    # Get student record by user_id
     result = await db.execute(
         select(Student).where(Student.email == current_user.email)
     )
@@ -49,19 +53,61 @@ async def get_my_profile(
             detail="Student profile not found"
         )
     
-    return student
+    # Build comprehensive response
+    return StudentProfileResponse(
+        first_name=student.first_name,
+        last_name=student.last_name,
+        full_name=student.full_name,
+        phone=student.phone,
+        email=current_user.email,
+        date_of_birth=student.date_of_birth,
+        gender=student.gender,
+        current_address=student.current_address,
+        highest_qualification=student.highest_qualification,
+        college_name=student.college_name,
+        college_id=student.college_id,
+        course=student.course,
+        branch=student.branch,
+        passing_year=student.passing_year,
+        percentage=student.percentage,
+        cgpa=student.cgpa,
+        technical_skills=student.technical_skills or [],
+        soft_skills=student.soft_skills or [],
+        experience_type=student.experience_type,
+        internship_details=student.internship_details or [],
+        projects=student.projects or [],
+        languages=student.languages or [],
+        job_type=student.job_type or [],
+        work_mode=student.work_mode or [],
+        preferred_job_role=student.preferred_job_role or [],
+        preferred_location=student.preferred_location or [],
+        expected_salary=student.expected_salary,
+        github_profile=student.github_profile,
+        linkedin_profile=student.linkedin_profile,
+        portfolio_url=student.portfolio_url,
+        coding_platforms=student.coding_platforms or {},
+        resume_url=student.resume_url,
+        id=student.id,
+        is_active=current_user.is_active,
+        created_at=student.created_at,
+        updated_at=student.updated_at,
+        profile_completeness=None  # Can be calculated separately
+    )
 
 
-@router.put("/students/me", response_model=StudentResponse)
+@router.put("/students/me", response_model=StudentProfileResponse)
 async def update_my_profile(
-    profile_update: StudentProfileUpdate,
+    profile_update: StudentProfileCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Update current student's profile
+    Update current student's comprehensive profile
     
     **Auth**: Student (JWT required)
+    
+    All fields are optional - only provided fields will be updated.
+    Supports partial updates.
     """
     result = await db.execute(
         select(Student).where(Student.email == current_user.email)
@@ -74,15 +120,74 @@ async def update_my_profile(
             detail="Student profile not found"
         )
     
-    # Update fields
-    update_data = profile_update.dict(exclude_unset=True)
+    # Update fields from request (only fields that are provided)
+    update_data = profile_update.model_dump(exclude_unset=True)
+    
+    # Handle nested objects (convert Pydantic models to dicts)
+    if 'languages' in update_data and update_data['languages']:
+        update_data['languages'] = [lang.model_dump() if hasattr(lang, 'model_dump') else lang for lang in update_data['languages']]
+    
+    if 'internship_details' in update_data and update_data['internship_details']:
+        update_data['internship_details'] = [intern.model_dump() if hasattr(intern, 'model_dump') else intern for intern in update_data['internship_details']]
+    
+    if 'projects' in update_data and update_data['projects']:
+        update_data['projects'] = [proj.model_dump() if hasattr(proj, 'model_dump') else proj for proj in update_data['projects']]
+    
+    # Update full_name if first_name or last_name changed
+    if 'first_name' in update_data or 'last_name' in update_data:
+        first = update_data.get('first_name', student.first_name) or student.first_name or ''
+        last = update_data.get('last_name', student.last_name) or student.last_name or ''
+        if first or last:
+            update_data['full_name'] = f"{first} {last}".strip()
+    
+    # Apply updates
     for field, value in update_data.items():
-        setattr(student, field, value)
+        if hasattr(student, field):
+            setattr(student, field, value)
     
     await db.commit()
     await db.refresh(student)
     
-    return student
+    # Return comprehensive response
+    return StudentProfileResponse(
+        first_name=student.first_name,
+        last_name=student.last_name,
+        full_name=student.full_name,
+        phone=student.phone,
+        email=current_user.email,
+        date_of_birth=student.date_of_birth,
+        gender=student.gender,
+        current_address=student.current_address,
+        highest_qualification=student.highest_qualification,
+        college_name=student.college_name,
+        college_id=student.college_id,
+        course=student.course,
+        branch=student.branch,
+        passing_year=student.passing_year,
+        percentage=student.percentage,
+        cgpa=student.cgpa,
+        technical_skills=student.technical_skills or [],
+        soft_skills=student.soft_skills or [],
+        experience_type=student.experience_type,
+        internship_details=student.internship_details or [],
+        projects=student.projects or [],
+        languages=student.languages or [],
+        job_type=student.job_type or [],
+        work_mode=student.work_mode or [],
+        preferred_job_role=student.preferred_job_role or [],
+        preferred_location=student.preferred_location or [],
+        expected_salary=student.expected_salary,
+        github_profile=student.github_profile,
+        linkedin_profile=student.linkedin_profile,
+        portfolio_url=student.portfolio_url,
+        coding_platforms=student.coding_platforms or {},
+        resume_url=student.resume_url,
+        id=student.id,
+        is_active=current_user.is_active,
+        created_at=student.created_at,
+        updated_at=student.updated_at,
+        profile_completeness=None
+    )
 
 
 @router.post("/students/me/change-password")

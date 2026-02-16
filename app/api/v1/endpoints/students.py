@@ -261,19 +261,22 @@ async def update_student(
     return student
 
 
-@router.delete("/students/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/students/{student_id}", response_model=StudentResponse)
 async def delete_student(
     student_id: int,
     current_user: User = Depends(require_admin_role),  # Only SuperAdmin/Admin
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Delete student (SuperAdmin/Admin ONLY)
+    Deactivate student (SuperAdmin/Admin ONLY)
     
     **RBAC**: SuperAdmin, Admin (Placement role gets 403 Forbidden)
     
+    This endpoint sets the student status to 'inactive' and deactivates the user account
+    instead of permanently deleting the record. This preserves data integrity.
+    
     This endpoint is restricted to SuperAdmin and Admin roles only.
-    Placement role cannot delete students.
+    Placement role cannot deactivate students.
     """
     result = await db.execute(
         select(Student).where(Student.id == student_id)
@@ -286,10 +289,25 @@ async def delete_student(
             detail=f"Student with id {student_id} not found"
         )
     
-    await db.delete(student)
-    await db.commit()
+    # Get the associated user
+    result = await db.execute(
+        select(User).where(User.id == student.user_id)
+    )
+    user = result.scalar_one_or_none()
     
-    return None
+    if user:
+        # Deactivate user account
+        user.is_active = False
+        db.add(user)
+    
+    # Set student status to inactive
+    student.status = "inactive"
+    db.add(student)
+    
+    await db.commit()
+    await db.refresh(student)
+    
+    return student
 
 
 @router.patch("/students/{student_id}/status", response_model=StudentResponse)
