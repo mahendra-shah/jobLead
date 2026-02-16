@@ -114,7 +114,7 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 @router.post("/login/google", response_model=LoginResponse)
 async def login_google(request: GoogleLoginRequest, db: AsyncSession = Depends(get_db)):
-    """Login with Google id_token (no auto-register)."""
+    """Login with Google id_token; auto-registers users if they do not already exist."""
     logger.info("Google login attempt received")
     
     if not settings.GOOGLE_CLIENT_ID:
