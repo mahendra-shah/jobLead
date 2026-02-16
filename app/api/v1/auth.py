@@ -225,20 +225,30 @@ async def login_google(request: GoogleLoginRequest, db: AsyncSession = Depends(g
                     constraint_name = getattr(e.orig.diag, 'constraint_name', None)
                 
                 # Check if it's a username collision (not email collision)
+                # The unique index can create different constraint names depending on how it's created
                 is_username_collision = False
                 if constraint_name:
                     # Reliable: Use the actual constraint name from the database
-                    is_username_collision = constraint_name == 'ix_users_username'
+                    # PostgreSQL unique indexes can have names like 'ix_users_username', 'users_username_key', etc.
+                    is_username_collision = (
+                        'username' in constraint_name.lower() and 
+                        'email' not in constraint_name.lower()
+                    )
                 else:
                     # Fallback: String matching in error message (less reliable)
                     error_str = str(e.orig) if hasattr(e, 'orig') else str(e)
-                    is_username_collision = "username" in error_str.lower() or "ix_users_username" in error_str.lower()
+                    # Look for specific patterns that indicate username constraint violation
+                    is_username_collision = (
+                        'ix_users_username' in error_str.lower() or
+                        ('username' in error_str.lower() and 'unique' in error_str.lower() and 'email' not in error_str.lower())
+                    )
                     logger.debug(f"Using fallback string matching for IntegrityError detection: {error_str[:100]}")
                 
                 if is_username_collision:
                     logger.warning(f"Username collision for '{username}' on attempt {attempt + 1}/{max_retries}")
                     # Increment counter and retry with a new username
-                    username = f"{base_username}_{counter}"
+                    # Ensure the final username doesn't exceed MAX_USERNAME_LENGTH
+                    username = f"{base_username}_{counter}"[:MAX_USERNAME_LENGTH]
                     counter += 1
                 else:
                     # Email collision - this shouldn't happen as we already checked
