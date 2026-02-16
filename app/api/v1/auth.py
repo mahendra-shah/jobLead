@@ -133,17 +133,17 @@ async def login_google(request: GoogleLoginRequest, db: AsyncSession = Depends(g
         )
         logger.info(f"Google token verified successfully for email: {payload.get('email')}")
     except ValueError as e:
-        logger.warning(f"Invalid Google token (ValueError): {str(e)}")
+        logger.warning(f"Invalid Google token (ValueError): {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid Google token: {str(e)}",
+            detail="Invalid Google token",
         )
     except Exception as e:
         # Catch any other exceptions from Google auth library
         logger.error(f"Google token verification failed: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Google token verification failed: {str(e)}",
+            detail="Google token verification failed",
         )
 
     email = payload.get("email")
