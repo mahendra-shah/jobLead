@@ -3,6 +3,7 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
@@ -183,34 +184,55 @@ async def login_google(request: GoogleLoginRequest, db: AsyncSession = Depends(g
             # Fallback to email prefix
             username = email.split("@")[0][:150]
         
-        # Ensure username is unique by appending a number if needed
+        # Retry logic to handle username uniqueness with IntegrityError
+        # This prevents race conditions when multiple concurrent requests try to create the same username
         base_username = username
         counter = 1
-        while True:
-            existing_username = await db.execute(
-                select(User).where(User.username == username)
-            )
-            if existing_username.scalar_one_or_none() is None:
+        max_retries = 10
+        
+        for attempt in range(max_retries):
+            try:
+                # Create new user
+                # OAuth users don't need a password hash
+                new_user = User(
+                    email=email,
+                    username=username,
+                    password_hash=None,  # No password for OAuth users
+                    role="student",  # Default role
+                    is_active=True,
+                    is_verified=True,  # Google verified email
+                )
+                
+                db.add(new_user)
+                await db.commit()
+                await db.refresh(new_user)
+                user = new_user
+                logger.info(f"Successfully auto-registered user: {email} with username: {username}")
                 break
-            username = f"{base_username}_{counter}"[:150]
-            counter += 1
-        
-        # Create new user
-        # OAuth users don't need a password hash
-        new_user = User(
-            email=email,
-            username=username,
-            password_hash=None,  # No password for OAuth users
-            role="student",  # Default role
-            is_active=True,
-            is_verified=True,  # Google verified email
-        )
-        
-        db.add(new_user)
-        await db.commit()
-        await db.refresh(new_user)
-        user = new_user
-        logger.info(f"Successfully auto-registered user: {email} with username: {username}")
+            except IntegrityError as e:
+                # Rollback the failed transaction
+                await db.rollback()
+                logger.warning(f"Username collision for {username}, retrying with incremented counter")
+                
+                # Check if it's a username collision (not email collision)
+                if "username" in str(e).lower():
+                    # Increment counter and retry with a new username
+                    username = f"{base_username}_{counter}"[:150]
+                    counter += 1
+                    
+                    if attempt == max_retries - 1:
+                        logger.error(f"Max retries reached for username generation for email: {email}")
+                        raise HTTPException(
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail="Failed to generate unique username after multiple attempts",
+                        )
+                else:
+                    # Email collision - this shouldn't happen as we already checked
+                    logger.error(f"Email collision during user creation: {email}")
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="User with this email already exists",
+                    )
 
     if not user.is_active:
         raise HTTPException(
