@@ -526,7 +526,10 @@ class NotificationsResponse(BaseModel):
 
 class StudentDashboardResponse(BaseModel):
     """Student dashboard summary"""
-    student: StudentResponse
+    # NOTE: This dashboard payload is consumed by the frontend as a flexible
+    # "StudentProfile"-like object (many optional fields, UUID ids as strings).
+    # Using Dict keeps the contract stable even as the profile schema evolves.
+    student: Dict[str, Any]
     stats: Dict[str, Any]
     recent_jobs: List[Dict[str, Any]]
     saved_jobs_count: int

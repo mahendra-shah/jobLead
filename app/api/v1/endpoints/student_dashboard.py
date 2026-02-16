@@ -19,6 +19,120 @@ from app.schemas.student import (
 
 router = APIRouter()
 
+def _has_value(v) -> bool:
+    """Generic truthy check that handles lists/dicts/strings consistently."""
+    if v is None:
+        return False
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, (list, dict)):
+        return len(v) > 0
+    if isinstance(v, str):
+        return v.strip() != ""
+    return True
+
+
+def _calculate_profile_completeness(student: Student) -> int:
+    """
+    Compute profile completeness based on the current Student model fields.
+    Returns an int percentage (0-100).
+    """
+    checks = [
+        student.first_name,
+        student.last_name,
+        student.phone,
+        student.date_of_birth,
+        student.gender,
+        student.current_address,
+        student.highest_qualification,
+        student.college_name,
+        student.course,
+        student.branch,
+        student.passing_year,
+        student.technical_skills,
+        student.soft_skills,
+        student.job_type,
+        student.work_mode,
+        student.preferred_job_role,
+        student.preferred_location,
+        student.resume_url,
+    ]
+
+    total = len(checks)
+    filled = sum(1 for v in checks if _has_value(v))
+    return int((filled / total) * 100) if total else 0
+
+
+def _student_profile_payload(student: Student, current_user: User) -> dict:
+    """
+    Build a StudentProfile-like dict used by the frontend.
+    (Most keys are optional; frontend types are permissive.)
+    """
+    # Serialize nested JSON fields safely
+    internship_details = student.internship_details or []
+    projects = student.projects or []
+    languages = student.languages or []
+
+    # date_of_birth -> ISO string
+    dob = None
+    if student.date_of_birth:
+        dob = student.date_of_birth.isoformat() if hasattr(student.date_of_birth, "isoformat") else str(student.date_of_birth)
+
+    return {
+        "id": str(student.id) if getattr(student, "id", None) else None,
+        "is_active": getattr(current_user, "is_active", None),
+        "created_at": getattr(student, "created_at", None),
+        "updated_at": getattr(student, "updated_at", None),
+
+        # Personal
+        "first_name": student.first_name,
+        "last_name": student.last_name,
+        "full_name": student.full_name,
+        "phone": student.phone,
+        "email": getattr(current_user, "email", None),
+        "date_of_birth": dob,
+        "gender": student.gender,
+        "current_address": student.current_address,
+
+        # Education
+        "highest_qualification": student.highest_qualification,
+        "college_name": student.college_name,
+        "college_id": student.college_id,
+        "course": student.course,
+        "branch": student.branch,
+        "passing_year": student.passing_year,
+        "percentage": student.percentage,
+        "cgpa": student.cgpa,
+
+        # Skills
+        "technical_skills": student.technical_skills or [],
+        "soft_skills": student.soft_skills or [],
+
+        # Experience
+        "experience_type": student.experience_type,
+        "internship_details": internship_details,
+        "projects": projects,
+
+        # Languages
+        "languages": languages,
+
+        # Preferences
+        "job_type": student.job_type or [],
+        "work_mode": student.work_mode or [],
+        "preferred_job_role": student.preferred_job_role or [],
+        "preferred_location": student.preferred_location or [],
+        "expected_salary": student.expected_salary,
+
+        # Links
+        "github_profile": student.github_profile,
+        "linkedin_profile": student.linkedin_profile,
+        "portfolio_url": student.portfolio_url,
+        "coding_platforms": student.coding_platforms or {},
+
+        # Resume
+        "resume_url": student.resume_url,
+    }
+
 
 @router.get("/dashboard", response_model=StudentDashboardResponse)
 async def get_dashboard(
@@ -44,32 +158,31 @@ async def get_dashboard(
     )
     student = result.scalar_one_or_none()
     
+    # If profile doesn't exist yet, still return a valid dashboard with 0% completion.
     if not student:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Student profile not found"
+        saved_jobs_count = 0
+        notifications_unread = 0
+        recommendations_available = 0
+        profile_completeness = 0
+        stats = {
+            "profile_completeness": profile_completeness,
+            "saved_jobs": saved_jobs_count,
+            "unread_notifications": notifications_unread,
+            "total_job_views": 0,
+            "recommendations_available": recommendations_available,
+        }
+        return StudentDashboardResponse(
+            student={"email": getattr(current_user, "email", None)},
+            stats=stats,
+            recent_jobs=[],
+            saved_jobs_count=saved_jobs_count,
+            notifications_unread=notifications_unread,
+            profile_completeness=profile_completeness,
+            recommendations_available=recommendations_available,
         )
-    
-    # Calculate profile completeness
-    total_fields = 15
-    completed_fields = sum([
-        bool(student.first_name),
-        bool(student.last_name),
-        bool(student.email),
-        bool(student.phone),
-        bool(student.college_id),
-        bool(student.degree),
-        bool(student.branch),
-        bool(student.passing_year),
-        bool(student.cgpa),
-        bool(student.resume_url),
-        bool(student.skills and len(student.skills) > 0),
-        bool(student.preferred_locations and len(student.preferred_locations) > 0),
-        bool(student.preferred_job_types and len(student.preferred_job_types) > 0),
-        bool(student.min_salary),
-        bool(student.max_salary)
-    ])
-    profile_completeness = int((completed_fields / total_fields) * 100)
+
+    # Calculate profile completeness (updated to match current Student model)
+    profile_completeness = _calculate_profile_completeness(student)
     
     # Get saved jobs count
     saved_count_result = await db.execute(
@@ -127,21 +240,8 @@ async def get_dashboard(
         "recommendations_available": recommendations_available
     }
     
-    # Simple student response matching actual model fields
     return StudentDashboardResponse(
-        student={
-            "id": student.id,
-            "user_id": str(student.user_id),
-            "full_name": student.full_name,
-            "phone": student.phone,
-            "skills": student.skills or [],
-            "preferences": student.preferences or {},
-            "profile_score": student.profile_score,
-            "status": student.status,
-            "email_notifications": student.email_notifications,
-            "created_at": student.created_at,
-            "updated_at": student.updated_at
-        },
+        student=_student_profile_payload(student, current_user),
         stats=stats,
         recent_jobs=recent_jobs,
         saved_jobs_count=saved_jobs_count,
@@ -172,7 +272,7 @@ async def track_job_view(
     """
     # Get student
     result = await db.execute(
-        select(Student).where(Student.email == current_user.email)
+        select(Student).where(Student.user_id == current_user.id)
     )
     student = result.scalar_one_or_none()
     
@@ -212,7 +312,7 @@ async def track_job_view(
     }
 
 
-@router.get("/students/me/activity")
+@router.get("/activity")
 async def get_activity(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -226,7 +326,7 @@ async def get_activity(
     """
     # Get student
     result = await db.execute(
-        select(Student).where(Student.email == current_user.email)
+        select(Student).where(Student.user_id == current_user.id)
     )
     student = result.scalar_one_or_none()
     
