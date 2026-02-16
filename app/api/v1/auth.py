@@ -220,7 +220,7 @@ async def login_google(request: GoogleLoginRequest, db: AsyncSession = Depends(g
                 is_username_conflict = (
                     "username" in error_str or 
                     "ix_users_username" in error_str or
-                    "unique constraint" in error_str and "users" in error_str
+                    ("unique constraint" in error_str and "users" in error_str)
                 )
                 
                 if is_username_conflict:
