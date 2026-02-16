@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     S3_BUCKET_NAME: str = "placement-resumes"
     DYNAMODB_TABLE_NAME: str = "telegram-raw-jobs"
     
+    # Resume Storage
+    RESUME_STORAGE_TYPE: str = "local"  # "local" or "s3" - use "local" for development, "s3" for production
+    RESUME_STORAGE_DIR: str = "uploads/resumes"  # Local directory for storing resumes
+    
     # MongoDB (for raw message storage - credentials in .env)
     MONGODB_USERNAME: str = ""
     MONGODB_PASSWORD: str = ""
