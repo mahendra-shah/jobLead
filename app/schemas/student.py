@@ -11,26 +11,89 @@ from pydantic import BaseModel, Field, EmailStr, validator
 # ==================== Shared Field Definitions ====================
 
 class PersonalDetailsMixin(BaseModel):
-    """Shared personal details fields"""
-    first_name: Optional[str] = Field(None, min_length=1, max_length=100)
-    last_name: Optional[str] = Field(None, min_length=1, max_length=100)
-    phone: Optional[str] = Field(None, max_length=20)
-    date_of_birth: Optional[date] = None
-    gender: Optional[str] = Field(None, max_length=50)
-    current_address: Optional[str] = Field(None, max_length=500)
+    """Shared personal details fields - Real-world student information"""
+    first_name: Optional[str] = Field(
+        None, 
+        min_length=1, 
+        max_length=100,
+        description="Student's first/given name"
+    )
+    last_name: Optional[str] = Field(
+        None, 
+        min_length=1, 
+        max_length=100,
+        description="Student's last/family name"
+    )
+    phone: Optional[str] = Field(
+        None, 
+        max_length=20,
+        description="Contact phone number (e.g., +91-9876543210)"
+    )
+    date_of_birth: Optional[date] = Field(
+        None,
+        description="Date of birth (YYYY-MM-DD format)"
+    )
+    gender: Optional[str] = Field(
+        None, 
+        max_length=50,
+        description="Gender identity (e.g., Male, Female, Other, Prefer not to say)"
+    )
+    current_address: Optional[str] = Field(
+        None, 
+        max_length=500,
+        description="Current residential address"
+    )
 
 
 class EducationDetailsMixin(BaseModel):
-    """Shared education details fields"""
-    highest_qualification: Optional[str] = Field(None, max_length=100)
-    college_name: Optional[str] = Field(None, max_length=200)
-    college_id: Optional[int] = None
-    course: Optional[str] = Field(None, max_length=100)
-    branch: Optional[str] = Field(None, max_length=100)
-    degree: Optional[str] = Field(None, max_length=100)  # For backward compatibility
-    passing_year: Optional[int] = Field(None, ge=2000, le=2030)
-    percentage: Optional[float] = Field(None, ge=0, le=100)
-    cgpa: Optional[float] = Field(None, ge=0, le=10)
+    """Shared education details fields - Real-world academic information"""
+    highest_qualification: Optional[str] = Field(
+        None, 
+        max_length=100,
+        description="Highest educational qualification (e.g., Bachelor's, Master's, Diploma)"
+    )
+    college_name: Optional[str] = Field(
+        None, 
+        max_length=200,
+        description="Name of the college/university (e.g., IIT Delhi, MIT, Stanford)"
+    )
+    college_id: Optional[int] = Field(
+        None,
+        description="Internal college ID for reference"
+    )
+    course: Optional[str] = Field(
+        None, 
+        max_length=100,
+        description="Course name (e.g., B.Tech, B.Sc, MCA, MBA)"
+    )
+    branch: Optional[str] = Field(
+        None, 
+        max_length=100,
+        description="Branch/Stream/Department (e.g., Computer Science, Mechanical, Electronics)"
+    )
+    degree: Optional[str] = Field(
+        None, 
+        max_length=100,
+        description="Degree type (e.g., Bachelor's, Master's) - Legacy field"
+    )
+    passing_year: Optional[int] = Field(
+        None, 
+        ge=2000, 
+        le=2030,
+        description="Expected or actual year of graduation (e.g., 2024, 2025)"
+    )
+    percentage: Optional[float] = Field(
+        None, 
+        ge=0, 
+        le=100,
+        description="Overall percentage (0-100, e.g., 85.5)"
+    )
+    cgpa: Optional[float] = Field(
+        None, 
+        ge=0, 
+        le=10,
+        description="CGPA on 10-point scale (e.g., 8.5, 9.2) or GPA on 4-point scale converted"
+    )
 
 
 # ==================== Nested Object Schemas ====================
@@ -125,40 +188,104 @@ class StudentProfileCreate(PersonalDetailsMixin, EducationDetailsMixin):
     """
     Comprehensive student profile creation/update schema
     
-    All fields are optional to allow partial updates.
-    """
-    email: Optional[EmailStr] = None
+    **Real-world usage**: This schema represents a complete student profile as used in
+    placement portals, job applications, and career services.
     
-    # Skills
+    All fields are optional to allow partial updates. Use this for both creating
+    and updating profiles.
+    
+    **Example**:
+    ```json
+    {
+      "first_name": "Raj",
+      "last_name": "Kumar",
+      "phone": "+91-9876543210",
+      "branch": "Computer Science",
+      "passing_year": 2025,
+      "cgpa": 8.5,
+      "technical_skills": ["Python", "React", "Node.js"],
+      "preferred_location": ["Bangalore", "Remote"]
+    }
+    ```
+    """
+    email: Optional[EmailStr] = Field(
+        None,
+        description="Email address (usually read-only, managed by auth system)"
+    )
+    
+    # Skills - Industry-standard categorization
     technical_skills: Optional[List[str]] = Field(
         None, 
-        description="Technical Skills (e.g., Java, Python, React, MS Excel)"
+        description="Technical/Programming skills (e.g., Python, Java, React, SQL, AWS, Docker)"
     )
     soft_skills: Optional[List[str]] = Field(
         None, 
-        description="Soft Skills (e.g., Communication, Teamwork, Time Management)"
+        description="Soft/Interpersonal skills (e.g., Communication, Leadership, Problem Solving)"
     )
     
-    # Experience
-    experience_type: Optional[str] = Field(None, description="Fresher or Experienced")
-    internship_details: Optional[List[InternshipDetail]] = None
-    projects: Optional[List[ProjectDetail]] = None
+    # Experience - Real-world career progression
+    experience_type: Optional[str] = Field(
+        None, 
+        description="Experience level: 'fresher' (no work experience) or 'experienced' (has work experience)"
+    )
+    internship_details: Optional[List[InternshipDetail]] = Field(
+        None,
+        description="List of internships completed (company, duration, role, description)"
+    )
+    projects: Optional[List[ProjectDetail]] = Field(
+        None,
+        description="Academic or personal projects (title, description, technologies, GitHub links)"
+    )
     
-    # Languages
-    languages: Optional[List[LanguageProficiency]] = None
+    # Languages - Communication skills
+    languages: Optional[List[LanguageProficiency]] = Field(
+        None,
+        description="Languages known with proficiency levels (e.g., English: Fluent, Hindi: Native)"
+    )
     
-    # Job Preferences
-    job_type: Optional[List[str]] = Field(None, description="Internship, Full-Time, Part-Time")
-    work_mode: Optional[List[str]] = Field(None, description="Remote, Hybrid, Office")
-    preferred_job_role: Optional[List[str]] = None
-    preferred_location: Optional[List[str]] = None
-    expected_salary: Optional[int] = Field(None, ge=0)
+    # Job Preferences - Career goals and requirements
+    job_type: Optional[List[str]] = Field(
+        None, 
+        description="Types of jobs interested in: 'Full-Time', 'Internship', 'Part-Time', 'Contract'"
+    )
+    work_mode: Optional[List[str]] = Field(
+        None, 
+        description="Preferred work arrangements: 'Remote', 'Hybrid', 'Office', 'On-site'"
+    )
+    preferred_job_role: Optional[List[str]] = Field(
+        None,
+        description="Desired job roles/titles (e.g., 'Software Developer', 'Data Analyst', 'Product Manager')"
+    )
+    preferred_location: Optional[List[str]] = Field(
+        None,
+        description="Preferred job locations (e.g., 'Bangalore', 'Mumbai', 'Remote', 'Pan India')"
+    )
+    expected_salary: Optional[int] = Field(
+        None, 
+        ge=0,
+        description="Expected annual salary in INR (e.g., 600000 for 6 LPA)"
+    )
     
-    # Technical Profile Links
-    github_profile: Optional[str] = Field(None, max_length=500)
-    linkedin_profile: Optional[str] = Field(None, max_length=500)
-    portfolio_url: Optional[str] = Field(None, max_length=500)
-    coding_platforms: Optional[Dict[str, str]] = None
+    # Technical Profile Links - Online presence
+    github_profile: Optional[str] = Field(
+        None, 
+        max_length=500,
+        description="GitHub profile URL (e.g., https://github.com/username)"
+    )
+    linkedin_profile: Optional[str] = Field(
+        None, 
+        max_length=500,
+        description="LinkedIn profile URL (e.g., https://linkedin.com/in/username)"
+    )
+    portfolio_url: Optional[str] = Field(
+        None, 
+        max_length=500,
+        description="Personal portfolio website URL (e.g., https://yourname.dev)"
+    )
+    coding_platforms: Optional[Dict[str, str]] = Field(
+        None,
+        description="Coding platform profiles (e.g., {'LeetCode': 'username', 'HackerRank': 'username', 'CodeChef': 'username'})"
+    )
     
     @validator('experience_type')
     def validate_experience_type(cls, v):
@@ -399,7 +526,10 @@ class NotificationsResponse(BaseModel):
 
 class StudentDashboardResponse(BaseModel):
     """Student dashboard summary"""
-    student: StudentResponse
+    # NOTE: This dashboard payload is consumed by the frontend as a flexible
+    # "StudentProfile"-like object (many optional fields, UUID ids as strings).
+    # Using Dict keeps the contract stable even as the profile schema evolves.
+    student: Dict[str, Any]
     stats: Dict[str, Any]
     recent_jobs: List[Dict[str, Any]]
     saved_jobs_count: int
