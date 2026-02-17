@@ -16,15 +16,19 @@ Date: 2026-02-10
 """
 
 import logging
+import os
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, HTTPException, Query, Path
+from fastapi import APIRouter, HTTPException, Query, Path, Depends
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
 from app.services.telegram_scraper_service import get_scraper_service
 from app.core.scheduler import get_scheduler_status, trigger_job_now
 from app.config import settings
+from app.api.deps import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -323,51 +327,384 @@ async def trigger_scheduled_job(
 
 
 @router.get("/health")
-async def scraper_health_check():
+async def scraper_health_check(db: Session = Depends(get_db)):
     """
     Health check endpoint for the scraper service.
     
     Checks:
     - Scraper service availability
-    - MongoDB connection
-    - Session files existence
+    - MongoDB connection and latency
+    - PostgreSQL connection and latency
+    - Session files existence and validity
+    - Account health status
+    - Last successful scrape time
+    
+    Returns HTTP 503 if any critical component is unhealthy.
     
     Returns:
-        Health status
+        Health status with detailed sub-checks
     """
+    import time
+    import structlog
+    from app.models.telegram_account import TelegramAccount
+    from fastapi import status
+    from fastapi.responses import JSONResponse
+    
+    logger = structlog.get_logger(__name__)
+    
     try:
         scraper = get_scraper_service()
+        is_healthy = True
+        critical_issues = []
         
         # Check session files
-        session_files_exist = []
+        session_files_check = []
         for account_id in range(1, scraper.ACCOUNTS_AVAILABLE + 1):
-            session_path = scraper.get_session_path(account_id)
-            exists = (scraper.session_dir / f"session_account{account_id}.session").exists()
-            session_files_exist.append({
+            session_file_path = scraper.session_dir / f"session_account{account_id}.session"
+            exists = session_file_path.exists()
+            
+            file_info = {
                 'account_id': account_id,
                 'exists': exists
-            })
+            }
+            
+            if exists:
+                stat = session_file_path.stat()
+                file_info['size_bytes'] = stat.st_size
+                file_info['modified_days_ago'] = round((time.time() - stat.st_mtime) / 86400, 1)
+                
+                if stat.st_size == 0:
+                    file_info['warning'] = 'Empty file'
+                    is_healthy = False
+                    critical_issues.append(f"Account {account_id} session file is empty")
+            else:
+                is_healthy = False
+                critical_issues.append(f"Account {account_id} session file missing")
+            
+            session_files_check.append(file_info)
         
-        # Check MongoDB if initialized
-        mongodb_status = "not_initialized"
-        if scraper._initialized:
+        # Check MongoDB connection and latency
+        mongodb_check = {"status": "not_initialized", "latency_ms": None}
+        if scraper._initialized and scraper.mongo_client:
             try:
+                start = time.time()
                 scraper.mongo_client.admin.command('ping')
-                mongodb_status = "connected"
-            except Exception:
-                mongodb_status = "error"
+                latency_ms = round((time.time() - start) * 1000, 2)
+                mongodb_check = {
+                    "status": "connected",
+                    "latency_ms": latency_ms
+                }
+                
+                if latency_ms > 1000:
+                    mongodb_check['warning'] = 'High latency'
+            except Exception as e:
+                mongodb_check = {
+                    "status": "error",
+                    "error": str(e)
+                }
+                is_healthy = False
+                critical_issues.append(f"MongoDB connection failed: {str(e)}")
         
-        return {
-            'status': 'healthy',
+        # Check PostgreSQL connection and latency
+        postgres_check = {}
+        try:
+            start = time.time()
+            db.execute("SELECT 1")
+            latency_ms = round((time.time() - start) * 1000, 2)
+            postgres_check = {
+                "status": "connected",
+                "latency_ms": latency_ms
+            }
+            
+            if latency_ms > 500:
+                postgres_check['warning'] = 'High latency'
+        except Exception as e:
+            postgres_check = {
+                "status": "error",
+                "error": str(e)
+            }
+            is_healthy = False
+            critical_issues.append(f"PostgreSQL connection failed: {str(e)}")
+        
+        # Check account health status
+        accounts_check = []
+        try:
+            accounts = db.query(TelegramAccount).all()
+            
+            for account in accounts:
+                accounts_check.append({
+                    "phone": account.phone,
+                    "health_status": account.health_status.value,
+                    "is_active": account.is_active,
+                    "consecutive_errors": account.consecutive_errors,
+                    "last_successful_fetch_at": account.last_successful_fetch_at.isoformat() if account.last_successful_fetch_at else None,
+                    "last_error": account.last_error_message
+                })
+            
+            active_count = sum(1 for a in accounts if a.is_healthy())
+            if active_count == 0:
+                is_healthy = False
+                critical_issues.append("All accounts are unhealthy")
+            elif active_count <= 2:
+                critical_issues.append(f"Only {active_count} accounts healthy (degraded capacity)")
+        except Exception as e:
+            accounts_check = {"error": str(e)}
+            logger.error("failed_to_check_account_health", error=str(e))
+        
+        # Get last successful scrape time (from MongoDB)
+        last_scrape_check = {}
+        if scraper._initialized and scraper.mongo_client:
+            try:
+                mongo_db = scraper.mongo_client[settings.MONGODB_DATABASE]
+                channels_collection = mongo_db['channels']
+                
+                # Find most recent scrape
+                latest_channel = channels_collection.find_one(
+                    {'last_scraped_at': {'$exists': True}},
+                    sort=[('last_scraped_at', -1)]
+                )
+                
+                if latest_channel and latest_channel.get('last_scraped_at'):
+                    last_scrape_time = latest_channel['last_scraped_at']
+                    hours_ago = (datetime.utcnow() - last_scrape_time).total_seconds() / 3600
+                    
+                    last_scrape_check = {
+                        "last_scrape_at": last_scrape_time.isoformat(),
+                        "hours_ago": round(hours_ago, 1)
+                    }
+                    
+                    if hours_ago > 24:
+                        last_scrape_check['warning'] = 'No scrape in last 24 hours'
+                        is_healthy = False
+                        critical_issues.append(f"No successful scrape in {round(hours_ago, 1)} hours")
+                else:
+                    last_scrape_check = {"status": "never_scraped"}
+            except Exception as e:
+                last_scrape_check = {"error": str(e)}
+        
+        response_data = {
+            'status': 'healthy' if is_healthy else 'unhealthy',
             'service_initialized': scraper._initialized,
-            'mongodb_status': mongodb_status,
-            'session_files': session_files_exist,
-            'total_clients_connected': len(scraper.clients)
+            'session_files': session_files_check,
+            'mongodb': mongodb_check,
+            'postgres': postgres_check,
+            'accounts': accounts_check,
+            'last_scrape': last_scrape_check,
+            'total_clients_connected': len(scraper.clients),
+            'critical_issues': critical_issues if critical_issues else None
         }
+        
+        # Return 503 if unhealthy
+        if not is_healthy:
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content=response_data
+            )
+        
+        return response_data
     
     except Exception as e:
-        logger.error(f"❌ Health check failed: {e}")
-        return {
-            'status': 'unhealthy',
-            'error': str(e)
+        logger.error("health_check_failed", error=str(e), exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                'status': 'unhealthy',
+                'error': str(e)
+            }
+        )
+
+
+@router.get("/debug-status")
+async def scraper_debug_status(db: Session = Depends(get_db)):
+    """
+    Emergency debug endpoint for quick diagnosis during incidents.
+    
+    Returns detailed diagnostics:
+    - Session file details (path, size, age)
+    - Each account connection status
+    - MongoDB/PostgreSQL status
+    - Recent errors from logs
+    - Scheduler status
+    - Test fetch capability
+    
+    **Note:** This endpoint may contain sensitive information. 
+    Consider adding authentication in production.
+    
+    Returns:
+        Detailed debug information
+    """
+    import time
+    import structlog
+    from datetime import datetime, timedelta
+    from app.models.telegram_account import TelegramAccount
+    from app.core.scheduler import scheduler
+    
+    logger = structlog.get_logger(__name__)
+    
+    try:
+        scraper = get_scraper_service()
+        debug_info = {
+            'timestamp': datetime.utcnow().isoformat(),
+            'environment': settings.ENVIRONMENT
         }
+        
+        # Session files detailed info
+        session_files_detail = []
+        for account_id in range(1, scraper.ACCOUNTS_AVAILABLE + 1):
+            session_file_path = scraper.session_dir / f"session_account{account_id}.session"
+            
+            file_detail = {
+                'account_id': account_id,
+                'path': str(session_file_path),
+                'exists': session_file_path.exists()
+            }
+            
+            if session_file_path.exists():
+                stat = session_file_path.stat()
+                file_detail.update({
+                    'size_bytes': stat.st_size,
+                    'last_modified': datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                    'age_days': round((time.time() - stat.st_mtime) / 86400, 1),
+                    'readable': os.access(session_file_path, os.R_OK),
+                    'writable': os.access(session_file_path, os.W_OK)
+                })
+            
+            session_files_detail.append(file_detail)
+        
+        debug_info['session_files'] = session_files_detail
+        
+        # Account connection status
+        accounts_detail = []
+        for account_id in range(1, scraper.ACCOUNTS_AVAILABLE + 1):
+            account_detail = {
+                'account_id': account_id,
+                'client_connected': account_id in scraper.clients
+            }
+            
+            # Try to get account from database
+            try:
+                account = db.query(TelegramAccount).filter(
+                    TelegramAccount.phone.like(f"%{account_id}%")
+                ).first()
+                
+                if account:
+                    account_detail.update({
+                        'phone': account.phone,
+                        'health_status': account.health_status.value,
+                        'is_active': account.is_active,
+                        'is_banned': account.is_banned,
+                        'consecutive_errors': account.consecutive_errors,
+                        'last_successful_fetch_at': account.last_successful_fetch_at.isoformat() if account.last_successful_fetch_at else None,
+                        'last_error_at': account.last_error_at.isoformat() if account.last_error_at else None,
+                        'last_error_message': account.last_error_message
+                    })
+            except Exception as e:
+                account_detail['db_error'] = str(e)
+            
+            accounts_detail.append(account_detail)
+        
+        debug_info['accounts'] = accounts_detail
+        
+        # MongoDB status
+        mongodb_detail = {'initialized': scraper._initialized}
+        if scraper._initialized and scraper.mongo_client:
+            try:
+                start = time.time()
+                scraper.mongo_client.admin.command('ping')
+                latency_ms = round((time.time() - start) * 1000, 2)
+                
+                mongo_db = scraper.mongo_client[settings.MONGODB_DATABASE]
+                
+                mongodb_detail.update({
+                    'connected': True,
+                    'latency_ms': latency_ms,
+                    'database': settings.MONGODB_DATABASE,
+                    'collections': {
+                        'channels_count': mongo_db['channels'].count_documents({}),
+                        'raw_messages_count': mongo_db['raw_messages'].count_documents({}),
+                        'active_channels': mongo_db['channels'].count_documents({'is_active': True})
+                    }
+                })
+            except Exception as e:
+                mongodb_detail.update({
+                    'connected': False,
+                    'error': str(e)
+                })
+        
+        debug_info['mongodb'] = mongodb_detail
+        
+        # PostgreSQL status
+        postgres_detail = {}
+        try:
+            start = time.time()
+            result = db.execute("SELECT COUNT(*) FROM telegram_accounts").scalar()
+            latency_ms = round((time.time() - start) * 1000, 2)
+            
+            postgres_detail = {
+                'connected': True,
+                'latency_ms': latency_ms,
+                'telegram_accounts_count': result
+            }
+        except Exception as e:
+            postgres_detail = {
+                'connected': False,
+                'error': str(e)
+            }
+        
+        debug_info['postgres'] = postgres_detail
+        
+        # Scheduler status
+        scheduler_detail = {}
+        try:
+            if scheduler:
+                jobs = scheduler.get_jobs()
+                telegram_job = next((j for j in jobs if 'telegram' in j.id.lower()), None)
+                
+                scheduler_detail = {
+                    'running': scheduler.running,
+                    'total_jobs': len(jobs),
+                    'telegram_scraper_job': {
+                        'id': telegram_job.id if telegram_job else None,
+                        'next_run_time': telegram_job.next_run_time.isoformat() if telegram_job and telegram_job.next_run_time else None,
+                        'trigger': str(telegram_job.trigger) if telegram_job else None
+                    } if telegram_job else None
+                }
+        except Exception as e:
+            scheduler_detail = {'error': str(e)}
+        
+        debug_info['scheduler'] = scheduler_detail
+        
+        # Recent errors (last 10)
+        recent_errors = []
+        try:
+            error_accounts = db.query(TelegramAccount).filter(
+                TelegramAccount.last_error_at.isnot(None)
+            ).order_by(TelegramAccount.last_error_at.desc()).limit(10).all()
+            
+            for acc in error_accounts:
+                recent_errors.append({
+                    'account': acc.phone,
+                    'timestamp': acc.last_error_at.isoformat() if acc.last_error_at else None,
+                    'error': acc.last_error_message,
+                    'hours_ago': round((datetime.utcnow() - acc.last_error_at).total_seconds() / 3600, 1) if acc.last_error_at else None
+                })
+        except Exception as e:
+            recent_errors = [{'error': str(e)}]
+        
+        debug_info['recent_errors'] = recent_errors
+        
+        # Service stats
+        debug_info['service_stats'] = scraper.get_stats()
+        
+        return debug_info
+    
+    except Exception as e:
+        logger.error("debug_status_failed", error=str(e), exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                'error': 'Debug status check failed',
+                'message': str(e)
+            }
+        )
+

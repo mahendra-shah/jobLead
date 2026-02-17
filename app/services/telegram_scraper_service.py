@@ -18,20 +18,42 @@ Date: 2026-02-10
 """
 
 import asyncio
-import logging
+import time
+import random
 from datetime import datetime
 from typing import Dict, List, Optional
 from collections import defaultdict
 from pathlib import Path
 
+import structlog
+import sentry_sdk
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+    RetryError
+)
 from telethon import TelegramClient
-from telethon.errors import FloodWaitError, ChannelPrivateError, UsernameInvalidError
+from telethon.errors import (
+    FloodWaitError,
+    ChannelPrivateError,
+    UsernameInvalidError,
+    AuthKeyError,
+    ServerError,
+    TimeoutError as TelethonTimeoutError,
+)
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
+from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.utils.cloudwatch_metrics import cloudwatch_metrics
+from app.utils.slack_notifier import slack_notifier
+from app.models.telegram_account import TelegramAccount, HealthStatus
+from app.db.session import SyncSessionLocal
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class TelegramScraperService:
@@ -50,7 +72,8 @@ class TelegramScraperService:
     
     # Configuration
     MAX_MESSAGES_PER_CHANNEL = 100
-    RATE_LIMIT_DELAY = 0.5  # 500ms between channels
+    RATE_LIMIT_DELAY_MIN = 0.5  # Minimum 500ms between channels
+    RATE_LIMIT_DELAY_MAX = 2.0  # Maximum 2s between channels (human-like randomness)
     ACCOUNTS_AVAILABLE = 5  # Total number of Telegram accounts
     FIRST_TIME_FETCH_LIMIT = 10  # Only 10 messages on first fetch
     
@@ -100,12 +123,32 @@ class TelegramScraperService:
                 serverSelectionTimeoutMS=5000
             )
             # Test connection
+            start_time = time.time()
             self.mongo_client.admin.command('ping')
-            logger.info("✅ MongoDB connection established")
+            latency_ms = (time.time() - start_time) * 1000
+            
+            logger.info(
+                "mongodb_connected",
+                latency_ms=round(latency_ms, 2)
+            )
             
             self._initialized = True
         except Exception as e:
-            logger.error(f"❌ Failed to initialize MongoDB: {e}")
+            logger.error(
+                "mongodb_connection_failed",
+                error=str(e),
+                error_type=type(e).__name__
+            )
+            
+            # Send Slack alert for MongoDB failure
+            await slack_notifier.send_database_error_alert(
+                database="MongoDB",
+                error=str(e)
+            )
+            
+            # Capture in Sentry
+            sentry_sdk.capture_exception(e)
+            
             raise
     
     def get_session_path(self, account_id: int) -> str:
@@ -137,6 +180,9 @@ class TelegramScraperService:
             FileNotFoundError: If session file doesn't exist
             RuntimeError: If account is not authorized
         """
+        # Bind account context for logging
+        log = logger.bind(account_id=account_id)
+        
         if account_id in self.clients:
             return self.clients[account_id]
         
@@ -144,34 +190,102 @@ class TelegramScraperService:
         session_path = self.get_session_path(account_id)
         session_file = f"{session_path}.session"
         
-        if not Path(session_file).exists():
-            raise FileNotFoundError(
-                f"Session file not found: {session_file}. "
-                f"Please ensure session files exist in {self.session_dir}/"
-            )
+        # Create directory if it doesn't exist
+        self.session_dir.mkdir(parents=True, exist_ok=True)
         
-        # Create client
-        client = TelegramClient(
-            session_path,
-            int(settings.TELEGRAM_API_ID),
-            settings.TELEGRAM_API_HASH,
-            connection_retries=3,
-            retry_delay=3,
-            timeout=120
+        if not Path(session_file).exists():
+            error_msg = (
+                f"Session file not found: {session_file}. "
+                f"Run 'python generate_telegram_session.py' to create session files."
+            )
+            log.error("session_file_not_found", session_file=session_file)
+            
+            # Send Slack alert
+            await slack_notifier.send_session_error_alert(
+                account_id=account_id,
+                error_message="Session file not found"
+            )
+            
+            raise FileNotFoundError(error_msg)
+        
+        # Check session file health
+        session_stat = Path(session_file).stat()
+        log.info(
+            "session_file_found",
+            size_bytes=session_stat.st_size,
+            modified_days_ago=(time.time() - session_stat.st_mtime) / 86400
         )
         
-        await client.connect()
-        
-        # Verify authorization
-        if not await client.is_user_authorized():
-            raise RuntimeError(f"Account {account_id} not authorized")
-        
-        # Get account info for logging
-        me = await client.get_me()
-        logger.info(f"✅ Account {account_id} connected: {me.phone or me.username}")
-        
-        self.clients[account_id] = client
-        return client
+        try:
+            # Create client
+            client = TelegramClient(
+                session_path,
+                int(settings.TELEGRAM_API_ID),
+                settings.TELEGRAM_API_HASH,
+                connection_retries=3,
+                retry_delay=3,
+                timeout=120
+            )
+            
+            await client.connect()
+            
+            # Verify authorization
+            if not await client.is_user_authorized():
+                error_msg = f"Account {account_id} not authorized"
+                log.error("account_not_authorized")
+                
+                # Update account health in database
+                await self._update_account_health(
+                    account_id,
+                    success=False,
+                    error="Not authorized - session expired"
+                )
+                
+                raise RuntimeError(error_msg)
+            
+            # Get account info for logging
+            me = await client.get_me()
+            log.info(
+                "telegram_client_connected",
+                phone=me.phone,
+                username=me.username
+            )
+            
+            # Add Sentry breadcrumb
+            sentry_sdk.add_breadcrumb(
+                category="telegram",
+                message=f"Connected to account {account_id}",
+                level="info"
+            )
+            
+            self.clients[account_id] = client
+            return client
+            
+        except AuthKeyError as e:
+            log.error(
+                "auth_key_error",
+                error=str(e),
+                error_type="AuthKeyError"
+            )
+            
+            # Mark account as banned
+            await self._update_account_health(
+                account_id,
+                success=False,
+                error=f"AuthKeyError: {str(e)}",
+                mark_banned=True
+            )
+            
+            # Publish metric
+            cloudwatch_metrics.publish_error_metric(
+                error_type="AuthKeyError",
+                account_id=account_id
+            )
+            
+            # Capture in Sentry
+            sentry_sdk.capture_exception(e)
+            
+            raise
     
     async def scrape_channel(
         self,
@@ -299,32 +413,238 @@ class TelegramScraperService:
             
             logger.info(f"   ✅ Stored {stored_count} messages from @{username}")
             
-            # Rate limiting between channels
-            await asyncio.sleep(self.RATE_LIMIT_DELAY)
+            # Rate limiting between channels - random delay for human-like behavior
+            delay = random.uniform(self.RATE_LIMIT_DELAY_MIN, self.RATE_LIMIT_DELAY_MAX)
+            await asyncio.sleep(delay)
             
         except FloodWaitError as e:
-            error_msg = f"Rate limited on Account {account_id}: wait {e.seconds}s"
-            logger.warning(f"   ⚠️  {error_msg}")
+            error_msg = f"Rate limited: wait {e.seconds}s"
+            logger.warning(
+                "flood_wait_error",
+                account_id=account_id,
+                channel=username,
+                wait_seconds=e.seconds
+            )
             stats['error'] = error_msg
             self.account_stats[account_id]['rate_limits'] += 1
+            
+            # Publish CloudWatch metric
+            cloudwatch_metrics.publish_flood_wait_metric(
+                wait_seconds=e.seconds,
+                account_id=account_id
+            )
             
             # Wait if reasonable time (under 60 seconds)
             if e.seconds < 60:
                 await asyncio.sleep(e.seconds)
+            else:
+                # Log for manual intervention
+                logger.error(
+                    "flood_wait_too_long",
+                    account_id=account_id,
+                    channel=username,
+                    wait_seconds=e.seconds
+                )
         
         except (ChannelPrivateError, UsernameInvalidError) as e:
             error_msg = f"Channel access error: {str(e)}"
-            logger.error(f"   ❌ {error_msg}")
+            error_type = type(e).__name__
+            
+            logger.error(
+                "channel_access_error",
+                account_id=account_id,
+                channel=username,
+                error=str(e),
+                error_type=error_type
+            )
+            
             stats['error'] = error_msg
             self.account_stats[account_id]['errors'] += 1
+            
+            # Publish metric
+            cloudwatch_metrics.publish_error_metric(
+                error_type=error_type,
+                account_id=account_id,
+                channel=username
+            )
+        
+        except AuthKeyError as e:
+            error_msg = f"Auth key error: {str(e)}"
+            
+            logger.error(
+                "auth_key_error_in_scrape",
+                account_id=account_id,
+                channel=username,
+                error=str(e)
+            )
+            
+            stats['error'] = error_msg
+            self.account_stats[account_id]['errors'] += 1
+            
+            # Mark account as banned
+            await self._update_account_health(
+                account_id,
+                success=False,
+                error=error_msg,
+                mark_banned=True
+            )
+            
+            # Publish metric and capture in Sentry
+            cloudwatch_metrics.publish_error_metric(
+                error_type="AuthKeyError",
+                account_id=account_id,
+                channel=username
+            )
+            sentry_sdk.capture_exception(e)
         
         except Exception as e:
             error_msg = f"Unexpected error: {str(e)}"
-            logger.error(f"   ❌ {error_msg}", exc_info=True)
+            error_type = type(e).__name__
+            
+            logger.error(
+                "unexpected_scrape_error",
+                account_id=account_id,
+                channel=username,
+                error=str(e),
+                error_type=error_type,
+                exc_info=True
+            )
+            
             stats['error'] = error_msg
             self.account_stats[account_id]['errors'] += 1
+            
+            # Publish metric
+            cloudwatch_metrics.publish_error_metric(
+                error_type=error_type,
+                account_id=account_id,
+                channel=username
+            )
+            
+            # Capture in Sentry with context
+            with sentry_sdk.push_scope() as scope:
+                scope.set_tag("component", "telegram_scraper")
+                scope.set_tag("account_id", account_id)
+                scope.set_tag("channel", username)
+                scope.set_context("channel", {
+                    "username": username,
+                    "account_id": account_id,
+                })
+                sentry_sdk.capture_exception(e)
         
         return stats
+    
+    async def _update_account_health(
+        self,
+        account_id: int,
+        success: bool,
+        error: Optional[str] = None,
+        mark_banned: bool = False
+    ) -> None:
+        """
+        Update account health status in database.
+        
+        Args:
+            account_id: Account ID
+            success: Whether operation was successful
+            error: Error message if failed
+            mark_banned: Whether to mark account as banned
+        """
+        try:
+            db = SyncSessionLocal()
+            
+            # Find account by phone number (assuming account_id maps to phone)
+            # Note: This is a simplified lookup - adjust based on your actual data model
+            account = db.query(TelegramAccount).filter(
+                TelegramAccount.phone.like(f"%{account_id}%")
+            ).first()
+            
+            if not account:
+                logger.warning(
+                    "account_not_found_in_db",
+                    account_id=account_id
+                )
+                db.close()
+                return
+            
+            if success:
+                account.mark_success()
+            else:
+                if error:
+                    account.mark_error(error)
+                    
+                if mark_banned:
+                    account.health_status = HealthStatus.BANNED
+                    account.is_banned = True
+                    account.is_active = False
+            
+            db.commit()
+            db.close()
+            
+            logger.info(
+                "account_health_updated",
+                account_id=account_id,
+                health_status=account.health_status.value if account else None,
+                consecutive_errors=account.consecutive_errors if account else None
+            )
+            
+        except Exception as e:
+            logger.error(
+                "failed_to_update_account_health",
+                account_id=account_id,
+                error=str(e)
+            )
+    
+    async def _check_and_report_account_health(self) -> None:
+        """
+        Check health of all accounts and send alerts if issues detected.
+        """
+        try:
+            db = SyncSessionLocal()
+            accounts = db.query(TelegramAccount).all()
+            
+            active_count = sum(1 for a in accounts if a.is_healthy())
+            degraded_count = sum(1 for a in accounts if a.health_status == HealthStatus.DEGRADED)
+            banned_count = sum(1 for a in accounts if a.health_status == HealthStatus.BANNED)
+            
+            db.close()
+            
+            # Publish account health metrics
+            cloudwatch_metrics.publish_account_health(
+                active_accounts=active_count,
+                degraded_accounts=degraded_count,
+                banned_accounts=banned_count
+            )
+            
+            # Send Slack alert if critical health issues
+            if active_count == 0 or active_count <= 2:
+                account_details = [
+                    {
+                        "id": a.phone,
+                        "status": a.health_status.value,
+                        "error": a.last_error_message or "N/A"
+                    }
+                    for a in accounts
+                ]
+                
+                await slack_notifier.send_account_health_alert(
+                    active_accounts=active_count,
+                    degraded_accounts=degraded_count,
+                    banned_accounts=banned_count,
+                    details=account_details
+                )
+            
+            logger.info(
+                "account_health_summary",
+                active=active_count,
+                degraded=degraded_count,
+                banned=banned_count
+            )
+            
+        except Exception as e:
+            logger.error(
+                "failed_to_check_account_health",
+                error=str(e)
+            )
     
     async def get_channels_to_scrape(self) -> List[Dict]:
         """
@@ -424,6 +744,7 @@ class TelegramScraperService:
             successful = sum(1 for r in results if r['success'])
             failed = len(results) - successful
             completed_at = datetime.utcnow()
+            duration_ms = int((completed_at - started_at).total_seconds() * 1000)
             
             summary = {
                 'total_channels': len(channels),
@@ -438,19 +759,52 @@ class TelegramScraperService:
             }
             
             # Log summary
-            logger.info(f"\n✅ Scraping complete:")
-            logger.info(f"   Channels: {successful}/{len(channels)} successful")
-            logger.info(f"   Messages: {total_messages} total")
-            logger.info(f"   Duration: {summary['duration_seconds']:.2f}s")
+            logger.info(
+                "scraping_complete",
+                total_channels=len(channels),
+                successful=successful,
+                failed=failed,
+                total_messages=total_messages,
+                duration_seconds=round(summary['duration_seconds'], 2)
+            )
             
-            logger.info(f"\n📊 Per-account stats:")
+            # Log per-account stats
             for account_id in sorted(self.account_stats.keys()):
                 stats = self.account_stats[account_id]
-                logger.info(f"   Account {account_id}:")
-                logger.info(f"      Channels scraped: {stats['channels_scraped']}")
-                logger.info(f"      Messages found: {stats['messages_found']}")
-                logger.info(f"      Rate limits hit: {stats['rate_limits']}")
-                logger.info(f"      Errors: {stats['errors']}")
+                logger.info(
+                    "account_scrape_stats",
+                    account_id=account_id,
+                    channels_scraped=stats['channels_scraped'],
+                    messages_found=stats['messages_found'],
+                    rate_limits=stats['rate_limits'],
+                    errors=stats['errors']
+                )
+                
+                # Publish CloudWatch metrics per account
+                cloudwatch_metrics.publish_scrape_metrics(
+                    account_id=account_id,
+                    messages_processed=stats['messages_found'],
+                    channels_scraped=stats['channels_scraped'],
+                    duration_ms=duration_ms,
+                    errors_count=stats['errors']
+                )
+            
+            # Check account health and publish metrics
+            await self._check_and_report_account_health()
+            
+            # Send Slack alert if zero messages fetched
+            if total_messages == 0:
+                await slack_notifier.send_zero_messages_alert(
+                    last_successful_fetch=completed_at
+                )
+            
+            # Add Sentry breadcrumb for successful scrape
+            sentry_sdk.add_breadcrumb(
+                category="telegram_scraper",
+                message=f"Scraped {total_messages} messages from {successful} channels",
+                level="info",
+                data=summary
+            )
             
             return summary
         

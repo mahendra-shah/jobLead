@@ -5,9 +5,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.logging import LoggingIntegration
 
 from app.api.v1 import api_router
-from app.routers import monitoring, telegram_scraper
+from app.routers import monitoring, telegram_scraper, visibility, ml_feedback
 from app.config import settings
 from app.core.logging import setup_logging
 from app.core.scheduler import start_scheduler, stop_scheduler
@@ -15,6 +18,30 @@ from app.db.session import engine, init_db
 
 # Setup logging
 setup_logging()
+
+# Initialize Sentry for error tracking (only if DSN is properly configured)
+if settings.SENTRY_DSN and settings.SENTRY_DSN.startswith('https://'):
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        environment=settings.SENTRY_ENVIRONMENT,
+        traces_sample_rate=settings.SENTRY_TRACES_SAMPLE_RATE,
+        integrations=[
+            FastApiIntegration(),
+            LoggingIntegration(
+                level=None,  # Capture all logs
+                event_level="ERROR",  # Only send ERROR and above as events
+            ),
+        ],
+        # Performance monitoring
+        enable_tracing=True,
+        # Release tracking (optional)
+        release=settings.APP_VERSION,
+        # Additional options
+        attach_stacktrace=True,
+        send_default_pii=False,  # Don't send personally identifiable info
+    )
+else:
+    print("⚠️  Sentry DSN not configured - error tracking disabled")
 
 
 @asynccontextmanager
@@ -66,6 +93,12 @@ app.include_router(monitoring.router)
 
 # Include telegram scraper router (no prefix - uses /api/telegram-scraper)
 app.include_router(telegram_scraper.router)
+
+# Include visibility API router (no prefix - uses /api/visibility)
+app.include_router(visibility.router, prefix="/api/visibility", tags=["Visibility"])
+
+# Include ML feedback router (no prefix - uses /api/ml-feedback)
+app.include_router(ml_feedback.router, prefix="/api/ml-feedback", tags=["ML Feedback"])
 
 
 @app.get("/", tags=["Health"])

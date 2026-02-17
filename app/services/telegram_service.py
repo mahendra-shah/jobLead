@@ -1,6 +1,19 @@
 """
-Telegram Service - Simplified version for Lambda functions
-Adapted from backend/src/core/telegram_client.py with PostgreSQL support
+Telegram Service - Legacy Lambda Service
+
+⚠️  WARNING: DO NOT USE FOR MAIN SCRAPING ⚠️
+
+This service saves raw messages to PostgreSQL (incorrect architecture).
+For main Telegram scraping, use: app/services/telegram_scraper_service.py
+
+CORRECT ARCHITECTURE:
+- Raw messages → MongoDB only (via telegram_scraper_service.py)
+- Classified jobs → PostgreSQL (via ML classifier)
+
+This service is ONLY used by:
+- lambda/group_joiner (legacy Lambda for joining groups)
+
+See: ARCHITECTURE_STORAGE.md for detailed explanation
 """
 import asyncio
 import logging
@@ -21,7 +34,7 @@ from sqlalchemy import select, update
 
 from app.models.telegram_account import TelegramAccount
 from app.models.telegram_group import TelegramGroup
-from app.models.raw_telegram_message import RawTelegramMessage
+# RawTelegramMessage removed - use MongoDB for raw messages
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -249,9 +262,12 @@ class TelegramService:
         group: TelegramGroup,
         client: TelegramClient,
         limit: Optional[int] = None
-    ) -> List[RawTelegramMessage]:
+    ) -> int:
         """
-        Fetch messages from a joined group
+        Fetch messages from a joined group.
+        
+        NOTE: This is a legacy service. Use telegram_scraper_service.py instead.
+        This service no longer saves raw messages to PostgreSQL.
         
         Args:
             group: TelegramGroup model instance
@@ -259,13 +275,11 @@ class TelegramService:
             limit: Max messages to fetch (None = use config default)
             
         Returns:
-            List of RawTelegramMessage instances
+            Number of new messages found
         """
         if limit is None:
             # Use incremental limit if we have last_message_id, else initial limit
             limit = settings.INCREMENTAL_FETCH_LIMIT if group.last_message_id else settings.MESSAGES_FETCH_LIMIT
-        
-        messages_saved = []
         
         try:
             username = group.username.lstrip('@')
@@ -297,38 +311,13 @@ class TelegramService:
                 if message.id > latest_message_id:
                     latest_message_id = message.id
                 
-                # Check if message already exists (shouldn't happen with min_id, but safety check)
-                exists = await self.db.execute(
-                    select(RawTelegramMessage).where(
-                        RawTelegramMessage.message_id == message.id,
-                        RawTelegramMessage.group_username == group.username
-                    )
-                )
-                if exists.scalar_one_or_none():
-                    continue
-                
-                # Create raw message record
-                raw_message = RawTelegramMessage(
-                    message_id=message.id,
-                    group_username=group.username,
-                    group_title=group.title,
-                    text=message.text,
-                    sender_id=message.sender_id,
-                    message_date=message.date,
-                    has_media=message.media is not None,
-                    media_type=type(message.media).__name__ if message.media else None
-                )
-                
-                self.db.add(raw_message)
-                messages_saved.append(raw_message)
+                # NOTE: RawTelegramMessage table removed from PostgreSQL
+                # If this service is used, implement MongoDB storage instead
+                # For now, just count messages without storing them
                 new_messages += 1
                 
-                # Commit in batches of 10
-                if len(messages_saved) % 10 == 0:
-                    await self.db.commit()
-            
-            # Final commit
-            await self.db.commit()
+                # Legacy code removed (was saving to PostgreSQL raw_telegram_messages)
+                # Use telegram_scraper_service.py which saves to MongoDB instead
             
             # Update group metadata
             group.last_scraped_at = datetime.now()
@@ -349,7 +338,7 @@ class TelegramService:
         except Exception as e:
             logger.error(f"Error fetching from {group.username}: {e}")
         
-        return messages_saved
+        return new_messages
     
     async def cleanup(self):
         """Disconnect all clients"""

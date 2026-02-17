@@ -55,7 +55,7 @@ async def run_telegram_scraper():
     """
     Scheduled task: Run Telegram scraper to fetch messages from all channels.
     
-    This job runs daily at 12:30 AM UTC (6:00 AM IST).
+    This job runs every 4 hours (4AM, 8AM, 12PM, 4PM, 8PM, 12AM).
     Fetches messages from all active Telegram channels using multi-account support.
     """
     from app.services.telegram_scraper_service import get_scraper_service
@@ -92,6 +92,110 @@ async def run_telegram_scraper():
         logger.info("=" * 60)
 
 
+async def send_daily_slack_summary():
+    """
+    Scheduled task: Send daily Slack summary at 9:00 AM.
+    
+    Includes previous day's statistics:
+    - Jobs scraped
+    - Channels active
+    - Account health
+    - Error summary
+    """
+    from app.utils.slack_notifier import SlackNotifier
+    from app.services.telegram_scraper_service import get_scraper_service
+    from app.db.session import SyncSessionLocal
+    from app.models.telegram_account import TelegramAccount, HealthStatus
+    from app.models.job import Job
+    from datetime import datetime, timedelta
+    
+    logger.info("📊 Generating daily Slack summary...")
+    
+    try:
+        db = SyncSessionLocal()
+        scraper = get_scraper_service()
+        notifier = SlackNotifier()
+        
+        # Get yesterday's stats
+        yesterday = datetime.utcnow() - timedelta(days=1)
+        
+        # Jobs scraped yesterday
+        jobs_yesterday = db.query(Job).filter(
+            Job.created_at >= yesterday
+        ).count()
+        
+        # Account health
+        accounts = db.query(TelegramAccount).all()
+        healthy_accounts = sum(1 for a in accounts if a.health_status == HealthStatus.HEALTHY)
+        banned_accounts = sum(1 for a in accounts if a.health_status == HealthStatus.BANNED)
+        
+        # MongoDB stats
+        total_messages = 0
+        unprocessed = 0
+        if scraper._initialized:
+            mongo_db = scraper.mongo_client[settings.MONGODB_DATABASE]
+            total_messages = mongo_db.raw_messages.count_documents({})
+            unprocessed = mongo_db.raw_messages.count_documents({'is_processed': False})
+        
+        # Send summary
+        summary_text = f"""
+📊 *Daily Telegram Scraping Summary*
+_Previous 24 hours: {yesterday.strftime('%Y-%m-%d')}_
+
+*Jobs Scraped:* {jobs_yesterday} new jobs
+*Messages Total:* {total_messages} (Unprocessed: {unprocessed})
+
+*Account Health:*
+• Healthy: {healthy_accounts}/{len(accounts)}
+• Banned: {banned_accounts}/{len(accounts)}
+
+*System Status:* {"✅ Operational" if healthy_accounts > 0 else "⚠️ Degraded"}
+"""
+        
+        notifier.send_message(
+            title="Daily Scraping Summary",
+            message=summary_text,
+            severity="info"
+        )
+        
+        logger.info("✅ Daily Slack summary sent successfully")
+        
+        db.close()
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to send daily Slack summary: {e}", exc_info=True)
+
+
+async def run_channel_sync():
+    """
+    Scheduled task: Sync PostgreSQL telegram_groups ↔ MongoDB channels.
+    
+    Ensures Lambda functions have up-to-date channel list with health scores.
+    Runs every 6 hours to keep channels synchronized.
+    """
+    from app.services.channel_sync_service import ChannelSyncService
+    from app.db.session import AsyncSessionLocal
+    
+    logger.info("🔄 Running channel synchronization...")
+    
+    try:
+        sync_service = ChannelSyncService()
+        await sync_service.initialize()
+        
+        async with AsyncSessionLocal() as db:
+            stats = await sync_service.sync_all_channels(db)
+            logger.info(
+                f"✅ Channel sync complete: "
+                f"{stats['synced']}/{stats['total']} synced, "
+                f"{stats['failed']} failed"
+            )
+            return stats
+        
+    except Exception as e:
+        logger.error(f"❌ Channel sync failed: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
 def setup_jobs():
     """
     Setup all scheduled jobs.
@@ -100,27 +204,40 @@ def setup_jobs():
     """
     logger.info("⏰ Setting up scheduled jobs...")
     
-    # Job 1: Daily Telegram Scraper
-    # Runs at 5:00 AM UTC = 10:30 AM IST (TESTING)
+    # Job 1: Telegram Scraper - Every 4 hours (4AM, 8AM, 12PM, 4PM, 8PM, 12AM)
+    # Runs at: 4, 8, 12, 16, 20, 0 hours UTC (adjust for IST if needed)
+    scraping_hours = getattr(settings, 'SCRAPING_HOURS', [4, 8, 12, 16, 20, 0])
+    hour_str = ','.join(map(str, scraping_hours))
+    
     scheduler.add_job(
         run_telegram_scraper,
-        CronTrigger(hour=5, minute=0),  # 05:00 UTC = 10:30 AM IST
-        id='telegram_scraper_daily',
-        name='Daily Telegram Message Scraper',
+        CronTrigger(hour=hour_str, minute=0),  # Run at specified hours
+        id='telegram_scraper_4hourly',
+        name='Telegram Scraper (Every 4 hours)',
         replace_existing=True
     )
-    logger.info("   ✅ Added: telegram_scraper_daily (05:00 UTC / 10:30 AM IST)")
+    logger.info(f"   ✅ Added: telegram_scraper_4hourly (Hours: {hour_str} UTC)")
     
-    # Job 2: (Optional) More frequent scraping during business hours
-    # Uncomment if you want more frequent scraping (every 2 hours)
-    # scheduler.add_job(
-    #     run_telegram_scraper,
-    #     IntervalTrigger(hours=2),
-    #     id='telegram_scraper_frequent',
-    #     name='Frequent Telegram Scraper (Every 2 hours)',
-    #     replace_existing=True
-    # )
-    # logger.info("   ✅ Added: telegram_scraper_frequent (Every 2 hours)")
+    # Job 2: Daily Slack Summary at 9:00 AM
+    scheduler.add_job(
+        send_daily_slack_summary,
+        CronTrigger(hour=9, minute=0),  # 9:00 AM UTC
+        id='daily_slack_summary',
+        name='Daily Slack Summary (9:00 AM)',
+        replace_existing=True
+    )
+    logger.info("   ✅ Added: daily_slack_summary (09:00 UTC)")
+    
+    # Job 3: Channel Sync (PostgreSQL ↔ MongoDB) - Every 6 hours
+    # Syncs telegram_groups (PostgreSQL) to channels (MongoDB) for Lambda access
+    scheduler.add_job(
+        run_channel_sync,
+        IntervalTrigger(hours=6),
+        id='channel_sync',
+        name='Channel Sync (PostgreSQL ↔ MongoDB) - Every 6 hours',
+        replace_existing=True
+    )
+    logger.info("   ✅ Added: channel_sync (Every 6 hours)")
     
     logger.info("✅ All scheduled jobs configured")
 

@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timedelta
 
 from app.workers.celery_app import celery_app
-from app.db.session import SessionLocal
+from app.db.session import SyncSessionLocal
 from app.services.google_sheets_service import GoogleSheetsService
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ def export_daily_jobs_to_sheets():
     """
     logger.info("🚀 Starting daily Google Sheets export...")
     
-    db = SessionLocal()
+    db = SyncSessionLocal()
     try:
         sheets_service = GoogleSheetsService()
         
@@ -56,7 +56,7 @@ def export_today_jobs_to_sheets():
     """
     logger.info("🧪 Testing Google Sheets export with today's jobs...")
     
-    db = SessionLocal()
+    db = SyncSessionLocal()
     try:
         sheets_service = GoogleSheetsService()
         
@@ -96,7 +96,7 @@ def export_custom_date_to_sheets(date_str: str):
     """
     logger.info(f"📅 Exporting jobs from {date_str}...")
     
-    db = SessionLocal()
+    db = SyncSessionLocal()
     try:
         sheets_service = GoogleSheetsService()
         
