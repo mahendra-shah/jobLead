@@ -99,10 +99,6 @@ class StudentProfileUpdate(BaseModel):
         None,
         description="Soft skills array (e.g., ['Communication', 'Teamwork', 'Time Management'])"
     )
-    skill_required: Optional[List[str]] = Field(
-        None,
-        description="Required skills for job matching (e.g., ['Python', 'FastAPI', 'PostgreSQL'])"
-    )
     
     # Experience
     experience_type: Optional[str] = Field(
@@ -198,7 +194,6 @@ class StudentProfileResponse(BaseModel):
     # Skills
     technical_skills: Optional[List[str]] = None
     soft_skills: Optional[List[str]] = None
-    skill_required: Optional[List[str]] = None
     
     # Experience
     experience_type: Optional[str] = None

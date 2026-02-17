@@ -1,16 +1,17 @@
 """
 Saved Jobs API
-Students can bookmark jobs with folders and notes
+Users can bookmark jobs with folders and notes
 """
 
 from typing import Optional
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.orm import joinedload
 
 from app.api.deps import get_current_user, get_db
 from app.models.user import User
-from app.models.student import Student
 from app.models.job import Job
 from app.models.student_interactions import SavedJob
 from app.schemas.student import (
@@ -24,7 +25,7 @@ from app.schemas.student import (
 router = APIRouter()
 
 
-@router.post("/students/me/saved-jobs", response_model=SavedJobResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=SavedJobResponse, status_code=status.HTTP_201_CREATED)
 async def save_job(
     saved_job_in: SavedJobCreate,
     current_user: User = Depends(get_current_user),
@@ -33,25 +34,23 @@ async def save_job(
     """
     Save/bookmark a job
     
-    **Auth**: Student (JWT required)
+    **Auth**: User (JWT required)
     
-    Students can organize saved jobs into folders and add notes.
+    Users can organize saved jobs into folders and add notes.
     """
-    # Get student
-    result = await db.execute(
-        select(Student).where(Student.email == current_user.email)
-    )
-    student = result.scalar_one_or_none()
-    
-    if not student:
+    # Check if job exists
+    try:
+        job_uuid = UUID(saved_job_in.job_id)
+    except ValueError:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Student profile not found"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid job_id format. Must be a valid UUID."
         )
     
-    # Check if job exists
     result = await db.execute(
-        select(Job).where(Job.id == saved_job_in.job_id)
+        select(Job)
+        .options(joinedload(Job.company))
+        .where(Job.id == job_uuid)
     )
     job = result.scalar_one_or_none()
     
@@ -64,8 +63,8 @@ async def save_job(
     # Check if already saved
     result = await db.execute(
         select(SavedJob).where(
-            SavedJob.student_id == student.id,
-            SavedJob.job_id == saved_job_in.job_id
+            SavedJob.user_id == current_user.id,
+            SavedJob.job_id == job_uuid
         )
     )
     existing = result.scalar_one_or_none()
@@ -78,8 +77,8 @@ async def save_job(
     
     # Create saved job
     db_saved_job = SavedJob(
-        student_id=student.id,
-        job_id=saved_job_in.job_id,
+        user_id=current_user.id,
+        job_id=job_uuid,
         folder=saved_job_in.folder,
         notes=saved_job_in.notes
     )
@@ -88,30 +87,48 @@ async def save_job(
     await db.commit()
     await db.refresh(db_saved_job)
     
-    # Load job details
-    await db.refresh(db_saved_job, ["job"])
+    # Format job data for response
+    job_data = {
+        "id": str(job.id),
+        "title": job.title,
+        "company_id": str(job.company_id) if job.company_id else None,
+        "company_name": job.company.name if job.company else "Unknown",
+        "description": job.description,
+        "skills_required": job.skills_required or [],
+        "experience_required": job.experience_required,
+        "salary_range": job.salary_range or {},
+        "is_fresher": job.is_fresher,
+        "work_type": job.work_type,
+        "experience_min": job.experience_min,
+        "experience_max": job.experience_max,
+        "salary_min": float(job.salary_min) if job.salary_min else None,
+        "salary_max": float(job.salary_max) if job.salary_max else None,
+        "location": job.location,
+        "job_type": job.job_type,
+        "employment_type": job.employment_type,
+        "source": job.source,
+        "source_url": job.source_url,
+        "is_active": job.is_active,
+        "view_count": job.view_count,
+        "application_count": job.application_count,
+        "created_at": job.created_at.isoformat() if job.created_at else None,
+        "updated_at": job.updated_at.isoformat() if job.updated_at else None,
+    }
     
     return SavedJobResponse(
-        id=db_saved_job.id,
-        job_id=db_saved_job.job_id,
-        job={
-            "id": job.id,
-            "title": job.title,
-            "company": job.company,
-            "location": job.location,
-            "job_type": job.job_type,
-            "skills": job.skills or [],
-            "apply_link": job.apply_link,
-            "posted_at": job.posted_at,
-            "deadline": job.deadline
-        },
+        id=str(db_saved_job.id),
+        user_id=str(db_saved_job.user_id),
+        job_id=str(db_saved_job.job_id),
+        job=job_data,
         folder=db_saved_job.folder,
         notes=db_saved_job.notes,
-        saved_at=db_saved_job.saved_at
+        saved_at=db_saved_job.saved_at,
+        created_at=db_saved_job.created_at,
+        updated_at=db_saved_job.updated_at
     )
 
 
-@router.get("/students/me/saved-jobs", response_model=SavedJobsResponse)
+@router.get("", response_model=SavedJobsResponse)
 async def list_saved_jobs(
     folder: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
@@ -120,25 +137,13 @@ async def list_saved_jobs(
     """
     List all saved jobs
     
-    **Auth**: Student (JWT required)
+    **Auth**: User (JWT required)
     
     **Query Parameters**:
     - `folder`: Filter by folder name (optional)
     """
-    # Get student
-    result = await db.execute(
-        select(Student).where(Student.email == current_user.email)
-    )
-    student = result.scalar_one_or_none()
-    
-    if not student:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Student profile not found"
-        )
-    
     # Build query
-    query = select(SavedJob).where(SavedJob.student_id == student.id)
+    query = select(SavedJob).where(SavedJob.user_id == current_user.id)
     
     if folder:
         query = query.where(SavedJob.folder == folder)
@@ -152,7 +157,7 @@ async def list_saved_jobs(
     # Get unique folders
     folders_result = await db.execute(
         select(SavedJob.folder).where(
-            SavedJob.student_id == student.id,
+            SavedJob.user_id == current_user.id,
             SavedJob.folder.isnot(None)
         ).distinct()
     )
@@ -161,29 +166,54 @@ async def list_saved_jobs(
     # Format response with job details
     saved_jobs_response = []
     for saved_job in saved_jobs:
-        # Get job details
+        # Get job details with company
         job_result = await db.execute(
-            select(Job).where(Job.id == saved_job.job_id)
+            select(Job)
+            .options(joinedload(Job.company))
+            .where(Job.id == saved_job.job_id)
         )
         job = job_result.scalar_one_or_none()
         
-        saved_jobs_response.append(SavedJobResponse(
-            id=saved_job.id,
-            job_id=saved_job.job_id,
-            job={
-                "id": job.id,
+        if job:
+            job_data = {
+                "id": str(job.id),
                 "title": job.title,
-                "company": job.company,
+                "company_id": str(job.company_id) if job.company_id else None,
+                "company_name": job.company.name if job.company else "Unknown",
+                "description": job.description,
+                "skills_required": job.skills_required or [],
+                "experience_required": job.experience_required,
+                "salary_range": job.salary_range or {},
+                "is_fresher": job.is_fresher,
+                "work_type": job.work_type,
+                "experience_min": job.experience_min,
+                "experience_max": job.experience_max,
+                "salary_min": float(job.salary_min) if job.salary_min else None,
+                "salary_max": float(job.salary_max) if job.salary_max else None,
                 "location": job.location,
                 "job_type": job.job_type,
-                "skills": job.skills or [],
-                "apply_link": job.apply_link,
-                "posted_at": job.posted_at,
-                "deadline": job.deadline
-            } if job else None,
+                "employment_type": job.employment_type,
+                "source": job.source,
+                "source_url": job.source_url,
+                "is_active": job.is_active,
+                "view_count": job.view_count,
+                "application_count": job.application_count,
+                "created_at": job.created_at.isoformat() if job.created_at else None,
+                "updated_at": job.updated_at.isoformat() if job.updated_at else None,
+            }
+        else:
+            job_data = None
+        
+        saved_jobs_response.append(SavedJobResponse(
+            id=str(saved_job.id),
+            user_id=str(saved_job.user_id),
+            job_id=str(saved_job.job_id),
+            job=job_data,
             folder=saved_job.folder,
             notes=saved_job.notes,
-            saved_at=saved_job.saved_at
+            saved_at=saved_job.saved_at,
+            created_at=saved_job.created_at,
+            updated_at=saved_job.updated_at
         ))
     
     return SavedJobsResponse(
@@ -193,9 +223,9 @@ async def list_saved_jobs(
     )
 
 
-@router.patch("/students/me/saved-jobs/{saved_job_id}", response_model=SavedJobResponse)
+@router.patch("/{saved_job_id}", response_model=SavedJobResponse)
 async def update_saved_job(
-    saved_job_id: int,
+    saved_job_id: str,
     saved_job_update: SavedJobUpdate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -203,25 +233,21 @@ async def update_saved_job(
     """
     Update saved job folder or notes
     
-    **Auth**: Student (JWT required)
+    **Auth**: User (JWT required)
     """
-    # Get student
-    result = await db.execute(
-        select(Student).where(Student.email == current_user.email)
-    )
-    student = result.scalar_one_or_none()
-    
-    if not student:
+    try:
+        saved_job_uuid = UUID(saved_job_id)
+    except ValueError:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Student profile not found"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid saved_job_id format. Must be a valid UUID."
         )
     
     # Get saved job
     result = await db.execute(
         select(SavedJob).where(
-            SavedJob.id == saved_job_id,
-            SavedJob.student_id == student.id
+            SavedJob.id == saved_job_uuid,
+            SavedJob.user_id == current_user.id
         )
     )
     saved_job = result.scalar_one_or_none()
@@ -233,7 +259,7 @@ async def update_saved_job(
         )
     
     # Update fields
-    update_data = saved_job_update.dict(exclude_unset=True)
+    update_data = saved_job_update.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(saved_job, field, value)
     
@@ -242,58 +268,79 @@ async def update_saved_job(
     
     # Get job details
     job_result = await db.execute(
-        select(Job).where(Job.id == saved_job.job_id)
+        select(Job)
+        .options(joinedload(Job.company))
+        .where(Job.id == saved_job.job_id)
     )
     job = job_result.scalar_one_or_none()
     
-    return SavedJobResponse(
-        id=saved_job.id,
-        job_id=saved_job.job_id,
-        job={
-            "id": job.id,
+    if job:
+        job_data = {
+            "id": str(job.id),
             "title": job.title,
-            "company": job.company,
+            "company_id": str(job.company_id) if job.company_id else None,
+            "company_name": job.company.name if job.company else "Unknown",
+            "description": job.description,
+            "skills_required": job.skills_required or [],
+            "experience_required": job.experience_required,
+            "salary_range": job.salary_range or {},
+            "is_fresher": job.is_fresher,
+            "work_type": job.work_type,
+            "experience_min": job.experience_min,
+            "experience_max": job.experience_max,
+            "salary_min": float(job.salary_min) if job.salary_min else None,
+            "salary_max": float(job.salary_max) if job.salary_max else None,
             "location": job.location,
             "job_type": job.job_type,
-            "skills": job.skills or [],
-            "apply_link": job.apply_link,
-            "posted_at": job.posted_at,
-            "deadline": job.deadline
-        } if job else None,
+            "employment_type": job.employment_type,
+            "source": job.source,
+            "source_url": job.source_url,
+            "is_active": job.is_active,
+            "view_count": job.view_count,
+            "application_count": job.application_count,
+            "created_at": job.created_at.isoformat() if job.created_at else None,
+            "updated_at": job.updated_at.isoformat() if job.updated_at else None,
+        }
+    else:
+        job_data = None
+    
+    return SavedJobResponse(
+        id=str(saved_job.id),
+        user_id=str(saved_job.user_id),
+        job_id=str(saved_job.job_id),
+        job=job_data,
         folder=saved_job.folder,
         notes=saved_job.notes,
-        saved_at=saved_job.saved_at
+        saved_at=saved_job.saved_at,
+        created_at=saved_job.created_at,
+        updated_at=saved_job.updated_at
     )
 
 
-@router.delete("/students/me/saved-jobs/{saved_job_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{saved_job_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_saved_job(
-    saved_job_id: int,
+    saved_job_id: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Remove a saved job
     
-    **Auth**: Student (JWT required)
+    **Auth**: User (JWT required)
     """
-    # Get student
-    result = await db.execute(
-        select(Student).where(Student.email == current_user.email)
-    )
-    student = result.scalar_one_or_none()
-    
-    if not student:
+    try:
+        saved_job_uuid = UUID(saved_job_id)
+    except ValueError:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Student profile not found"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid saved_job_id format. Must be a valid UUID."
         )
     
     # Get saved job
     result = await db.execute(
         select(SavedJob).where(
-            SavedJob.id == saved_job_id,
-            SavedJob.student_id == student.id
+            SavedJob.id == saved_job_uuid,
+            SavedJob.user_id == current_user.id
         )
     )
     saved_job = result.scalar_one_or_none()
@@ -311,7 +358,7 @@ async def remove_saved_job(
     return None
 
 
-@router.get("/students/me/saved-jobs/folders", response_model=list[FolderResponse])
+@router.get("/folders", response_model=list[FolderResponse])
 async def list_folders(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -319,20 +366,8 @@ async def list_folders(
     """
     List all folders with job counts
     
-    **Auth**: Student (JWT required)
+    **Auth**: User (JWT required)
     """
-    # Get student
-    result = await db.execute(
-        select(Student).where(Student.email == current_user.email)
-    )
-    student = result.scalar_one_or_none()
-    
-    if not student:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Student profile not found"
-        )
-    
     # Get folders with counts
     result = await db.execute(
         select(
@@ -340,7 +375,7 @@ async def list_folders(
             func.count(SavedJob.id).label("count")
         )
         .where(
-            SavedJob.student_id == student.id,
+            SavedJob.user_id == current_user.id,
             SavedJob.folder.isnot(None)
         )
         .group_by(SavedJob.folder)
@@ -357,7 +392,7 @@ async def list_folders(
     no_folder_result = await db.execute(
         select(func.count(SavedJob.id))
         .where(
-            SavedJob.student_id == student.id,
+            SavedJob.user_id == current_user.id,
             SavedJob.folder.is_(None)
         )
     )
@@ -372,36 +407,32 @@ async def list_folders(
     return folders
 
 
-@router.get("/students/me/saved-jobs/check/{job_id}")
+@router.get("/check/{job_id}")
 async def check_if_saved(
-    job_id: int,
+    job_id: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Check if a job is already saved
     
-    **Auth**: Student (JWT required)
+    **Auth**: User (JWT required)
     
     Useful for UI to show "Saved" vs "Save" button
     """
-    # Get student
-    result = await db.execute(
-        select(Student).where(Student.email == current_user.email)
-    )
-    student = result.scalar_one_or_none()
-    
-    if not student:
+    try:
+        job_uuid = UUID(job_id)
+    except ValueError:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Student profile not found"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid job_id format. Must be a valid UUID."
         )
     
     # Check if saved
     result = await db.execute(
         select(SavedJob).where(
-            SavedJob.student_id == student.id,
-            SavedJob.job_id == job_id
+            SavedJob.user_id == current_user.id,
+            SavedJob.job_id == job_uuid
         )
     )
     saved_job = result.scalar_one_or_none()
@@ -409,6 +440,6 @@ async def check_if_saved(
     return {
         "job_id": job_id,
         "is_saved": saved_job is not None,
-        "saved_job_id": saved_job.id if saved_job else None,
+        "saved_job_id": str(saved_job.id) if saved_job else None,
         "folder": saved_job.folder if saved_job else None
     }

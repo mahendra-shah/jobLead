@@ -85,6 +85,7 @@ class Job(Base):
     # scraped_by_account = relationship("TelegramAccount", foreign_keys=[scraped_by_account_id])  # Commented out - tables empty
     # Using forward reference to avoid circular import issues
     applications = relationship("Application", back_populates="job", cascade="all, delete-orphan", lazy="dynamic")
+    saved_jobs = relationship("SavedJob", back_populates="job", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<Job {self.title} at {self.company_id}>"

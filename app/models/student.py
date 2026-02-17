@@ -40,7 +40,6 @@ class Student(Base):
     # Skills (separate technical and soft skills)
     technical_skills = Column(JSONB, default=list)  # ["Python", "React", ...]
     soft_skills = Column(JSONB, default=list)  # ["Communication", "Teamwork", ...]
-    skill_required = Column(JSONB, default=list)  # Required skills for job matching
     skills = Column(JSONB, default=list)  # Legacy field - keep for backward compatibility
     
     # Experience
@@ -80,7 +79,6 @@ class Student(Base):
     # Relationships
     user = relationship("User", backref="student_profile")
     applications = relationship("Application", back_populates="student", cascade="all, delete-orphan")
-    saved_jobs = relationship("SavedJob", back_populates="student", cascade="all, delete-orphan")
     notifications = relationship("StudentNotification", back_populates="student", cascade="all, delete-orphan")
 
     def __repr__(self):

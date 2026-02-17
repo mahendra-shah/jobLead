@@ -13,36 +13,37 @@ from app.db.base import Base
 
 class SavedJob(Base):
     """
-    Jobs saved/bookmarked by students
+    Jobs saved/bookmarked by users
+    One-to-many relation with users table
+    One-to-one relation with jobs table
     """
     __tablename__ = "saved_jobs"
     
-    id = Column(Integer, primary_key=True, index=True)
-    student_id = Column(UUID(as_uuid=True), ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
-    job_id = Column(UUID(as_uuid=True), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
+    # Note: id, created_at, updated_at are inherited from Base class (UUID)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    job_id = Column(UUID(as_uuid=True), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False, index=True)
     
     # Optional organization
     folder = Column(String(100), nullable=True)  # e.g., "Applied", "Interested", "Dream Companies"
-    notes = Column(Text, nullable=True)  # Student's private notes
+    notes = Column(Text, nullable=True)  # User's private notes
     
     # Timestamps
     saved_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
-    student = relationship("Student", back_populates="saved_jobs")
-    job = relationship("Job")
+    user = relationship("User", back_populates="saved_jobs")
+    job = relationship("Job", back_populates="saved_jobs")
     
     # Indexes
     __table_args__ = (
-        Index("idx_saved_jobs_student", "student_id"),
+        Index("idx_saved_jobs_user", "user_id"),
         Index("idx_saved_jobs_job", "job_id"),
-        Index("idx_saved_jobs_student_job", "student_id", "job_id", unique=True),  # Prevent duplicates
-        Index("idx_saved_jobs_folder", "student_id", "folder"),
+        Index("idx_saved_jobs_user_job", "user_id", "job_id", unique=True),  # Prevent duplicates
+        Index("idx_saved_jobs_folder", "user_id", "folder"),
     )
     
     def __repr__(self):
-        return f"<SavedJob(student_id={self.student_id}, job_id={self.job_id})>"
+        return f"<SavedJob(user_id={self.user_id}, job_id={self.job_id})>"
 
 
 class JobView(Base):

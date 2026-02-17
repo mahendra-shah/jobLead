@@ -186,7 +186,7 @@ async def get_dashboard(
     
     # Get saved jobs count
     saved_count_result = await db.execute(
-        select(func.count(SavedJob.id)).where(SavedJob.student_id == student.id)
+        select(func.count(SavedJob.id)).where(SavedJob.user_id == current_user.id)
     )
     saved_jobs_count = saved_count_result.scalar()
     
@@ -370,7 +370,7 @@ async def get_activity(
     
     # Saved jobs count
     saved_count_result = await db.execute(
-        select(func.count(SavedJob.id)).where(SavedJob.student_id == student.id)
+        select(func.count(SavedJob.id)).where(SavedJob.user_id == current_user.id)
     )
     saved_jobs = saved_count_result.scalar()
     
