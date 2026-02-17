@@ -40,6 +40,7 @@ class Student(Base):
     # Skills (separate technical and soft skills)
     technical_skills = Column(JSONB, default=list)  # ["Python", "React", ...]
     soft_skills = Column(JSONB, default=list)  # ["Communication", "Teamwork", ...]
+    skill_required = Column(JSONB, default=list)  # Required skills for job matching
     skills = Column(JSONB, default=list)  # Legacy field - keep for backward compatibility
     
     # Experience
