@@ -671,13 +671,7 @@ async def get_scraping_stats(
     total_messages = 0  # Use MongoDB raw_messages collection
     messages_last_7_days = 0  # Use MongoDB raw_messages collection
     messages_last_30_days = 0  # Use MongoDB raw_messages collection
-    
-    result = await db.execute(
-        select(func.count())
-        .select_from(RawTelegramMessage)
-        .where(func.date(RawTelegramMessage.created_at) == today)
-    )
-    messages_today = result.scalar() or 0
+    messages_today = 0  # Use MongoDB raw_messages collection
     
     # Average health score
     result = await db.execute(
