@@ -3,11 +3,12 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_, and_, desc
+from sqlalchemy import select, func, or_, and_, desc, case
 from sqlalchemy.orm import joinedload
 
 from app.api.deps import get_db
 from app.models.job import Job
+from app.models.company import Company
 from app.schemas.job import JobListResponse, JobDetailResponse
 
 router = APIRouter()
@@ -35,10 +36,16 @@ async def list_jobs(
     is_active: bool = Query(True, description="Show only active jobs"),
     sort_by: str = Query("created_at", description="Sort by field (created_at, title, location)"),
     sort_order: str = Query("desc", description="Sort order (asc, desc)"),
+    include_total: bool = Query(False, description="Include total count (slower for large datasets)"),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Get paginated list of jobs with filters
+    Get paginated list of jobs with filters - OPTIMIZED FOR SPEED
+    
+    **Performance Notes:**
+    - Set `include_total=false` (default) for fastest response
+    - Total count only computed when explicitly requested
+    - Indexes optimized for common filter combinations
     
     **Filters:**
     - `location`: City name or 'Remote' (case-insensitive, partial match)
@@ -62,11 +69,15 @@ async def list_jobs(
     **Pagination:**
     - `page`: Page number (starts at 1)
     - `size`: Items per page (max: 100)
+    - `include_total`: Include total count (default: false for speed)
     
     **Examples:**
     ```
-    # Get fresher jobs
-    GET /api/v1/jobs/?is_fresher=true&page=1&size=20
+    # Fast query without total count
+    GET /api/v1/jobs/?page=1&size=20
+    
+    # Get fresher jobs with total
+    GET /api/v1/jobs/?is_fresher=true&page=1&size=20&include_total=true
     
     # Get remote jobs with 2-5 years experience
     GET /api/v1/jobs/?work_type=remote&min_experience=2&max_experience=5
@@ -78,17 +89,14 @@ async def list_jobs(
     GET /api/v1/jobs/?location=Pune&skills=Python,Django&is_fresher=true&work_type=remote
     ```
     """
-    # Build base query
-    query = select(Job).options(joinedload(Job.company))
-    
-    # Apply filters
+    # Build filters list
     filters = []
     
     if is_active:
         filters.append(Job.is_active.is_(True))
     
     if location:
-        # Case-insensitive partial match
+        # Case-insensitive partial match (uses GIN index with pg_trgm)
         filters.append(Job.location.ilike(f"%{location}%"))
     
     if skills:
@@ -156,72 +164,138 @@ async def list_jobs(
     if company_id:
         filters.append(Job.company_id == company_id)
     
-    if filters:
-        query = query.where(and_(*filters))
+    # Combine filters
+    where_clause = and_(*filters) if filters else True
     
-    # Get total count
-    count_query = select(func.count()).select_from(Job)
-    if filters:
-        count_query = count_query.where(and_(*filters))
-    
-    result = await db.execute(count_query)
-    total = result.scalar()
-    
-    # Apply sorting
+    # Determine sort column and order
     sort_column = getattr(Job, sort_by, Job.created_at)
-    if sort_order.lower() == "desc":
-        query = query.order_by(desc(sort_column))
+    order_clause = desc(sort_column) if sort_order.lower() == "desc" else sort_column
+    
+    # Build optimized query - select specific columns + company name
+    # Use window function to get total count in same query (if requested)
+    if include_total:
+        # Single query with COUNT(*) OVER() window function
+        query = (
+            select(
+                Job.id,
+                Job.title,
+                Job.company_id,
+                Company.name.label('company_name'),
+                Job.description,
+                Job.skills_required,
+                Job.experience_required,
+                Job.salary_range,
+                Job.is_fresher,
+                Job.work_type,
+                Job.experience_min,
+                Job.experience_max,
+                Job.salary_min,
+                Job.salary_max,
+                Job.location,
+                Job.job_type,
+                Job.employment_type,
+                Job.source,
+                Job.source_url,
+                Job.is_active,
+                Job.view_count,
+                Job.application_count,
+                Job.created_at,
+                Job.updated_at,
+                func.count().over().label('total_count')  # Window function for total
+            )
+            .outerjoin(Company, Job.company_id == Company.id)
+            .where(where_clause)
+            .order_by(order_clause)
+            .offset((page - 1) * size)
+            .limit(size)
+        )
+        
+        # Execute query
+        result = await db.execute(query)
+        rows = result.all()
+        
+        # Get total from first row (same for all rows due to window function)
+        total = rows[0].total_count if rows else 0
     else:
-        query = query.order_by(sort_column)
+        # Fast query without count - just fetch data
+        query = (
+            select(
+                Job.id,
+                Job.title,
+                Job.company_id,
+                Company.name.label('company_name'),
+                Job.description,
+                Job.skills_required,
+                Job.experience_required,
+                Job.salary_range,
+                Job.is_fresher,
+                Job.work_type,
+                Job.experience_min,
+                Job.experience_max,
+                Job.salary_min,
+                Job.salary_max,
+                Job.location,
+                Job.job_type,
+                Job.employment_type,
+                Job.source,
+                Job.source_url,
+                Job.is_active,
+                Job.view_count,
+                Job.application_count,
+                Job.created_at,
+                Job.updated_at
+            )
+            .outerjoin(Company, Job.company_id == Company.id)
+            .where(where_clause)
+            .order_by(order_clause)
+            .offset((page - 1) * size)
+            .limit(size)
+        )
+        
+        # Execute query
+        result = await db.execute(query)
+        rows = result.all()
+        
+        # No total count in fast mode
+        total = None
     
-    # Apply pagination
-    query = query.offset((page - 1) * size).limit(size)
-    
-    # Execute query
-    result = await db.execute(query)
-    jobs = result.scalars().unique().all()
-    
-    # Format response
-    items = []
-    for job in jobs:
-        items.append({
-            "id": str(job.id),
-            "title": job.title,
-            "company_id": str(job.company_id) if job.company_id else None,
-            "company_name": job.company.name if job.company else "Unknown",
-            "description": job.description,
-            "skills_required": job.skills_required or [],
-            
-            # Legacy fields (backward compatibility)
-            "experience_required": job.experience_required,
-            "salary_range": job.salary_range or {},
-            
-            # New structured fields
-            "is_fresher": job.is_fresher,
-            "work_type": job.work_type,
-            "experience_min": job.experience_min,
-            "experience_max": job.experience_max,
-            "salary_min": float(job.salary_min) if job.salary_min else None,
-            "salary_max": float(job.salary_max) if job.salary_max else None,
-            
-            "location": job.location,
-            "job_type": job.job_type,
-            "employment_type": job.employment_type,
-            "source": job.source,
-            "source_url": job.source_url,
-            "is_active": job.is_active,
-            "view_count": job.view_count,
-            "application_count": job.application_count,
-            "created_at": job.created_at.isoformat() if job.created_at else None,
-            "updated_at": job.updated_at.isoformat() if job.updated_at else None,
-        })
+    # Format response (fast list comprehension)
+    items = [
+        {
+            "id": str(row.id),
+            "title": row.title,
+            "company_id": str(row.company_id) if row.company_id else None,
+            "company_name": row.company_name or "Unknown",
+            "description": row.description,
+            "skills_required": row.skills_required or [],
+            "experience_required": row.experience_required,
+            "salary_range": row.salary_range or {},
+            "is_fresher": row.is_fresher,
+            "work_type": row.work_type,
+            "experience_min": row.experience_min,
+            "experience_max": row.experience_max,
+            "salary_min": float(row.salary_min) if row.salary_min else None,
+            "salary_max": float(row.salary_max) if row.salary_max else None,
+            "location": row.location,
+            "job_type": row.job_type,
+            "employment_type": row.employment_type,
+            "source": row.source,
+            "source_url": row.source_url,
+            "is_active": row.is_active,
+            "view_count": row.view_count,
+            "application_count": row.application_count,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        }
+        for row in rows
+    ]
     
     return JobListResponse(
         items=items,
-        total=total,
+        total=total if include_total else len(items),  # Return items length in fast mode
         page=page,
         size=size,
-        pages=(total + size - 1) // size  # Ceiling division
+        pages=(total + size - 1) // size if (total and total > 0) else 1
     )
 
 

@@ -8,6 +8,7 @@ from typing import List, Dict, Any
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
+from sqlalchemy.orm import selectinload
 
 from app.models.student import Student
 from app.models.job import Job
@@ -57,14 +58,20 @@ class JobRecommendationService:
             List of recommendations with scores and reasons
         """
         # Query job table for active jobs from last 7 days only
+        # Eagerly load company relationship to avoid async issues
         seven_days_ago = datetime.utcnow() - timedelta(days=7)
         
-        query = select(Job).where(
-            and_(
-                Job.is_active.is_(True),
-                Job.created_at >= seven_days_ago
+        query = (
+            select(Job)
+            .options(selectinload(Job.company))  # Eagerly load company
+            .where(
+                and_(
+                    Job.is_active.is_(True),
+                    Job.created_at >= seven_days_ago
+                )
             )
-        ).order_by(Job.created_at.desc())  # Order by newest first
+            .order_by(Job.created_at.desc())  # Order by newest first
+        )
         
         result = await self.db.execute(query)
         jobs = result.scalars().all()
@@ -491,27 +498,34 @@ class JobRecommendationService:
         """
         Get similar jobs based on skills and company
         """
-        # Get the reference job
+        # Get the reference job with company loaded
         result = await self.db.execute(
-            select(Job).where(Job.id == job_id)
+            select(Job)
+            .options(selectinload(Job.company))
+            .where(Job.id == job_id)
         )
         reference_job = result.scalar_one_or_none()
         
         if not reference_job:
             return []
         
-        # Get jobs with similar skills or same company
-        query = select(Job).where(
-            and_(
-                Job.id != job_id,
-                Job.is_active.is_(True),
-                or_(
-                    Job.company_id == reference_job.company_id,
-                    # Jobs with overlapping skills (handled in Python)
-                    Job.skills_required.isnot(None)
+        # Get jobs with similar skills or same company (with company loaded)
+        query = (
+            select(Job)
+            .options(selectinload(Job.company))
+            .where(
+                and_(
+                    Job.id != job_id,
+                    Job.is_active.is_(True),
+                    or_(
+                        Job.company_id == reference_job.company_id,
+                        # Jobs with overlapping skills (handled in Python)
+                        Job.skills_required.isnot(None)
+                    )
                 )
             )
-        ).limit(limit * 2)  # Get extra to filter by skills
+            .limit(limit * 2)  # Get extra to filter by skills
+        )
         
         result = await self.db.execute(query)
         similar_jobs = result.scalars().all()
