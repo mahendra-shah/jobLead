@@ -230,15 +230,25 @@ def build_profile_response(student: Student, user: User) -> StudentProfileRespon
         cgpa=student.cgpa,
         technical_skills=student.technical_skills or [],
         soft_skills=student.soft_skills or [],
+        skill_required=student.skill_required or [],
         experience_type=student.experience_type,
         internship_details=internship_details,
         projects=projects,
         languages=languages,
+        # Return flat fields like technical_skills (for consistency)
         job_type=student.job_type or [],
         work_mode=student.work_mode or [],
         preferred_job_role=student.preferred_job_role or [],
         preferred_location=student.preferred_location or [],
         expected_salary=student.expected_salary,
+        # Also include nested preference for backward compatibility
+        preference={
+            "job_type": student.job_type or [],
+            "work_mode": student.work_mode or [],
+            "preferred_job_role": student.preferred_job_role or [],
+            "preferred_location": student.preferred_location or [],
+            "expected_salary": student.expected_salary,
+        } if (student.job_type or student.work_mode or student.preferred_job_role or student.preferred_location or student.expected_salary) else None,
         github_profile=student.github_profile,
         linkedin_profile=student.linkedin_profile,
         portfolio_url=student.portfolio_url,
@@ -309,6 +319,22 @@ async def update_my_profile(
         
         # Get update data (only fields that are provided)
         update_data = profile_update.model_dump(exclude_unset=True, exclude_none=False)
+        
+        # Handle nested preference object - extract to flat fields
+        if 'preference' in update_data and update_data['preference']:
+            preference_data = update_data.pop('preference')
+            if isinstance(preference_data, dict):
+                # Map nested preference fields to flat model columns
+                if 'job_type' in preference_data:
+                    update_data['job_type'] = preference_data['job_type']
+                if 'work_mode' in preference_data:
+                    update_data['work_mode'] = preference_data['work_mode']
+                if 'preferred_job_role' in preference_data:
+                    update_data['preferred_job_role'] = preference_data['preferred_job_role']
+                if 'preferred_location' in preference_data:
+                    update_data['preferred_location'] = preference_data['preferred_location']
+                if 'expected_salary' in preference_data:
+                    update_data['expected_salary'] = preference_data['expected_salary']
         
         # Handle nested Pydantic models - convert to dicts
         if 'internship_details' in update_data and update_data['internship_details']:
@@ -409,7 +435,17 @@ async def update_my_profile(
                     if value is None and field in ['date_of_birth', 'percentage', 'cgpa', 'expected_salary', 'college_id']:
                         setattr(student, field, None)
                     elif value is not None:
-                        setattr(student, field, value)
+                        # Ensure arrays are properly set (for JSONB fields)
+                        if field in ['job_type', 'work_mode', 'preferred_job_role', 'preferred_location', 
+                                     'technical_skills', 'soft_skills', 'skill_required']:
+                            # Ensure value is a list
+                            if isinstance(value, list):
+                                setattr(student, field, value)
+                            else:
+                                # Convert to list if not already
+                                setattr(student, field, [value] if value else [])
+                        else:
+                            setattr(student, field, value)
         
         await db.commit()
         await db.refresh(student)

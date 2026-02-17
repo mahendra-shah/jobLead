@@ -40,6 +40,27 @@ class LanguageProficiency(BaseModel):
         return v.lower() if v else v
 
 
+class JobPreferences(BaseModel):
+    """Job preferences nested object"""
+    job_type: Optional[List[str]] = Field(
+        None,
+        description="Job types: ['Internship', 'Full-Time', 'Part-Time']"
+    )
+    work_mode: Optional[List[str]] = Field(
+        None,
+        description="Work modes: ['Remote', 'Hybrid', 'Office']"
+    )
+    preferred_job_role: Optional[List[str]] = Field(
+        None,
+        description="Preferred job roles (e.g., ['Software Developer', 'Data Analyst'])"
+    )
+    preferred_location: Optional[List[str]] = Field(
+        None,
+        description="Preferred locations (e.g., ['Bangalore', 'Mumbai', 'Remote'])"
+    )
+    expected_salary: Optional[int] = Field(None, ge=0, description="Expected salary in INR (optional)")
+
+
 # ==================== Student Profile Schemas ====================
 
 class StudentProfileUpdate(BaseModel):
@@ -78,6 +99,10 @@ class StudentProfileUpdate(BaseModel):
         None,
         description="Soft skills array (e.g., ['Communication', 'Teamwork', 'Time Management'])"
     )
+    skill_required: Optional[List[str]] = Field(
+        None,
+        description="Required skills for job matching (e.g., ['Python', 'FastAPI', 'PostgreSQL'])"
+    )
     
     # Experience
     experience_type: Optional[str] = Field(
@@ -99,7 +124,7 @@ class StudentProfileUpdate(BaseModel):
         description="Array of languages with proficiency levels"
     )
     
-    # Job Preferences
+    # Job Preferences (flat fields like technical_skills)
     job_type: Optional[List[str]] = Field(
         None,
         description="Job types: ['Internship', 'Full-Time', 'Part-Time']"
@@ -117,6 +142,12 @@ class StudentProfileUpdate(BaseModel):
         description="Preferred locations (e.g., ['Bangalore', 'Mumbai', 'Remote'])"
     )
     expected_salary: Optional[int] = Field(None, ge=0, description="Expected salary in INR (optional)")
+    
+    # Job Preferences (nested object - for backward compatibility)
+    preference: Optional[JobPreferences] = Field(
+        None,
+        description="Job preferences (job_type, work_mode, preferred_job_role, preferred_location, expected_salary)"
+    )
     
     # Technical Profile Links
     github_profile: Optional[str] = Field(None, max_length=500, description="GitHub profile URL")
@@ -167,6 +198,7 @@ class StudentProfileResponse(BaseModel):
     # Skills
     technical_skills: Optional[List[str]] = None
     soft_skills: Optional[List[str]] = None
+    skill_required: Optional[List[str]] = None
     
     # Experience
     experience_type: Optional[str] = None
@@ -176,12 +208,15 @@ class StudentProfileResponse(BaseModel):
     # Languages
     languages: Optional[List[Dict[str, str]]] = None
     
-    # Job Preferences
+    # Job Preferences (flat fields like technical_skills)
     job_type: Optional[List[str]] = None
     work_mode: Optional[List[str]] = None
     preferred_job_role: Optional[List[str]] = None
     preferred_location: Optional[List[str]] = None
     expected_salary: Optional[int] = None
+    
+    # Job Preferences (nested object - for backward compatibility)
+    preference: Optional[Dict[str, Any]] = None
     
     # Technical Profile Links
     github_profile: Optional[str] = None

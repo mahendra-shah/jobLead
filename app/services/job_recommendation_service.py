@@ -40,8 +40,13 @@ class JobRecommendationService:
         """
         Get personalized job recommendations for student
         
+        This function:
+        1. Queries job table for active jobs from last 7 days only
+        2. Matches student's technical_skills and soft_skills with job's skills_required
+        3. Returns jobs sorted by match score
+        
         Args:
-            student: Student object
+            student: Student object (logged-in student)
             limit: Max number of recommendations
             offset: Pagination offset
             min_score: Minimum recommendation score (0-100)
@@ -51,12 +56,15 @@ class JobRecommendationService:
         Returns:
             List of recommendations with scores and reasons
         """
-        # Get all active jobs (from last 90 days)
-        query = select(Job).where(Job.is_active.is_(True))
+        # Query job table for active jobs from last 7 days only
+        seven_days_ago = datetime.utcnow() - timedelta(days=7)
         
-        # Filter by recent jobs if created_at exists
-        if hasattr(Job, 'created_at'):
-            query = query.where(Job.created_at >= datetime.utcnow() - timedelta(days=90))
+        query = select(Job).where(
+            and_(
+                Job.is_active.is_(True),
+                Job.created_at >= seven_days_ago
+            )
+        ).order_by(Job.created_at.desc())  # Order by newest first
         
         result = await self.db.execute(query)
         jobs = result.scalars().all()
@@ -199,20 +207,32 @@ class JobRecommendationService:
         match_reasons: List[str],
         missing_skills: List[str]
     ) -> float:
-        """Calculate skill match score (0-40)"""
+        """Calculate skill match score (0-40) based on technical_skills and soft_skills"""
         job_skills_list = job.skills_required or []
         if len(job_skills_list) == 0:
             return 20.0  # Neutral score if no skills specified
         
-        student_skills = set(s.lower() for s in (student.skills or []))
-        job_skills = set(s.lower() for s in job_skills_list)
+        # Combine student's technical_skills and soft_skills
+        student_technical_skills = student.technical_skills or []
+        student_soft_skills = student.soft_skills or []
+        # Also check legacy 'skills' field for backward compatibility
+        student_legacy_skills = student.skills or []
+        
+        # Combine all student skills into one set
+        all_student_skills = []
+        all_student_skills.extend(student_technical_skills)
+        all_student_skills.extend(student_soft_skills)
+        all_student_skills.extend(student_legacy_skills)
+        
+        student_skills = set(s.lower().strip() for s in all_student_skills if s)
+        job_skills = set(s.lower().strip() for s in job_skills_list if s)
         
         if len(job_skills) == 0:
             return 20.0
         
         # Calculate match percentage
         matched_skills = student_skills & job_skills
-        match_percentage = len(matched_skills) / len(job_skills)
+        match_percentage = len(matched_skills) / len(job_skills) if len(job_skills) > 0 else 0
         
         # Score: 40% * match_percentage
         score = self.SKILL_WEIGHT * 100 * match_percentage
@@ -224,6 +244,8 @@ class JobRecommendationService:
             match_reasons.append(f"✅ Good skill match ({len(matched_skills)}/{len(job_skills)} skills)")
         elif match_percentage > 0:
             match_reasons.append(f"📚 Partial skill match ({len(matched_skills)}/{len(job_skills)} skills)")
+        else:
+            match_reasons.append(f"⚠️ No skill match - consider adding required skills")
         
         # Missing skills
         missing = job_skills - student_skills
@@ -247,8 +269,12 @@ class JobRecommendationService:
         - International: "International", "Global", "Worldwide"
         - Specific countries: "USA", "UK", "Canada", "Singapore"
         """
-        preferences = student.preferences or {}
-        preferred_locations = preferences.get('preferred_locations', [])
+        # Use flat field preferred_location (new) or legacy preferences field
+        preferred_locations = student.preferred_location or []
+        if not preferred_locations:
+            # Fallback to legacy preferences field
+            preferences = student.preferences or {}
+            preferred_locations = preferences.get('preferred_locations', [])
         
         if not preferred_locations or len(preferred_locations) == 0:
             return 10.0  # Neutral score if no preferences
@@ -386,8 +412,12 @@ class JobRecommendationService:
         match_reasons: List[str]
     ) -> float:
         """Calculate job type match score (0-10)"""
-        preferences = student.preferences or {}
-        preferred_job_types = preferences.get('preferred_job_types', [])
+        # Use flat field job_type (new) or legacy preferences field
+        preferred_job_types = student.job_type or []
+        if not preferred_job_types:
+            # Fallback to legacy preferences field
+            preferences = student.preferences or {}
+            preferred_job_types = preferences.get('preferred_job_types', [])
         
         if not preferred_job_types or len(preferred_job_types) == 0:
             return 5.0  # Neutral if no preferences
