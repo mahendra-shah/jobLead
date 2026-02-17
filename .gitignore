@@ -296,6 +296,9 @@ desktop.ini
 # Data Files
 data1.json
 
+# Application runtime data directory
+app/data/
+
 credentials.json
 
 # Python
