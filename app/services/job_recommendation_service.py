@@ -492,11 +492,12 @@ class JobRecommendationService:
     
     async def get_similar_jobs(
         self,
-        job_id: int,
+        job_id,
         limit: int = 5
     ) -> List[Job]:
         """
-        Get similar jobs based on skills and company
+        Get similar jobs based on skills and company.
+        Accepts a UUID job_id (or any DB-compatible primary key type).
         """
         # Get the reference job with company loaded
         result = await self.db.execute(
