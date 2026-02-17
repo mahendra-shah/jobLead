@@ -17,7 +17,7 @@ depends_on = None
 
 def upgrade() -> None:
     op.add_column('users', sa.Column('username', sa.String(length=150), nullable=True))
-    op.create_index(op.f('ix_users_username'), 'users', ['username'], unique=False)
+    op.create_index(op.f('ix_users_username'), 'users', ['username'], unique=True)
 
 
 def downgrade() -> None:

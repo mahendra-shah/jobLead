@@ -3,12 +3,17 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Username generation constants
+MAX_USERNAME_LENGTH = 150
+COUNTER_SUFFIX_SPACE = 10  # Reserve space for counter suffix like "_9999"
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -176,41 +181,89 @@ async def login_google(request: GoogleLoginRequest, db: AsyncSession = Depends(g
         username = None
         if name:
             # Use name as username, make it URL-safe
-            username = name.lower().replace(" ", "_")[:150]
+            username = name.lower().replace(" ", "_")[:MAX_USERNAME_LENGTH]
         elif given_name or family_name:
-            username = f"{given_name}_{family_name}".lower().replace(" ", "_")[:150]
+            username = f"{given_name}_{family_name}".lower().replace(" ", "_")[:MAX_USERNAME_LENGTH]
         else:
             # Fallback to email prefix
-            username = email.split("@")[0][:150]
+            username = email.split("@")[0][:MAX_USERNAME_LENGTH]
         
-        # Ensure username is unique by appending a number if needed
-        base_username = username
+        # Retry logic to handle username uniqueness with IntegrityError
+        # This prevents race conditions when multiple concurrent requests try to create the same username
+        # Truncate base username to leave room for counter suffix (e.g., "_9999")
+        base_username = username[:MAX_USERNAME_LENGTH - COUNTER_SUFFIX_SPACE]
         counter = 1
-        while True:
-            existing_username = await db.execute(
-                select(User).where(User.username == username)
-            )
-            if existing_username.scalar_one_or_none() is None:
+        max_retries = 10
+        
+        for attempt in range(max_retries):
+            try:
+                # Create new user
+                # OAuth users don't need a password hash
+                new_user = User(
+                    email=email,
+                    username=username,
+                    password_hash=None,  # No password for OAuth users
+                    role="student",  # Default role
+                    is_active=True,
+                    is_verified=True,  # Google verified email
+                )
+                
+                db.add(new_user)
+                await db.commit()
+                await db.refresh(new_user)
+                user = new_user
+                logger.info(f"Successfully auto-registered user: {email} with username: {username}")
                 break
-            username = f"{base_username}_{counter}"[:150]
-            counter += 1
-        
-        # Create new user
-        # OAuth users don't need a password hash
-        new_user = User(
-            email=email,
-            username=username,
-            password_hash=None,  # No password for OAuth users
-            role="student",  # Default role
-            is_active=True,
-            is_verified=True,  # Google verified email
-        )
-        
-        db.add(new_user)
-        await db.commit()
-        await db.refresh(new_user)
-        user = new_user
-        logger.info(f"Successfully auto-registered user: {email} with username: {username}")
+            except IntegrityError as e:
+                # Rollback the failed transaction
+                await db.rollback()
+                
+                # Get the error details to determine the constraint violation
+                # Try to get the constraint name from PostgreSQL-specific error details
+                constraint_name = None
+                if hasattr(e, 'orig') and hasattr(e.orig, 'diag'):
+                    constraint_name = getattr(e.orig.diag, 'constraint_name', None)
+                
+                # Check if it's a username collision (not email collision)
+                # The unique index can create different constraint names depending on how it's created
+                is_username_collision = False
+                if constraint_name:
+                    # Reliable: Use the actual constraint name from the database
+                    # PostgreSQL unique indexes can have names like 'ix_users_username', 'users_username_key', etc.
+                    is_username_collision = (
+                        'username' in constraint_name.lower() and 
+                        'email' not in constraint_name.lower()
+                    )
+                else:
+                    # Fallback: String matching in error message (less reliable)
+                    error_str = str(e.orig) if hasattr(e, 'orig') else str(e)
+                    # Look for specific patterns that indicate username constraint violation
+                    is_username_collision = (
+                        'ix_users_username' in error_str.lower() or
+                        ('username' in error_str.lower() and 'unique' in error_str.lower() and 'email' not in error_str.lower())
+                    )
+                    logger.debug(f"Using fallback string matching for IntegrityError detection: {error_str[:100]}")
+                
+                if is_username_collision:
+                    logger.warning(f"Username collision for '{username}' on attempt {attempt + 1}/{max_retries}")
+                    # Increment counter and retry with a new username
+                    # Ensure the final username doesn't exceed MAX_USERNAME_LENGTH
+                    username = f"{base_username}_{counter}"[:MAX_USERNAME_LENGTH]
+                    counter += 1
+                else:
+                    # Email collision - this shouldn't happen as we already checked
+                    logger.error(f"Email collision during user creation: {email}")
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="User with this email already exists",
+                    )
+        else:
+            # Loop completed without break - all retries exhausted
+            logger.error(f"Max retries reached for username generation for email: {email}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to generate unique username after multiple attempts",
+            )
 
     if not user.is_active:
         raise HTTPException(
