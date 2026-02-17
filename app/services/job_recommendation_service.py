@@ -75,7 +75,7 @@ class JobRecommendationService:
         
         if exclude_saved:
             saved_result = await self.db.execute(
-                select(SavedJob.job_id).where(SavedJob.student_id == student.id)
+                select(SavedJob.job_id).where(SavedJob.user_id == student.user_id)
             )
             saved_job_ids = {row[0] for row in saved_result.all()}
         

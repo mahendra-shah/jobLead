@@ -450,7 +450,7 @@ class RecommendedJobsResponse(BaseModel):
 
 class SavedJobCreate(BaseModel):
     """Save/bookmark a job"""
-    job_id: int
+    job_id: str  # UUID as string
     folder: Optional[str] = Field(None, max_length=100)
     notes: Optional[str] = None
 
@@ -463,12 +463,15 @@ class SavedJobUpdate(BaseModel):
 
 class SavedJobResponse(BaseModel):
     """Saved job response"""
-    id: int
-    job_id: int
+    id: str  # UUID as string
+    user_id: str  # UUID as string
+    job_id: str  # UUID as string
     job: Optional[Dict[str, Any]] = None
     folder: Optional[str] = None
     notes: Optional[str] = None
     saved_at: datetime
+    created_at: datetime
+    updated_at: Optional[datetime] = None
     
     class Config:
         from_attributes = True

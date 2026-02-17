@@ -80,7 +80,6 @@ class Student(Base):
     # Relationships
     user = relationship("User", backref="student_profile")
     applications = relationship("Application", back_populates="student", cascade="all, delete-orphan")
-    saved_jobs = relationship("SavedJob", back_populates="student", cascade="all, delete-orphan")
     notifications = relationship("StudentNotification", back_populates="student", cascade="all, delete-orphan")
 
     def __repr__(self):
