@@ -135,7 +135,8 @@ class Settings(BaseSettings):
     SENTRY_TRACES_SAMPLE_RATE: float = 0.1
     CLOUDWATCH_ENABLED: bool = False  # Disabled to save AWS costs - use API visibility instead
     CLOUDWATCH_NAMESPACE: str = "TelegramScraper"
-    SLACK_WEBHOOK_URL: str = ""
+    SLACK_BOT_TOKEN: str = ""
+    SLACK_CHANNEL_ID: str = ""
     SLACK_ALERTS_ENABLED: bool = True
     MAX_ALERTS_PER_HOUR: int = 5
     DAILY_SUMMARY_TIME: str = "09:00"  # Daily Slack summary time (24-hour format)

@@ -10,7 +10,7 @@ from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 
 from app.api.v1 import api_router
-from app.routers import monitoring, telegram_scraper, visibility, ml_feedback
+from app.routers import monitoring, telegram_scraper, visibility, ml_feedback, slack_commands
 from app.config import settings
 from app.core.logging import setup_logging
 from app.core.scheduler import start_scheduler, stop_scheduler
@@ -99,6 +99,9 @@ app.include_router(visibility.router, prefix="/api/visibility", tags=["Visibilit
 
 # Include ML feedback router (no prefix - uses /api/ml-feedback)
 app.include_router(ml_feedback.router, prefix="/api/ml-feedback", tags=["ML Feedback"])
+
+# Include Slack commands router (no prefix - uses /api/slack)
+app.include_router(slack_commands.router)
 
 
 @app.get("/", tags=["Health"])

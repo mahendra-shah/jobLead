@@ -94,76 +94,30 @@ async def run_telegram_scraper():
 
 async def send_daily_slack_summary():
     """
-    Scheduled task: Send daily Slack summary at 9:00 AM.
+    Scheduled task: Send daily morning update at 9:00 AM UTC (2:30 PM IST).
     
-    Includes previous day's statistics:
-    - Jobs scraped
-    - Channels active
-    - Account health
-    - Error summary
+    Includes:
+    - System status overview
+    - Previous day's statistics (jobs, messages, channels)
+    - Current account health
+    - Issues to address
     """
-    from app.utils.slack_notifier import SlackNotifier
-    from app.services.telegram_scraper_service import get_scraper_service
-    from app.db.session import SyncSessionLocal
-    from app.models.telegram_account import TelegramAccount, HealthStatus
-    from app.models.job import Job
-    from datetime import datetime, timedelta
+    from app.utils.slack_notifier import slack_notifier
+    from app.db.session import AsyncSessionLocal
     
-    logger.info("📊 Generating daily Slack summary...")
+    logger.info("☀️ Sending daily morning update to Slack...")
     
     try:
-        db = SyncSessionLocal()
-        scraper = get_scraper_service()
-        notifier = SlackNotifier()
-        
-        # Get yesterday's stats
-        yesterday = datetime.utcnow() - timedelta(days=1)
-        
-        # Jobs scraped yesterday
-        jobs_yesterday = db.query(Job).filter(
-            Job.created_at >= yesterday
-        ).count()
-        
-        # Account health
-        accounts = db.query(TelegramAccount).all()
-        healthy_accounts = sum(1 for a in accounts if a.health_status == HealthStatus.HEALTHY)
-        banned_accounts = sum(1 for a in accounts if a.health_status == HealthStatus.BANNED)
-        
-        # MongoDB stats
-        total_messages = 0
-        unprocessed = 0
-        if scraper._initialized:
-            mongo_db = scraper.mongo_client[settings.MONGODB_DATABASE]
-            total_messages = mongo_db.raw_messages.count_documents({})
-            unprocessed = mongo_db.raw_messages.count_documents({'is_processed': False})
-        
-        # Send summary
-        summary_text = f"""
-📊 *Daily Telegram Scraping Summary*
-_Previous 24 hours: {yesterday.strftime('%Y-%m-%d')}_
-
-*Jobs Scraped:* {jobs_yesterday} new jobs
-*Messages Total:* {total_messages} (Unprocessed: {unprocessed})
-
-*Account Health:*
-• Healthy: {healthy_accounts}/{len(accounts)}
-• Banned: {banned_accounts}/{len(accounts)}
-
-*System Status:* {"✅ Operational" if healthy_accounts > 0 else "⚠️ Degraded"}
-"""
-        
-        notifier.send_message(
-            title="Daily Scraping Summary",
-            message=summary_text,
-            severity="info"
-        )
-        
-        logger.info("✅ Daily Slack summary sent successfully")
-        
-        db.close()
-        
+        async with AsyncSessionLocal() as db:
+            success = await slack_notifier.send_morning_update(db)
+            
+            if success:
+                logger.info("✅ Morning update sent successfully to Slack")
+            else:
+                logger.warning("⚠️ Failed to send morning update to Slack")
+                
     except Exception as e:
-        logger.error(f"❌ Failed to send daily Slack summary: {e}", exc_info=True)
+        logger.error(f"❌ Failed to send morning update: {e}", exc_info=True)
 
 
 async def run_channel_sync():
@@ -218,15 +172,15 @@ def setup_jobs():
     )
     logger.info(f"   ✅ Added: telegram_scraper_4hourly (Hours: {hour_str} UTC)")
     
-    # Job 2: Daily Slack Summary at 9:00 AM
+    # Job 2: Daily Morning Update at 9:00 AM UTC (2:30 PM IST)
     scheduler.add_job(
         send_daily_slack_summary,
-        CronTrigger(hour=9, minute=0),  # 9:00 AM UTC
-        id='daily_slack_summary',
-        name='Daily Slack Summary (9:00 AM)',
+        CronTrigger(hour=9, minute=0),  # 9:00 AM UTC = 2:30 PM IST
+        id='daily_morning_update',
+        name='Daily Morning Update (9:00 AM UTC / 2:30 PM IST)',
         replace_existing=True
     )
-    logger.info("   ✅ Added: daily_slack_summary (09:00 UTC)")
+    logger.info("   ✅ Added: daily_morning_update (09:00 UTC / 14:30 IST)")
     
     # Job 3: Channel Sync (PostgreSQL ↔ MongoDB) - Every 6 hours
     # Syncs telegram_groups (PostgreSQL) to channels (MongoDB) for Lambda access

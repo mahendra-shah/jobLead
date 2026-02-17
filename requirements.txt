@@ -64,6 +64,7 @@ phonenumbers==8.13.27
 # Monitoring & Logging
 sentry-sdk[fastapi]==1.39.2
 structlog==24.1.0
+slack-sdk==3.40.0
 
 # Retry Logic & Error Handling
 tenacity==8.2.3
