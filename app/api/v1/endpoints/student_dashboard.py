@@ -126,12 +126,6 @@ def _student_profile_payload(student: Student, current_user: User) -> dict:
 
         # Preferences (from JSONB preference column)
         "preference": student.preference or {},
-        # For backward compatibility, also include flat fields from preference object
-        "job_type": student.preference.get('job_type', []) if student.preference else [],
-        "work_mode": student.preference.get('work_mode', []) if student.preference else [],
-        "preferred_job_role": student.preference.get('preferred_job_role', []) if student.preference else [],
-        "preferred_location": student.preference.get('preferred_location', []) if student.preference else [],
-        "expected_salary": student.preference.get('expected_salary') if student.preference else None,
 
         # Links
         "github_profile": student.github_profile,

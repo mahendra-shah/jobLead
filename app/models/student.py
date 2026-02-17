@@ -3,7 +3,6 @@
 from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Date, Float, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
-from pgvector.sqlalchemy import Vector
 
 from app.db.base import Base
 
@@ -55,13 +54,6 @@ class Student(Base):
     linkedin_profile = Column(String(500))
     portfolio_url = Column(String(500))
     coding_platforms = Column(JSONB, default=dict)  # {"LeetCode": "username", ...}
-    
-    # Education (legacy JSONB field - keep for backward compatibility)
-    education = Column(JSONB, default=list)
-    
-    # Profile metadata
-    profile_score = Column(Integer, default=0)
-    profile_embedding = Column(Vector(1536))  # For personalized job matching
     
     # Settings
     email_notifications = Column(Boolean, default=True)
