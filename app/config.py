@@ -1,8 +1,17 @@
 """Application configuration using Pydantic Settings."""
 
-from typing import List, Union, Annotated
+from typing import List, Union, Annotated, Any
 from pydantic import Field, field_validator, BeforeValidator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def parse_list_of_ints(v: Any) -> List[int]:
+    """Parse comma-separated string to list of integers."""
+    if isinstance(v, str):
+        return [int(x.strip()) for x in v.split(",")]
+    if isinstance(v, list):
+        return v
+    return [v]
 
 
 class Settings(BaseSettings):
@@ -120,6 +129,17 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"
     
+    # Monitoring & Alerting
+    SENTRY_DSN: str = ""
+    SENTRY_ENVIRONMENT: str = "production"
+    SENTRY_TRACES_SAMPLE_RATE: float = 0.1
+    CLOUDWATCH_ENABLED: bool = False  # Disabled to save AWS costs - use API visibility instead
+    CLOUDWATCH_NAMESPACE: str = "TelegramScraper"
+    SLACK_WEBHOOK_URL: str = ""
+    SLACK_ALERTS_ENABLED: bool = True
+    MAX_ALERTS_PER_HOUR: int = 5
+    DAILY_SUMMARY_TIME: str = "09:00"  # Daily Slack summary time (24-hour format)
+    
     # Channel Scoring & Quality Management
     CHANNEL_SCORE_LOW_THRESHOLD: int = 40
     CHANNEL_SCORE_INACTIVE_THRESHOLD: int = 25
@@ -129,6 +149,17 @@ class Settings(BaseSettings):
     SCORING_LOOKBACK_DAYS: int = 30
     SCORING_UPDATE_FREQUENCY: str = "daily"
     ENABLE_AUTO_DEACTIVATION: bool = True
+    
+    # ML Feedback & Training
+    ML_MIN_FEEDBACK_FOR_RETRAIN: int = 50  # Minimum feedback samples before retraining
+    ML_ACCURACY_THRESHOLD: float = 0.80  # Target accuracy (80%)
+    ML_RETRAIN_SCHEDULE: str = "monthly"  # Auto-retrain frequency
+    ML_EXTRACTOR_VERSION: str = "v2"  # Use enhanced extractor v2 by default
+    ML_MODEL_PATH: str = "app/ml/models/"  # Path to store trained models
+    
+    # Scraping Schedule (4-hour intervals)
+    SCRAPING_HOURS: Annotated[List[int], BeforeValidator(parse_list_of_ints)] = [4, 8, 12, 16, 20, 0]
+    SCRAPING_TIMEZONE: str = "Asia/Kolkata"  # IST timezone
 
     @field_validator("ALLOWED_RESUME_EXTENSIONS", mode="before")
     @classmethod

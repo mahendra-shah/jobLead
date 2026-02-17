@@ -10,7 +10,7 @@ from app.models.user import User
 from app.models.scraping_log import ScrapingLog
 from app.models.telegram_account import TelegramAccount
 from app.models.telegram_group import TelegramGroup
-from app.models.raw_telegram_message import RawTelegramMessage
+# RawTelegramMessage removed - raw messages only in MongoDB
 from app.models.job import Job
 from app.models.job_scraping_preferences import JobScrapingPreferences
 from app.schemas.admin import (
@@ -423,26 +423,10 @@ async def get_dashboard_stats(
     )
     total_jobs_today = result.scalar() or 0
     
-    # Total messages processed
-    result = await db.execute(
-        select(func.count())
-        .select_from(RawTelegramMessage)
-        .where(RawTelegramMessage.processed.is_(True))
-    )
-    total_messages_processed = result.scalar() or 0
-    
-    # Messages processed today
-    result = await db.execute(
-        select(func.count())
-        .select_from(RawTelegramMessage)
-        .where(
-            and_(
-                RawTelegramMessage.processed.is_(True),
-                func.date(RawTelegramMessage.created_at) == today
-            )
-        )
-    )
-    total_messages_today = result.scalar() or 0
+    # Total messages processed (raw_telegram_messages table removed - use MongoDB)
+    # Raw message stats now tracked in MongoDB, not PostgreSQL
+    total_messages_processed = 0  # Use MongoDB for raw message counts
+    total_messages_today = 0  # Use MongoDB for raw message counts
     
     # Account stats
     result = await db.execute(select(func.count()).select_from(TelegramAccount))
@@ -516,24 +500,9 @@ async def get_dashboard_stats(
     )
     jobs_extracted_last_24h = result.scalar() or 0
     
-    result = await db.execute(
-        select(func.count())
-        .select_from(RawTelegramMessage)
-        .where(
-            and_(
-                RawTelegramMessage.processing_status == "duplicate",
-                RawTelegramMessage.created_at >= since_24h
-            )
-        )
-    )
-    duplicates_found_last_24h = result.scalar() or 0
-    
-    result = await db.execute(
-        select(func.count())
-        .select_from(RawTelegramMessage)
-        .where(RawTelegramMessage.created_at >= since_24h)
-    )
-    messages_scraped_last_24h = result.scalar() or 0
+    # Duplicate and message stats (raw_telegram_messages table removed - use MongoDB)
+    duplicates_found_last_24h = 0  # Use MongoDB for raw message stats
+    messages_scraped_last_24h = 0  # Use MongoDB for raw message stats
     
     # Cost estimates (simplified - based on AI API calls)
     result = await db.execute(
@@ -698,23 +667,10 @@ async def get_scraping_stats(
     )
     channels_scraped_today = result.scalar() or 0
     
-    # Message stats
-    result = await db.execute(select(func.count()).select_from(RawTelegramMessage))
-    total_messages = result.scalar() or 0
-    
-    result = await db.execute(
-        select(func.count())
-        .select_from(RawTelegramMessage)
-        .where(RawTelegramMessage.created_at >= since_7_days)
-    )
-    messages_last_7_days = result.scalar() or 0
-    
-    result = await db.execute(
-        select(func.count())
-        .select_from(RawTelegramMessage)
-        .where(RawTelegramMessage.created_at >= since_30_days)
-    )
-    messages_last_30_days = result.scalar() or 0
+    # Message stats (raw_telegram_messages table removed - use MongoDB)
+    total_messages = 0  # Use MongoDB raw_messages collection
+    messages_last_7_days = 0  # Use MongoDB raw_messages collection
+    messages_last_30_days = 0  # Use MongoDB raw_messages collection
     
     result = await db.execute(
         select(func.count())
