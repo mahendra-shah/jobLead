@@ -172,6 +172,58 @@ def delete_resume_from_s3(resume_url: str):
         print(f"Warning: Failed to delete resume from S3: {str(e)}")
 
 
+def _has_value(v) -> bool:
+    """Generic truthy check that handles lists/dicts/strings consistently."""
+    if v is None:
+        return False
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, (list, dict)):
+        return len(v) > 0
+    if isinstance(v, str):
+        return v.strip() != ""
+    return True
+
+
+def _calculate_profile_completeness(student: Student) -> int:
+    """
+    Compute profile completeness based on the current Student model fields.
+    Returns an int percentage (0-100).
+    """
+    checks = [
+        student.first_name,
+        student.last_name,
+        student.phone,
+        student.date_of_birth,
+        student.gender,
+        student.current_address,
+        student.highest_qualification,
+        student.college_name,
+        student.course,
+        student.branch,
+        student.passing_year,
+        student.technical_skills,
+        student.soft_skills,
+        student.resume_url,
+    ]
+    
+    # Check preference JSONB for job preferences
+    if student.preference and isinstance(student.preference, dict):
+        # Check if any preference field is filled
+        has_job_prefs = any([
+            student.preference.get('job_type') and len(student.preference.get('job_type', [])) > 0,
+            student.preference.get('work_mode') and len(student.preference.get('work_mode', [])) > 0,
+            student.preference.get('preferred_job_role') and len(student.preference.get('preferred_job_role', [])) > 0,
+            student.preference.get('preferred_location') and len(student.preference.get('preferred_location', [])) > 0,
+        ])
+        if has_job_prefs:
+            checks.append(True)  # At least one preference is set
+    
+    total = len(checks)
+    filled = sum(1 for v in checks if _has_value(v))
+    return int((filled / total) * 100) if total else 0
+
+
 def build_profile_response(student: Student, user: User) -> StudentProfileResponse:
     """Build comprehensive profile response with proper serialization"""
     # Convert student.id to string if it's UUID
@@ -211,6 +263,28 @@ def build_profile_response(student: Student, user: User) -> StudentProfileRespon
         else:
             date_of_birth_str = student.date_of_birth.isoformat()
     
+    # Handle preference JSONB field
+    preference = None
+    if student.preference and isinstance(student.preference, dict):
+        # Ensure all fields in preference are properly formatted
+        preference = {
+            "job_type": student.preference.get('job_type') or [],
+            "work_mode": student.preference.get('work_mode') or [],
+            "preferred_job_role": student.preference.get('preferred_job_role') or [],
+            "preferred_location": student.preference.get('preferred_location') or [],
+            "expected_salary": student.preference.get('expected_salary'),
+        }
+        # Only return if there's actual data
+        if any([preference.get('job_type'), preference.get('work_mode'), 
+                preference.get('preferred_job_role'), preference.get('preferred_location'), 
+                preference.get('expected_salary')]):
+            preference = preference
+        else:
+            preference = None
+    
+    # Calculate profile completeness
+    profile_completeness = _calculate_profile_completeness(student)
+    
     return StudentProfileResponse(
         first_name=student.first_name,
         last_name=student.last_name,
@@ -234,20 +308,7 @@ def build_profile_response(student: Student, user: User) -> StudentProfileRespon
         internship_details=internship_details,
         projects=projects,
         languages=languages,
-        # Return flat fields like technical_skills (for consistency)
-        job_type=student.job_type or [],
-        work_mode=student.work_mode or [],
-        preferred_job_role=student.preferred_job_role or [],
-        preferred_location=student.preferred_location or [],
-        expected_salary=student.expected_salary,
-        # Also include nested preference for backward compatibility
-        preference={
-            "job_type": student.job_type or [],
-            "work_mode": student.work_mode or [],
-            "preferred_job_role": student.preferred_job_role or [],
-            "preferred_location": student.preferred_location or [],
-            "expected_salary": student.expected_salary,
-        } if (student.job_type or student.work_mode or student.preferred_job_role or student.preferred_location or student.expected_salary) else None,
+        preference=preference,
         github_profile=student.github_profile,
         linkedin_profile=student.linkedin_profile,
         portfolio_url=student.portfolio_url,
@@ -257,7 +318,7 @@ def build_profile_response(student: Student, user: User) -> StudentProfileRespon
         is_active=user.is_active,
         created_at=student.created_at,
         updated_at=student.updated_at,
-        profile_completeness=None
+        profile_completeness=profile_completeness
     )
 
 
@@ -319,21 +380,39 @@ async def update_my_profile(
         # Get update data (only fields that are provided)
         update_data = profile_update.model_dump(exclude_unset=True, exclude_none=False)
         
-        # Handle nested preference object - extract to flat fields
+        # Handle nested preference object - consolidate into single JSONB field
+        preference_data = {}
+        
+        # Check if preference object was provided
         if 'preference' in update_data and update_data['preference']:
-            preference_data = update_data.pop('preference')
-            if isinstance(preference_data, dict):
-                # Map nested preference fields to flat model columns
-                if 'job_type' in preference_data:
-                    update_data['job_type'] = preference_data['job_type']
-                if 'work_mode' in preference_data:
-                    update_data['work_mode'] = preference_data['work_mode']
-                if 'preferred_job_role' in preference_data:
-                    update_data['preferred_job_role'] = preference_data['preferred_job_role']
-                if 'preferred_location' in preference_data:
-                    update_data['preferred_location'] = preference_data['preferred_location']
-                if 'expected_salary' in preference_data:
-                    update_data['expected_salary'] = preference_data['expected_salary']
+            pref = update_data.pop('preference')
+            if isinstance(pref, dict):
+                preference_data = pref
+            elif hasattr(pref, 'model_dump'):
+                preference_data = pref.model_dump(exclude_none=True)
+            elif hasattr(pref, 'dict'):
+                preference_data = pref.dict(exclude_none=True)
+        
+        # Also check for flat preference fields (for backward compatibility)
+        flat_preference_fields = ['job_type', 'work_mode', 'preferred_job_role', 'preferred_location', 'expected_salary']
+        has_flat_preference = any(field in update_data for field in flat_preference_fields)
+        
+        if has_flat_preference:
+            # If flat fields are provided, add them to preference_data
+            if 'job_type' in update_data and update_data['job_type'] is not None:
+                preference_data['job_type'] = update_data.pop('job_type')
+            if 'work_mode' in update_data and update_data['work_mode'] is not None:
+                preference_data['work_mode'] = update_data.pop('work_mode')
+            if 'preferred_job_role' in update_data and update_data['preferred_job_role'] is not None:
+                preference_data['preferred_job_role'] = update_data.pop('preferred_job_role')
+            if 'preferred_location' in update_data and update_data['preferred_location'] is not None:
+                preference_data['preferred_location'] = update_data.pop('preferred_location')
+            if 'expected_salary' in update_data and update_data['expected_salary'] is not None:
+                preference_data['expected_salary'] = update_data.pop('expected_salary')
+        
+        # Store consolidated preference data
+        if preference_data:
+            update_data['preference'] = preference_data
         
         # Handle nested Pydantic models - convert to dicts
         if 'internship_details' in update_data and update_data['internship_details']:
@@ -431,18 +510,23 @@ async def update_my_profile(
             for field, value in update_data.items():
                 if hasattr(student, field):
                     # Handle None values - set to None explicitly for optional fields
-                    if value is None and field in ['date_of_birth', 'percentage', 'cgpa', 'expected_salary', 'college_id']:
+                    if value is None and field in ['date_of_birth', 'percentage', 'cgpa', 'college_id']:
                         setattr(student, field, None)
                     elif value is not None:
                         # Ensure arrays are properly set (for JSONB fields)
-                        if field in ['job_type', 'work_mode', 'preferred_job_role', 'preferred_location', 
-                                     'technical_skills', 'soft_skills']:
+                        if field in ['technical_skills', 'soft_skills', 'internship_details', 'projects', 'languages']:
                             # Ensure value is a list
                             if isinstance(value, list):
                                 setattr(student, field, value)
                             else:
                                 # Convert to list if not already
                                 setattr(student, field, [value] if value else [])
+                        elif field == 'preference':
+                            # Preference is a dict/JSONB object
+                            if isinstance(value, dict):
+                                setattr(student, field, value)
+                            else:
+                                setattr(student, field, {})
                         else:
                             setattr(student, field, value)
         
@@ -664,13 +748,23 @@ async def get_profile_completeness(
             "languages": (student.languages and len(student.languages) > 0, "Languages"),
         }
         
-        # Job Preferences (15%)
-        preferences_fields = {
-            "job_type": (student.job_type and len(student.job_type) > 0, "Job Type"),
-            "work_mode": (student.work_mode and len(student.work_mode) > 0, "Work Mode"),
-            "preferred_job_role": (student.preferred_job_role and len(student.preferred_job_role) > 0, "Preferred Job Role"),
-            "preferred_location": (student.preferred_location and len(student.preferred_location) > 0, "Preferred Location"),
-        }
+        # Job Preferences (15%) - Use new preference JSONB column
+        preferences_fields = {}
+        if student.preference and isinstance(student.preference, dict):
+            preferences_fields = {
+                "job_type": (student.preference.get('job_type') and len(student.preference.get('job_type', [])) > 0, "Job Type"),
+                "work_mode": (student.preference.get('work_mode') and len(student.preference.get('work_mode', [])) > 0, "Work Mode"),
+                "preferred_job_role": (student.preference.get('preferred_job_role') and len(student.preference.get('preferred_job_role', [])) > 0, "Preferred Job Role"),
+                "preferred_location": (student.preference.get('preferred_location') and len(student.preference.get('preferred_location', [])) > 0, "Preferred Location"),
+            }
+        else:
+            # If no preference object, mark all as incomplete
+            preferences_fields = {
+                "job_type": (False, "Job Type"),
+                "work_mode": (False, "Work Mode"),
+                "preferred_job_role": (False, "Preferred Job Role"),
+                "preferred_location": (False, "Preferred Location"),
+            }
         
         # Technical Profile Links (5%)
         links_fields = {

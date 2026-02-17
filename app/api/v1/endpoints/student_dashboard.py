@@ -51,13 +51,21 @@ def _calculate_profile_completeness(student: Student) -> int:
         student.passing_year,
         student.technical_skills,
         student.soft_skills,
-        student.job_type,
-        student.work_mode,
-        student.preferred_job_role,
-        student.preferred_location,
         student.resume_url,
     ]
-
+    
+    # Check preference JSONB for job preferences
+    if student.preference and isinstance(student.preference, dict):
+        # Check if any preference field is filled
+        has_job_prefs = any([
+            student.preference.get('job_type') and len(student.preference.get('job_type', [])) > 0,
+            student.preference.get('work_mode') and len(student.preference.get('work_mode', [])) > 0,
+            student.preference.get('preferred_job_role') and len(student.preference.get('preferred_job_role', [])) > 0,
+            student.preference.get('preferred_location') and len(student.preference.get('preferred_location', [])) > 0,
+        ])
+        if has_job_prefs:
+            checks.append(True)  # At least one preference is set
+    
     total = len(checks)
     filled = sum(1 for v in checks if _has_value(v))
     return int((filled / total) * 100) if total else 0
@@ -116,12 +124,14 @@ def _student_profile_payload(student: Student, current_user: User) -> dict:
         # Languages
         "languages": languages,
 
-        # Preferences
-        "job_type": student.job_type or [],
-        "work_mode": student.work_mode or [],
-        "preferred_job_role": student.preferred_job_role or [],
-        "preferred_location": student.preferred_location or [],
-        "expected_salary": student.expected_salary,
+        # Preferences (from JSONB preference column)
+        "preference": student.preference or {},
+        # For backward compatibility, also include flat fields from preference object
+        "job_type": student.preference.get('job_type', []) if student.preference else [],
+        "work_mode": student.preference.get('work_mode', []) if student.preference else [],
+        "preferred_job_role": student.preference.get('preferred_job_role', []) if student.preference else [],
+        "preferred_location": student.preference.get('preferred_location', []) if student.preference else [],
+        "expected_salary": student.preference.get('expected_salary') if student.preference else None,
 
         # Links
         "github_profile": student.github_profile,

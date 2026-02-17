@@ -16,7 +16,6 @@ class Student(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), unique=True, nullable=False)
     full_name = Column(String(255), nullable=False)
     phone = Column(String(20))
-    resume_path = Column(String(500))
     resume_url = Column(String(500))  # S3 URL for resume
     
     # Personal Details
@@ -35,29 +34,21 @@ class Student(Base):
     passing_year = Column(Integer)
     percentage = Column(Float)
     cgpa = Column(Float)
-    degree = Column(String(100))  # Keep for backward compatibility
     
     # Skills (separate technical and soft skills)
     technical_skills = Column(JSONB, default=list)  # ["Python", "React", ...]
     soft_skills = Column(JSONB, default=list)  # ["Communication", "Teamwork", ...]
-    skills = Column(JSONB, default=list)  # Legacy field - keep for backward compatibility
     
     # Experience
     experience_type = Column(String(20))  # "Fresher" or "Experienced"
     internship_details = Column(JSONB, default=list)  # List of internship objects
     projects = Column(JSONB, default=list)  # List of project objects
-    experience = Column(JSONB, default=list)  # Legacy field - keep for backward compatibility
     
     # Languages
     languages = Column(JSONB, default=list)  # List of language objects with proficiency
     
-    # Job Preferences
-    job_type = Column(JSONB, default=list)  # ["Full-Time", "Internship", "Part-Time"]
-    work_mode = Column(JSONB, default=list)  # ["Remote", "Hybrid", "Office"]
-    preferred_job_role = Column(JSONB, default=list)  # ["Software Developer", ...]
-    preferred_location = Column(JSONB, default=list)  # ["Bangalore", "Remote", ...]
-    expected_salary = Column(Integer)
-    preferences = Column(JSONB, default=dict)  # Legacy field - keep for backward compatibility
+    # Job Preferences - Consolidated into single JSONB field
+    preference = Column(JSONB, default=dict)  # {"job_type": [...], "work_mode": [...], "preferred_job_role": [...], "preferred_location": [...], "expected_salary": ...}
     
     # Technical Profile Links
     github_profile = Column(String(500))
