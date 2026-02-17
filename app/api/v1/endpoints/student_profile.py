@@ -230,7 +230,6 @@ def build_profile_response(student: Student, user: User) -> StudentProfileRespon
         cgpa=student.cgpa,
         technical_skills=student.technical_skills or [],
         soft_skills=student.soft_skills or [],
-        skill_required=student.skill_required or [],
         experience_type=student.experience_type,
         internship_details=internship_details,
         projects=projects,
@@ -437,7 +436,7 @@ async def update_my_profile(
                     elif value is not None:
                         # Ensure arrays are properly set (for JSONB fields)
                         if field in ['job_type', 'work_mode', 'preferred_job_role', 'preferred_location', 
-                                     'technical_skills', 'soft_skills', 'skill_required']:
+                                     'technical_skills', 'soft_skills']:
                             # Ensure value is a list
                             if isinstance(value, list):
                                 setattr(student, field, value)
