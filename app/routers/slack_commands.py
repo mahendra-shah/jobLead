@@ -293,7 +293,7 @@ async def slack_command_visibility(
                     },
                     {
                         "type": "mrkdwn",
-                        "text": f"*Last Scrape:*\n{f'{channels[\"last_scrape_hours\"]:.1f}h ago' if channels['last_scrape_hours'] else 'Never'}"
+                        "text": f"*Last Scrape:*\n{channels['last_scrape_hours']:.1f}h ago" if channels['last_scrape_hours'] else "*Last Scrape:*\nNever"
                     }
                 ]
             },
