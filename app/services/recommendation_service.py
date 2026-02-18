@@ -175,10 +175,11 @@ class RecommendationService:
             }
             
             # Get student preferences from JSONB
-            prefs = student.preferences or {}
+            prefs = student.preference or {}
             
             # Skills matching (TF-IDF similarity)
-            student_skills = student.skills or []
+            # Combine technical and soft skills
+            student_skills = (student.technical_skills or []) + (student.soft_skills or [])
             job_skills = job.skills_required or []
             
             if student_skills and job_skills:
@@ -277,7 +278,8 @@ class RecommendationService:
         reasons = []
         
         # Skills
-        student_skills = set(student.skills or [])
+        # Combine technical and soft skills
+        student_skills = set((student.technical_skills or []) + (student.soft_skills or []))
         job_skills = set(job.skills_required or [])
         common_skills = student_skills & job_skills
         
@@ -286,7 +288,7 @@ class RecommendationService:
             reasons.append(f"Skills match: {skill_list}")
         
         # Location
-        prefs = student.preferences or {}
+        prefs = student.preference or {}
         student_locations = prefs.get('preferred_locations', [])
         if any(loc.lower() in (job.location or "").lower() for loc in student_locations):
             reasons.append(f"Location: {job.location}")

@@ -79,9 +79,8 @@ async def get_recommended_jobs(
     # Check if student has set skills (technical_skills or soft_skills)
     has_technical_skills = student.technical_skills and len(student.technical_skills) > 0
     has_soft_skills = student.soft_skills and len(student.soft_skills) > 0
-    has_legacy_skills = student.skills and len(student.skills) > 0
     
-    if not (has_technical_skills or has_soft_skills or has_legacy_skills):
+    if not (has_technical_skills or has_soft_skills):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Please add your technical skills or soft skills in profile to get personalized recommendations."

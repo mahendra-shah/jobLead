@@ -222,14 +222,11 @@ class JobRecommendationService:
         # Combine student's technical_skills and soft_skills
         student_technical_skills = student.technical_skills or []
         student_soft_skills = student.soft_skills or []
-        # Also check legacy 'skills' field for backward compatibility
-        student_legacy_skills = student.skills or []
         
         # Combine all student skills into one set
         all_student_skills = []
         all_student_skills.extend(student_technical_skills)
         all_student_skills.extend(student_soft_skills)
-        all_student_skills.extend(student_legacy_skills)
         
         student_skills = set(s.lower().strip() for s in all_student_skills if s)
         job_skills = set(s.lower().strip() for s in job_skills_list if s)
@@ -276,12 +273,9 @@ class JobRecommendationService:
         - International: "International", "Global", "Worldwide"
         - Specific countries: "USA", "UK", "Canada", "Singapore"
         """
-        # Use flat field preferred_location (new) or legacy preferences field
-        preferred_locations = student.preferred_location or []
-        if not preferred_locations:
-            # Fallback to legacy preferences field
-            preferences = student.preferences or {}
-            preferred_locations = preferences.get('preferred_locations', [])
+        # Get preferred locations from preference JSONB field
+        preferences = student.preference or {}
+        preferred_locations = preferences.get('preferred_location', [])
         
         if not preferred_locations or len(preferred_locations) == 0:
             return 10.0  # Neutral score if no preferences
@@ -419,12 +413,9 @@ class JobRecommendationService:
         match_reasons: List[str]
     ) -> float:
         """Calculate job type match score (0-10)"""
-        # Use flat field job_type (new) or legacy preferences field
-        preferred_job_types = student.job_type or []
-        if not preferred_job_types:
-            # Fallback to legacy preferences field
-            preferences = student.preferences or {}
-            preferred_job_types = preferences.get('preferred_job_types', [])
+        # Get preferred job types from preference JSONB field
+        preferences = student.preference or {}
+        preferred_job_types = preferences.get('job_type', [])
         
         if not preferred_job_types or len(preferred_job_types) == 0:
             return 5.0  # Neutral if no preferences
@@ -451,7 +442,7 @@ class JobRecommendationService:
         match_reasons: List[str]
     ) -> float:
         """Calculate company preference score (0-10)"""
-        preferences = student.preferences or {}
+        preferences = student.preference or {}
         excluded_companies = preferences.get('excluded_companies', [])
         
         if not excluded_companies or len(excluded_companies) == 0:

@@ -846,8 +846,12 @@ async def get_profile_completeness(
             suggestions.append("Add your soft skills to showcase your strengths")
         if not check_field(student.resume_url):
             suggestions.append("Upload your resume to apply for jobs")
-        if not check_field(student.preferred_job_role):
+        
+        # Check preference JSONB field for job roles
+        preferred_roles = student.preference.get('preferred_job_role', []) if student.preference else []
+        if not check_field(preferred_roles):
             suggestions.append("Add preferred job roles to get better recommendations")
+        
         if not check_field(student.linkedin_profile):
             suggestions.append("Add your LinkedIn profile to enhance your professional presence")
         if not check_field(student.projects):

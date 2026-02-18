@@ -288,14 +288,17 @@ class HybridMatchingService:
     
     def _student_to_dict(self, student: Student) -> Dict:
         """Convert Student model to dictionary."""
+        # Combine technical and soft skills
+        all_skills = (student.technical_skills or []) + (student.soft_skills or [])
+        
         return {
             "id": str(student.id),
             "full_name": student.full_name,
-            "skills": student.skills or [],
+            "skills": all_skills,
             "bio": getattr(student, 'bio', ''),
-            "education": student.education or [],
-            "experience": student.experience or [],
-            "preferences": student.preferences or {},
+            "education": [student.highest_qualification] if student.highest_qualification else [],
+            "experience": [student.experience_type] if student.experience_type else [],
+            "preferences": student.preference or {},
         }
     
     def _job_to_dict(self, job: Job) -> Dict:
