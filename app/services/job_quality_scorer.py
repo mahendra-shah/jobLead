@@ -59,6 +59,7 @@ class JobQualityScorer:
         self.skill_criteria = self.config['preferred_skills']
         self.field_criteria = self.config['required_fields']
         self.excluded_keywords = self.config['excluded_keywords']
+        self.location_filters = self.config.get('location_filters', {})
         
         logger.info(f"JobQualityScorer initialized with config from {config_path}")
     
@@ -93,14 +94,26 @@ class JobQualityScorer:
             "preferred_skills": {"tech": [], "scoring": {}},
             "required_fields": {"must_have": {"fields": ["title"], "weight": 1.0}},
             "scoring_weights": {
-                "experience_match": 0.30,
-                "field_completeness": 0.25,
-                "skill_relevance": 0.20,
-                "salary_range": 0.10,
-                "ml_confidence": 0.10,
-                "engagement_potential": 0.05
+                "experience_match": 0.28,
+                "field_completeness": 0.23,
+                "skill_relevance": 0.18,
+                "location_compatibility": 0.12,
+                "salary_range": 0.09,
+                "ml_confidence": 0.07,
+                "engagement_potential": 0.03
             },
-            "excluded_keywords": {}
+            "excluded_keywords": {},
+            "location_filters": {
+                "exclude_international_onsite": True,
+                "allow_international_remote": True,
+                "scoring": {
+                    "international_remote": 90,
+                    "international_onsite": 0,
+                    "india_remote": 100,
+                    "india_onsite": 70,
+                    "unspecified": 60
+                }
+            }
         }
     
     def score_job(self, job_data: Dict[str, Any], ml_confidence: float = 0.7) -> JobQualityScore:
@@ -108,7 +121,7 @@ class JobQualityScorer:
         Calculate comprehensive quality score for a job.
         
         Args:
-            job_data: Job fields dict with keys like title, company, skills_required, etc.
+            job_data: Job fields dict with keys like title, company, skills_required, location_data, etc.
             ml_confidence: ML classifier confidence (0.0-1.0)
         
         Returns:
@@ -117,7 +130,7 @@ class JobQualityScorer:
         scores = {}
         reasons = []
         
-        # 1. Experience Match (30%)
+        # 1. Experience Match
         scores['experience_match'], exp_reasons = self._score_experience(
             job_data.get('experience_min'),
             job_data.get('experience_max'),
@@ -125,33 +138,39 @@ class JobQualityScorer:
         )
         reasons.extend(exp_reasons)
         
-        # 2. Field Completeness (25%)
+        # 2. Field Completeness
         scores['field_completeness'], field_reasons = self._score_completeness(job_data)
         reasons.extend(field_reasons)
         
-        # 3. Skill Relevance (20%)
+        # 3. Skill Relevance
         scores['skill_relevance'], skill_reasons = self._score_skills(
             job_data.get('skills_required', [])
         )
         reasons.extend(skill_reasons)
         
-        # 4. Salary Range (10%)
+        # 4. Location Compatibility (NEW)
+        scores['location_compatibility'], location_reasons = self._score_location(
+            job_data.get('location_data') or {}
+        )
+        reasons.extend(location_reasons)
+        
+        # 5. Salary Range
         scores['salary_score'], salary_reasons = self._score_salary(
             job_data.get('salary_min'),
             job_data.get('salary_max')
         )
         reasons.extend(salary_reasons)
         
-        # 5. ML Confidence (10%)
+        # 6. ML Confidence
         scores['ml_confidence'] = ml_confidence * 100
         
-        # 6. Engagement Potential (5%)
+        # 7. Engagement Potential
         scores['engagement_potential'] = self._predict_engagement(job_data)
         
         # Calculate weighted average
         quality_score = sum(
-            scores.get(key, 50) * weight 
-            for key, weight in self.weights.items()
+            scores.get(key, 50) * self.weights.get(key, 0)
+            for key in self.weights.keys()
         )
         
         # Relevance check (must pass all critical criteria)
@@ -178,14 +197,21 @@ class JobQualityScorer:
             reasons.append("✓ Fresher-friendly job")
             return scoring.get('fresher_jobs', 100.0), reasons
         
-        # No experience specified
-        if max_exp is None:
+        # No experience specified or None
+        if max_exp is None or max_exp == 0:
             if criteria.get('include_unspecified', True):
                 reasons.append("○ Experience not specified (assumed fresher-friendly)")
                 return scoring.get('unspecified', 70.0), reasons
             else:
                 reasons.append("✗ Experience not specified")
                 return 40.0, reasons
+        
+        # Ensure max_exp is an integer
+        try:
+            max_exp = int(max_exp)
+        except (ValueError, TypeError):
+            reasons.append("○ Experience not specified (assumed fresher-friendly)")
+            return scoring.get('unspecified', 70.0), reasons
         
         # Check experience range
         if max_exp <= 2:
@@ -286,6 +312,66 @@ class JobQualityScorer:
             reasons.append(f"△ Generic skills: {', '.join(skills[:3])}")
             return scoring.get('no_match', 50.0), reasons
     
+    def _score_location(self, location_data: Dict) -> tuple[float, List[str]]:
+        """
+        Score based on location compatibility.
+        
+        Args:
+            location_data: Dict with keys:
+                - geographic_scope: 'india' | 'international' | 'unspecified'
+                - is_remote: bool
+                - is_hybrid: bool
+                - is_onsite_only: bool
+        
+        Returns:
+            (score, reasons)
+        """
+        if not location_data:
+            return 60.0, ["○ Location not analyzed"]
+        
+        reasons = []
+        scoring = self.location_filters.get('scoring', {})
+        geo_scope = location_data.get('geographic_scope', 'unspecified')
+        is_remote = location_data.get('is_remote', False)
+        is_hybrid = location_data.get('is_hybrid', False)
+        is_onsite = location_data.get('is_onsite_only', False)
+        
+        # International jobs
+        if geo_scope == 'international':
+            if is_remote:
+                reasons.append("✓ International remote job (acceptable)")
+                return scoring.get('international_remote', 90.0), reasons
+            elif is_hybrid:
+                reasons.append("○ International hybrid job (limited accessibility)")
+                return scoring.get('international_hybrid', 85.0), reasons
+            else:
+                reasons.append("✗ International onsite-only job (excluded)")
+                return scoring.get('international_onsite', 0.0), reasons
+        
+        # India-based jobs
+        elif geo_scope == 'india':
+            if is_remote:
+                reasons.append("✓ India remote job (excellent)")
+                return scoring.get('india_remote', 100.0), reasons
+            elif is_hybrid:
+                reasons.append("✓ India hybrid job (very good)")
+                return scoring.get('india_hybrid', 95.0), reasons
+            elif is_onsite:
+                reasons.append("△ India onsite with strict requirements")
+                return scoring.get('onsite_with_restrictions', 30.0), reasons
+            else:
+                reasons.append("○ India office-based job (acceptable)")
+                return scoring.get('india_onsite', 70.0), reasons
+        
+        # Unspecified location
+        else:
+            if is_remote or is_hybrid:
+                reasons.append("○ Remote/hybrid (location unspecified)")
+                return 80.0, reasons
+            else:
+                reasons.append("○ Location unspecified")
+                return scoring.get('unspecified', 60.0), reasons
+    
     def _score_salary(self, min_salary: Optional[float], 
                       max_salary: Optional[float]) -> tuple[float, List[str]]:
         """Score based on salary range alignment"""
@@ -332,7 +418,7 @@ class JobQualityScorer:
             score += factors.get('has_skills', 10)
         
         # Fresher-friendly
-        if job_data.get('is_fresher') or (job_data.get('experience_max', 99) <= 2):
+        if job_data.get('is_fresher') or ((job_data.get('experience_max') or 99) <= 2):
             score += factors.get('freshers_welcome', 20)
         
         # Remote work
@@ -366,6 +452,28 @@ class JobQualityScorer:
                 if keyword.lower() in text_to_check:
                     fail_reasons.append(f"✗ Contains excluded keyword: {keyword} ({category})")
                     return False, fail_reasons
+        
+        # Check location compatibility (REJECT international onsite jobs)
+        location_data = job_data.get('location_data') or {}
+        if location_data:
+            geo_scope = location_data.get('geographic_scope', 'unspecified')
+            is_remote = location_data.get('is_remote', False)
+            is_onsite = location_data.get('is_onsite_only', False)
+            
+            # Reject international non-remote jobs
+            if geo_scope == 'international' and not is_remote:
+                fail_reasons.append("✗ International non-remote position (excluded)")
+                return False, fail_reasons
+            
+            # Reject strict onsite-only with relocation requirements
+            if is_onsite and 'relocation' in text_to_check:
+                fail_reasons.append("✗ Strict onsite with relocation requirement")
+                return False, fail_reasons
+        
+        # Minimum location score threshold
+        if scores.get('location_compatibility', 100) < 10:
+            fail_reasons.append("✗ Location not suitable for target audience")
+            return False, fail_reasons
         
         # Minimum experience threshold
         if scores.get('experience_match', 0) < 30:

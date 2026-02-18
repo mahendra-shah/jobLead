@@ -32,7 +32,7 @@ class TelegramAccount(Base):
     is_banned = Column(Boolean, default=False, nullable=False)
     
     # Health Tracking
-    health_status = Column(Enum(HealthStatus), default=HealthStatus.HEALTHY, nullable=False)
+    health_status = Column(Enum(HealthStatus, native_enum=False, values_callable=lambda x: [e.value for e in x]), default=HealthStatus.HEALTHY, nullable=False)
     last_successful_fetch_at = Column(DateTime(timezone=True), nullable=True)
     consecutive_errors = Column(Integer, default=0, nullable=False)
     last_error_message = Column(Text, nullable=True)

@@ -81,6 +81,7 @@ class ChannelSyncService:
                 "description": channel.description or "",
                 "is_active": channel.is_active,
                 "category": channel.category or "general",
+                "joined_by_account_id": str(channel.joined_by_account_id) if channel.joined_by_account_id else None,  # CRITICAL: Which account owns this channel
                 "last_fetched_at": channel.last_scraped_at.isoformat() if channel.last_scraped_at else None,
                 "last_message_id": channel.last_message_id or 0,
                 "fetch_count": channel.total_messages_scraped,

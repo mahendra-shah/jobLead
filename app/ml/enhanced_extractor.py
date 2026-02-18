@@ -22,6 +22,7 @@ class EnhancedJobExtraction:
     
     # Job details
     location: Optional[str] = None
+    location_data: Optional[Dict] = None  # Structured location intelligence
     salary_min: Optional[int] = None
     salary_max: Optional[int] = None
     salary_currency: str = "INR"
@@ -58,6 +59,42 @@ class EnhancedJobExtraction:
 
 class EnhancedJobExtractor:
     """Enhanced extraction with multiple job splitting and company management"""
+    
+    # India cities whitelist
+    INDIA_CITIES = {
+        'bangalore', 'bengaluru', 'mumbai', 'delhi', 'ncr', 'hyderabad', 'chennai',
+        'kolkata', 'pune', 'ahmedabad', 'jaipur', 'lucknow', 'kanpur', 'nagpur',
+        'indore', 'bhopal', 'noida', 'gurgaon', 'gurugram', 'chandigarh', 'kochi',
+        'trivandrum', 'mysore', 'bhubaneswar', 'jamshedpur', 'ranchi', 'coimbatore',
+        'vadodara', 'visakhapatnam', 'patna', 'ludhiana', 'agra', 'nashik',
+        'faridabad', 'meerut', 'rajkot', 'varanasi', 'srinagar', 'aurangabad',
+        'dhanbad', 'amritsar', 'allahabad', 'howrah', 'jabalpur', 'gwalior', 'india'
+    }
+    
+    # International location keywords (from data analysis)
+    INTERNATIONAL_KEYWORDS = {
+        'usa', 'united states', 'america', 'us only', 'california', 'new york',
+        'texas', 'washington', 'costa mesa', 'silicon valley',
+        'uk', 'united kingdom', 'london', 'manchester', 'england',
+        'canada', 'toronto', 'vancouver', 'montreal',
+        'australia', 'sydney', 'melbourne',
+        'singapore',
+        'dubai', 'uae', 'abu dhabi',
+        'europe', 'european', 'germany', 'berlin', 'france', 'paris',
+        'netherlands', 'amsterdam', 'ireland', 'dublin', 'switzerland',
+        'japan', 'china', 'israel',
+        'overseas', 'international', 'gulf', 'abroad'
+    }
+    
+    # Onsite-only indicators (from data analysis)
+    ONSITE_ONLY_KEYWORDS = {
+        'onsite only', 'on-site only', 'on site only', 'office only',
+        'work from office', 'wfo mandatory', 'wfo only', 'office mandatory',
+        'must work from office', 'no remote', 'no wfh', 'not remote',
+        'in-office', 'in office', '100% office', 'fully office',
+        'relocate', 'relocation required', 'must be based in',
+        'local candidates only', 'relocation mandatory'
+    }
     
     def __init__(self):
         self.company_cache = {}  # In-memory cache for session
@@ -128,7 +165,11 @@ class EnhancedJobExtractor:
         # Extract each component
         extraction.company_name = self._extract_company(text)
         extraction.job_title = self._extract_job_title(text, extraction.company_name)
-        extraction.location = self._extract_location(text)
+        
+        # Extract location with enhanced intelligence
+        location_data = self._extract_location_enhanced(text)
+        extraction.location = location_data.get('raw_location')
+        extraction.location_data = location_data
         
         # Salary
         salary_info = self._extract_salary(text)
@@ -237,14 +278,41 @@ class EnhancedJobExtractor:
         return None
     
     def _extract_location(self, text: str) -> Optional[str]:
-        """Extract job location"""
+        """Extract job location (legacy method - use _extract_location_enhanced instead)"""
+        location_data = self._extract_location_enhanced(text)
+        return location_data.get('raw_location')
+    
+    def _extract_location_enhanced(self, text: str) -> Dict:
+        """
+        Extract location with enhanced intelligence
+        
+        Returns structured data:
+        {
+            'raw_location': 'Bangalore / Remote',
+            'cities': ['bangalore'],
+            'is_remote': True,
+            'is_hybrid': False,
+            'is_onsite_only': False,
+            'geographic_scope': 'india' | 'international' | 'unspecified'
+        }
+        """
+        result = {
+            'raw_location': None,
+            'cities': [],
+            'is_remote': False,
+            'is_hybrid': False,
+            'is_onsite_only': False,
+            'geographic_scope': 'unspecified'
+        }
+        
+        text_lower = text.lower()
+        
+        # Extract raw location string
         patterns = [
             # "Location: Bangalore"
             r'Location\s*:?\s*([A-Za-z\s,\(\)]+?)(?:\n|$|Experience|Salary|Apply)',
-            
             # "Bangalore, India"
             r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?),?\s*(?:India|Hybrid|Remote)',
-            
             # "Remote" or "WFH"
             r'\b(Remote|Work\s+from\s+home|WFH)\b',
         ]
@@ -256,9 +324,53 @@ class EnhancedJobExtractor:
                 location = re.sub(r'\s+', ' ', location)
                 location = location.strip('.,!?:')
                 if len(location) > 2 and len(location) < 100:
-                    return location
+                    result['raw_location'] = location
+                    break
         
-        return None
+        # Analyze work mode
+        # First check for negative patterns (no remote, not remote, etc.)
+        negative_remote_patterns = [
+            'no remote', 'not remote', 'no wfh', 'not wfh',
+            'no work from home', 'cannot work from home'
+        ]
+        has_negative_remote = any(p in text_lower for p in negative_remote_patterns)
+        
+        if not has_negative_remote:
+            remote_keywords = ['remote', 'wfh', 'work from home', 'work from anywhere']
+            if any(kw in text_lower for kw in remote_keywords):
+                result['is_remote'] = True
+        
+        hybrid_keywords = ['hybrid', 'flexible work']
+        if any(kw in text_lower for kw in hybrid_keywords):
+            result['is_hybrid'] = True
+        
+        # Check for onsite-only indicators
+        for keyword in self.ONSITE_ONLY_KEYWORDS:
+            if keyword in text_lower:
+                result['is_onsite_only'] = True
+                break
+        
+        # Identify cities mentioned
+        for city in self.INDIA_CITIES:
+            if city in text_lower:
+                result['cities'].append(city)
+        
+        # Determine geographic scope
+        has_india_location = len(result['cities']) > 0 or 'india' in text_lower
+        has_international = any(kw in text_lower for kw in self.INTERNATIONAL_KEYWORDS)
+        
+        if has_international and not has_india_location:
+            result['geographic_scope'] = 'international'
+        elif has_india_location:
+            result['geographic_scope'] = 'india'
+        else:
+            result['geographic_scope'] = 'unspecified'
+        
+        # Override onsite_only if remote/hybrid is mentioned
+        if result['is_remote'] or result['is_hybrid']:
+            result['is_onsite_only'] = False
+        
+        return result
     
     def _extract_salary(self, text: str) -> Optional[Tuple[int, int, str]]:
         """
