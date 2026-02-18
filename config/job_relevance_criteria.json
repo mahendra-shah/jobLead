@@ -1,7 +1,7 @@
 {
-  "version": "1.0",
-  "description": "Defines what constitutes a relevant job for channel scoring. Freshers-focused criteria.",
-  "last_updated": "2026-02-13",
+  "version": "1.1",
+  "description": "Defines what constitutes a relevant job for channel scoring. Freshers-focused criteria with location intelligence.",
+  "last_updated": "2026-02-18",
   
   "experience_criteria": {
     "max_years": 2,
@@ -52,6 +52,46 @@
       "acceptable": 80,
       "excluded": 0,
       "unspecified": 85
+    }
+  },
+  
+  "location_filters": {
+    "exclude_international_onsite": true,
+    "allow_international_remote": true,
+    "international_keywords": [
+      "usa", "united states", "america", "us only", "california", "new york",
+      "texas", "washington", "costa mesa", "silicon valley",
+      "uk", "united kingdom", "london", "manchester", "england",
+      "canada", "toronto", "vancouver", "montreal",
+      "australia", "sydney", "melbourne",
+      "singapore",
+      "dubai", "uae", "abu dhabi",
+      "europe", "european", "germany", "berlin", "france", "paris",
+      "netherlands", "amsterdam", "ireland", "dublin", "switzerland",
+      "japan", "china", "israel",
+      "overseas", "international", "gulf", "abroad"
+    ],
+    "onsite_only_indicators": [
+      "onsite only", "on-site only", "office only",
+      "work from office", "wfo mandatory", "wfo only",
+      "office mandatory", "no remote", "no wfh",
+      "in-office", "100% office", "relocate", "relocation required",
+      "local candidates only", "relocation mandatory"
+    ],
+    "india_cities": [
+      "bangalore", "bengaluru", "mumbai", "delhi", "hyderabad", "chennai",
+      "kolkata", "pune", "ahmedabad", "jaipur", "noida", "gurgaon", "gurugram",
+      "chandigarh", "kochi", "coimbatore", "indore", "bhopal", "india"
+    ],
+    "scoring": {
+      "international_remote": 90,
+      "international_hybrid": 85,
+      "international_onsite": 0,
+      "india_remote": 100,
+      "india_hybrid": 95,
+      "india_onsite": 70,
+      "onsite_with_restrictions": 30,
+      "unspecified": 60
     }
   },
   
@@ -118,16 +158,21 @@
     "irrelevant": [
       "only for ladies", "only females", "age above 30", "mba required",
       "phd required", "govt job", "government job", "bank job"
+    ],
+    "international_onsite": [
+      "must relocate to usa", "must be in singapore", "must be based in uk",
+      "visa sponsorship not available", "must have work permit"
     ]
   },
   
   "scoring_weights": {
-    "experience_match": 0.30,
-    "field_completeness": 0.25,
-    "skill_relevance": 0.20,
-    "salary_range": 0.10,
-    "ml_confidence": 0.10,
-    "engagement_potential": 0.05
+    "experience_match": 0.28,
+    "field_completeness": 0.23,
+    "skill_relevance": 0.18,
+    "location_compatibility": 0.12,
+    "salary_range": 0.09,
+    "ml_confidence": 0.07,
+    "engagement_potential": 0.03
   },
   
   "channel_health_weights": {
