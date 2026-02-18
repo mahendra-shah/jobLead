@@ -203,15 +203,11 @@ class StudentProfileResponse(BaseModel):
     # Languages
     languages: Optional[List[Dict[str, str]]] = None
     
-    # Job Preferences (flat fields like technical_skills)
-    job_type: Optional[List[str]] = None
-    work_mode: Optional[List[str]] = None
-    preferred_job_role: Optional[List[str]] = None
-    preferred_location: Optional[List[str]] = None
-    expected_salary: Optional[int] = None
-    
-    # Job Preferences (nested object - for backward compatibility)
-    preference: Optional[Dict[str, Any]] = None
+    # Job Preferences (consolidated into single JSONB object)
+    preference: Optional[JobPreferences] = Field(
+        None,
+        description="Job preferences containing job_type, work_mode, preferred_job_role, preferred_location, expected_salary"
+    )
     
     # Technical Profile Links
     github_profile: Optional[str] = None
