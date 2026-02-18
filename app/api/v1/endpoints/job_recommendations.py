@@ -4,6 +4,8 @@ Personalized job feed for students
 """
 
 from typing import Optional
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -116,7 +118,7 @@ async def get_recommended_jobs(
 
 @router.get("/jobs/{job_id}/similar")
 async def get_similar_jobs(
-    job_id: int,
+    job_id: str,
     limit: int = Query(5, ge=1, le=20),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -132,9 +134,18 @@ async def get_similar_jobs(
     **Query Parameters**:
     - `limit`: Max similar jobs to return (1-20, default: 5)
     """
+    # Validate and convert job_id to UUID
+    try:
+        job_uuid = UUID(job_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid job_id format. Must be a valid UUID."
+        )
+
     # Check if job exists
     result = await db.execute(
-        select(Job).where(Job.id == job_id)
+        select(Job).where(Job.id == job_uuid)
     )
     job = result.scalar_one_or_none()
     
@@ -147,27 +158,27 @@ async def get_similar_jobs(
     # Get similar jobs
     recommendation_service = JobRecommendationService(db)
     similar_jobs = await recommendation_service.get_similar_jobs(
-        job_id=job_id,
+        job_id=job_uuid,
         limit=limit
     )
     
     # Format response
     return {
         "reference_job": {
-            "id": job.id,
+            "id": str(job.id),
             "title": job.title,
             "company": job.company
         },
         "similar_jobs": [
             {
-                "id": j.id,
+                "id": str(j.id),
                 "title": j.title,
                 "company": j.company,
                 "location": j.location,
                 "job_type": j.job_type,
-                "skills": j.skills or [],
-                "apply_link": j.apply_link,
-                "posted_at": j.posted_at
+                "skills": j.skills_required or [],
+                "apply_link": j.source_url,
+                "posted_at": j.created_at
             }
             for j in similar_jobs
         ],

@@ -3,6 +3,8 @@ Student Dashboard API
 Overview of student activity and statistics
 """
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -253,7 +255,7 @@ async def get_dashboard(
 
 @router.post("/jobs/{job_id}/view", status_code=status.HTTP_201_CREATED)
 async def track_job_view(
-    job_id: int,
+    job_id: str,
     view_data: JobViewCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -266,10 +268,19 @@ async def track_job_view(
     Used for analytics and improving recommendations.
     
     **Request Body**:
-    - `job_id`: ID of the viewed job (in path)
+    - `job_id`: ID of the viewed job (UUID in path)
     - `duration_seconds`: How long the job was viewed (optional)
     - `source`: Where the job was viewed from (feed, search, notification, bookmark)
     """
+    # Validate and convert job_id to UUID (API receives string from frontend)
+    try:
+        job_uuid = UUID(job_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid job_id format. Must be a valid UUID."
+        )
+
     # Get student
     result = await db.execute(
         select(Student).where(Student.user_id == current_user.id)
@@ -284,7 +295,7 @@ async def track_job_view(
     
     # Check if job exists
     result = await db.execute(
-        select(Job).where(Job.id == job_id)
+        select(Job).where(Job.id == job_uuid)
     )
     job = result.scalar_one_or_none()
     
@@ -297,7 +308,7 @@ async def track_job_view(
     # Create job view record
     db_view = JobView(
         student_id=student.id,
-        job_id=job_id,
+        job_id=job_uuid,
         duration_seconds=view_data.duration_seconds,
         source=view_data.source
     )
@@ -307,7 +318,7 @@ async def track_job_view(
     
     return {
         "message": "Job view tracked successfully",
-        "job_id": job_id,
+        "job_id": str(job_uuid),
         "student_id": student.id
     }
 
