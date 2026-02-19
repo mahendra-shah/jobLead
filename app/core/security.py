@@ -7,7 +7,6 @@ from typing import Optional, Union
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
-import bcrypt
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -84,26 +83,6 @@ ROLE_PERMISSIONS = {
         "applications:read",
     ],
 }
-
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a password against a hash."""
-    try:
-        # Encode password and hash for bcrypt
-        password_bytes = plain_password.encode('utf-8')[:72]  # bcrypt 72-byte limit
-        hash_bytes = hashed_password.encode('utf-8')
-        return bcrypt.checkpw(password_bytes, hash_bytes)
-    except Exception:
-        return False
-
-
-def get_password_hash(password: str) -> str:
-    """Hash a password."""
-    # Encode and truncate to bcrypt's 72-byte limit
-    password_bytes = password.encode('utf-8')[:72]
-    salt = bcrypt.gensalt()
-    hashed = bcrypt.hashpw(password_bytes, salt)
-    return hashed.decode('utf-8')
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:

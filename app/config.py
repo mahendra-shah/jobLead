@@ -48,15 +48,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
-    # AWS
-    AWS_REGION: str = "ap-south-1"  # Mumbai region
-    AWS_ACCESS_KEY_ID: str = ""
-    AWS_SECRET_ACCESS_KEY: str = ""
-    S3_BUCKET_NAME: str = "placement-resumes"
-    DYNAMODB_TABLE_NAME: str = "telegram-raw-jobs"
-    
-    # Resume Storage
-    RESUME_STORAGE_TYPE: str = "local"  # "local" or "s3" - use "local" for development, "s3" for production
+    # Resume Storage (Local Filesystem)
     RESUME_STORAGE_DIR: str = "uploads/resumes"  # Local directory for storing resumes
     
     # MongoDB (for raw message storage - credentials in .env)
@@ -66,7 +58,7 @@ class Settings(BaseSettings):
     MONGODB_DATABASE: str = "placement_db"
     MONGODB_COLLECTION: str = "raw_messages"
     MONGODB_DB_NAME: str = "placement_db"  # Alias for database name
-    STORAGE_TYPE: str = "local"  # "local", "mongodb", or "dynamodb"
+    STORAGE_TYPE: str = "mongodb"  # "local" or "mongodb" for raw message storage
     
     @property
     def MONGODB_URI(self) -> str:
@@ -112,6 +104,26 @@ class Settings(BaseSettings):
     # Celery (Optional - for background task queuing)
     CELERY_BROKER_URL: str = "redis://redis:6379/0"
     CELERY_RESULT_BACKEND: str = "redis://redis:6379/0"
+    
+    # Redis Cache Configuration
+    REDIS_URL: str = "redis://localhost:6379/1"  # Use database 1 for cache (0 is for Celery)
+    REDIS_HOST: str = "localhost"  # Use 'redis' for Docker, 'localhost' for local dev
+    REDIS_PORT: int = 6379
+    REDIS_DB: int = 1
+    REDIS_PASSWORD: str = ""  # Leave empty if no password
+    REDIS_MAX_CONNECTIONS: int = 50
+    REDIS_SOCKET_KEEPALIVE: bool = True
+    REDIS_SOCKET_TIMEOUT: int = 5
+    REDIS_RETRY_ON_TIMEOUT: bool = True
+    REDIS_HEALTH_CHECK_INTERVAL: int = 30
+    
+    # Cache Settings
+    CACHE_ENABLED: bool = True
+    CACHE_DEFAULT_TTL: int = 3600  # 1 hour default
+    CACHE_RECOMMENDATIONS_TTL: int = 1800  # 30 minutes for job recommendations
+    CACHE_PROFILE_TTL: int = 7200  # 2 hours for student profiles
+    CACHE_JOBS_TTL: int = 600  # 10 minutes for eligible jobs list
+    CACHE_STATS_TTL: int = 300  # 5 minutes for statistics
     
     # File Upload
     MAX_UPLOAD_SIZE: int = 10485760  # 10MB

@@ -1,6 +1,24 @@
 version: '3.8'
 
 services:
+  # Redis Cache Service
+  redis:
+    image: redis:7.2-alpine
+    container_name: placement_redis
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - placement_network
+    restart: unless-stopped
+
   # FastAPI Backend (connects to local PostgreSQL on host machine)
   backend:
     build: .
@@ -14,11 +32,27 @@ services:
       - /app/.pytest_cache
     env_file:
       - .env
+    environment:
+      - REDIS_HOST=redis  # Override for Docker networking
     extra_hosts:
       - "host.docker.internal:host-gateway"  # Access PostgreSQL on host machine
+    depends_on:
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+    networks:
+      - placement_network
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  placement_network:
+    driver: bridge

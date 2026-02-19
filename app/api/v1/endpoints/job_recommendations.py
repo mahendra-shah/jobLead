@@ -20,6 +20,12 @@ from app.schemas.student import RecommendedJobsResponse
 router = APIRouter()
 
 
+def get_cache_manager():
+    """Get cache manager without circular import."""
+    from app.main import cache_manager
+    return cache_manager
+
+
 @router.get("/recommended-jobs", response_model=RecommendedJobsResponse)
 async def get_recommended_jobs(
     limit: int = Query(20, ge=1, le=100),
@@ -87,7 +93,7 @@ async def get_recommended_jobs(
         )
     
     # Get recommendations using service
-    recommendation_service = JobRecommendationService(db)
+    recommendation_service = JobRecommendationService(db, get_cache_manager())
     recommendations = await recommendation_service.get_recommendations(
         student=student,
         limit=limit,
@@ -155,7 +161,7 @@ async def get_similar_jobs(
         )
     
     # Get similar jobs
-    recommendation_service = JobRecommendationService(db)
+    recommendation_service = JobRecommendationService(db, get_cache_manager())
     similar_jobs = await recommendation_service.get_similar_jobs(
         job_id=job_uuid,
         limit=limit
@@ -216,7 +222,7 @@ async def get_recommendation_stats(
         )
     
     # Get all recommendations with low min_score to calculate stats
-    recommendation_service = JobRecommendationService(db)
+    recommendation_service = JobRecommendationService(db, get_cache_manager())
     all_recommendations = await recommendation_service.get_recommendations(
         student=student,
         limit=1000,  # Get all

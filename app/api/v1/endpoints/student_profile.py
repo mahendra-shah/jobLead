@@ -23,7 +23,6 @@ from app.schemas.student_profile import (
     LanguageProficiency
 )
 from app.schemas.student import ProfileCompletenessResponse
-import boto3
 from app.config import settings
 import os
 from pathlib import Path
@@ -45,17 +44,7 @@ async def get_student_by_user_id(db: AsyncSession, user_id) -> Optional[Student]
 
 
 def save_resume(file_content: bytes, filename: str, student_id: str) -> str:
-    """Upload resume to storage (local or S3) and return URL"""
-    storage_type = settings.RESUME_STORAGE_TYPE.lower()
-    
-    if storage_type == "s3":
-        return upload_resume_to_s3(file_content, filename, student_id)
-    else:
-        return upload_resume_local(file_content, filename, student_id)
-
-
-def upload_resume_local(file_content: bytes, filename: str, student_id: str) -> str:
-    """Upload resume to local storage and return URL path"""
+    """Upload resume to local storage and return URL"""
     try:
         # Create student-specific directory
         student_dir = RESUME_STORAGE_DIR / str(student_id)
@@ -76,38 +65,6 @@ def upload_resume_local(file_content: bytes, filename: str, student_id: str) -> 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to upload resume to local storage: {str(e)}"
-        )
-
-
-def upload_resume_to_s3(file_content: bytes, filename: str, student_id: str) -> str:
-    """Upload resume to S3 and return URL"""
-    try:
-        s3_client = boto3.client(
-            's3',
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-            region_name=settings.AWS_REGION
-        )
-        
-        # Generate S3 key with unique filename
-        unique_filename = f"{uuid.uuid4()}_{filename}"
-        s3_key = f"resumes/{student_id}/{unique_filename}"
-        
-        # Upload
-        s3_client.put_object(
-            Bucket=settings.S3_BUCKET_NAME,
-            Key=s3_key,
-            Body=file_content,
-            ContentType='application/pdf'
-        )
-        
-        # Generate URL
-        resume_url = f"https://{settings.S3_BUCKET_NAME}.s3.{settings.AWS_REGION}.amazonaws.com/{s3_key}"
-        return resume_url
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to upload resume to S3: {str(e)}"
         )
 
 
@@ -146,30 +103,6 @@ def delete_resume_local(resume_url: str):
     except Exception as e:
         # Log but don't fail - resume might already be deleted
         print(f"Warning: Failed to delete resume from local storage: {str(e)}")
-
-
-def delete_resume_from_s3(resume_url: str):
-    """Delete resume from S3"""
-    try:
-        if not resume_url or '.amazonaws.com/' not in resume_url:
-            return
-        
-        s3_client = boto3.client(
-            's3',
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-            region_name=settings.AWS_REGION
-        )
-        
-        # Extract S3 key from URL
-        s3_key = resume_url.split('.amazonaws.com/')[-1]
-        s3_client.delete_object(
-            Bucket=settings.S3_BUCKET_NAME,
-            Key=s3_key
-        )
-    except Exception as e:
-        # Log but don't fail - resume might already be deleted
-        print(f"Warning: Failed to delete resume from S3: {str(e)}")
 
 
 def _has_value(v) -> bool:

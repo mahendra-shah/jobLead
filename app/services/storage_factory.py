@@ -11,13 +11,6 @@ from app.config import settings
 
 # Try to import storage services
 try:
-    from .dynamodb_service import DynamoDBService
-    DYNAMODB_AVAILABLE = True
-except ImportError:
-    DYNAMODB_AVAILABLE = False
-    DynamoDBService = None
-
-try:
     from .mongodb_storage_service import MongoDBStorageService
     MONGODB_AVAILABLE = True
 except ImportError:
@@ -27,7 +20,7 @@ except ImportError:
 from .local_storage_service import LocalStorageService
 
 
-def get_storage_service() -> Union[LocalStorageService, 'MongoDBStorageService', 'DynamoDBService']:
+def get_storage_service() -> Union[LocalStorageService, 'MongoDBStorageService']:
     """
     Get appropriate storage service based on configuration
     

@@ -26,7 +26,6 @@ from app.schemas.student import (
     BulkStudentCreate,
     BulkUploadResponse
 )
-from app.core.security import get_password_hash
 
 router = APIRouter()
 
@@ -56,10 +55,10 @@ async def create_student(
             detail=f"Student with email {student_in.email} already exists"
         )
     
-    # Create student
+    # Create student (password is None - using Google OAuth)
     db_student = Student(
         email=student_in.email,
-        password=get_password_hash(student_in.password),
+        password=None,  # No password - Google OAuth only
         first_name=student_in.first_name,
         last_name=student_in.last_name,
         phone=student_in.phone,
@@ -372,10 +371,10 @@ async def bulk_create_students(
                 })
                 continue
             
-            # Create student
+            # Create student (password is None - using Google OAuth)
             db_student = Student(
                 email=student_data.email,
-                password=get_password_hash(student_data.password),
+                password=None,  # No password - Google OAuth only
                 first_name=student_data.first_name,
                 last_name=student_data.last_name,
                 phone=student_data.phone,

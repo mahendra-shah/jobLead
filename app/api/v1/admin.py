@@ -944,25 +944,14 @@ async def trigger_scrape(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_superuser),
 ):
-    """Manually invoke a Lambda function."""
-    import boto3
-    import json
+    """Manually trigger Telegram scraping using APScheduler."""
     import uuid
-    from app.config import settings
-    
-    # Validate lambda function name
-    valid_functions = ["group_joiner", "message_scraper", "job_processor"]
-    if request.lambda_function not in valid_functions:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid lambda function. Must be one of: {', '.join(valid_functions)}"
-        )
+    from app.core.scheduler import trigger_job_now
+    from datetime import datetime
+    import pytz
     
     # Check working hours if not forced
-    if not request.force and request.lambda_function == "group_joiner":
-        from datetime import datetime
-        import pytz
-        
+    if not request.force:
         ist = pytz.timezone('Asia/Kolkata')
         now_ist = datetime.now(ist)
         hour = now_ist.hour
@@ -970,50 +959,27 @@ async def trigger_scrape(
         if hour < 10 or hour >= 20:
             return TriggerScrapeResponse(
                 success=False,
-                message="Group joiner can only run between 10 AM - 8 PM IST. Use force=true to override.",
+                message="Scraping can only run between 10 AM - 8 PM IST. Use force=true to override.",
                 execution_id=None,
             )
     
     try:
-        # Initialize boto3 client
-        lambda_client = boto3.client('lambda', region_name=settings.AWS_REGION)
-        
         # Generate execution ID
         execution_id = str(uuid.uuid4())
         
-        # Prepare payload
-        payload = {
-            "execution_id": execution_id,
-            "triggered_by": "admin",
-            "force": request.force,
-        }
+        # Trigger the telegram scraper job directly using APScheduler
+        result = await trigger_job_now('telegram_scraper_4hourly')
         
-        # Invoke Lambda function
-        function_name = f"placement-{request.lambda_function.replace('_', '-')}"
-        
-        response = lambda_client.invoke(
-            FunctionName=function_name,
-            InvocationType='Event',  # Async invocation
-            Payload=json.dumps(payload),
+        return TriggerScrapeResponse(
+            success=True,
+            message=f"Successfully triggered telegram scraping",
+            execution_id=execution_id,
         )
-        
-        if response['StatusCode'] == 202:
-            return TriggerScrapeResponse(
-                success=True,
-                message=f"Successfully triggered {request.lambda_function}",
-                execution_id=execution_id,
-            )
-        else:
-            return TriggerScrapeResponse(
-                success=False,
-                message=f"Failed to trigger Lambda. Status: {response['StatusCode']}",
-                execution_id=None,
-            )
     
     except Exception as e:
         return TriggerScrapeResponse(
             success=False,
-            message=f"Error triggering Lambda: {str(e)}",
+            message=f"Error triggering scraping: {str(e)}",
             execution_id=None,
         )
 

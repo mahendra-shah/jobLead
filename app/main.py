@@ -10,14 +10,18 @@ from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 
 from app.api.v1 import api_router
-from app.routers import monitoring, telegram_scraper, visibility, ml_feedback, slack_commands
+from app.routers import telegram_scraper, visibility, ml_feedback, slack_commands
 from app.config import settings
 from app.core.logging import setup_logging
 from app.core.scheduler import start_scheduler, stop_scheduler
+from app.core.cache import CacheManager
 from app.db.session import engine, init_db
 
 # Setup logging
 setup_logging()
+
+# Initialize Redis cache manager
+cache_manager = CacheManager(settings)
 
 # Initialize Sentry for error tracking (only if DSN is properly configured)
 if settings.SENTRY_DSN and settings.SENTRY_DSN.startswith('https://'):
@@ -49,10 +53,12 @@ async def lifespan(app: FastAPI):
     """Application lifespan events."""
     # Startup
     await init_db()
+    cache_manager.connect()  # Initialize Redis cache
     start_scheduler()  # Start APScheduler for background tasks
     yield
     # Shutdown
     stop_scheduler()  # Stop scheduler gracefully
+    cache_manager.disconnect()  # Close Redis connection
     await engine.dispose()
 
 
@@ -88,9 +94,6 @@ app.add_middleware(
 # Include API router
 app.include_router(api_router, prefix="/api/v1")
 
-# Include monitoring router (no prefix - uses /api/monitoring)
-app.include_router(monitoring.router)
-
 # Include telegram scraper router (no prefix - uses /api/telegram-scraper)
 app.include_router(telegram_scraper.router)
 
@@ -116,11 +119,13 @@ async def root():
 
 @app.get("/health", tags=["Health"])
 async def health_check():
-    """Health check endpoint."""
-    return {
+    """Health check endpoint with cache status."""
+    health_data = {
         "status": "healthy",
         "environment": settings.ENVIRONMENT,
+        "cache": cache_manager.get_stats() if cache_manager else {"enabled": False},
     }
+    return health_data
 
 
 @app.exception_handler(Exception)

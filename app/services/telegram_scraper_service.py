@@ -48,7 +48,6 @@ from pymongo.errors import PyMongoError
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.utils.cloudwatch_metrics import cloudwatch_metrics
 from app.utils.slack_notifier import slack_notifier
 from app.models.telegram_account import TelegramAccount, HealthStatus
 from app.db.session import SyncSessionLocal
@@ -277,10 +276,7 @@ class TelegramScraperService:
             )
             
             # Publish metric
-            cloudwatch_metrics.publish_error_metric(
-                error_type="AuthKeyError",
-                account_id=account_id
-            )
+# REMOVED (no AWS):             cloudwatch_metrics.publish_error_metric(
             
             # Capture in Sentry
             sentry_sdk.capture_exception(e)
@@ -429,10 +425,7 @@ class TelegramScraperService:
             self.account_stats[account_id]['rate_limits'] += 1
             
             # Publish CloudWatch metric
-            cloudwatch_metrics.publish_flood_wait_metric(
-                wait_seconds=e.seconds,
-                account_id=account_id
-            )
+# REMOVED (no AWS):             cloudwatch_metrics.publish_flood_wait_metric(
             
             # Wait if reasonable time (under 60 seconds)
             if e.seconds < 60:
@@ -462,11 +455,7 @@ class TelegramScraperService:
             self.account_stats[account_id]['errors'] += 1
             
             # Publish metric
-            cloudwatch_metrics.publish_error_metric(
-                error_type=error_type,
-                account_id=account_id,
-                channel=username
-            )
+# REMOVED (no AWS):             cloudwatch_metrics.publish_error_metric(
         
         except AuthKeyError as e:
             error_msg = f"Auth key error: {str(e)}"
@@ -490,11 +479,7 @@ class TelegramScraperService:
             )
             
             # Publish metric and capture in Sentry
-            cloudwatch_metrics.publish_error_metric(
-                error_type="AuthKeyError",
-                account_id=account_id,
-                channel=username
-            )
+# REMOVED (no AWS):             cloudwatch_metrics.publish_error_metric(
             sentry_sdk.capture_exception(e)
         
         except Exception as e:
@@ -514,11 +499,7 @@ class TelegramScraperService:
             self.account_stats[account_id]['errors'] += 1
             
             # Publish metric
-            cloudwatch_metrics.publish_error_metric(
-                error_type=error_type,
-                account_id=account_id,
-                channel=username
-            )
+# REMOVED (no AWS):             cloudwatch_metrics.publish_error_metric(
             
             # Capture in Sentry with context
             with sentry_sdk.push_scope() as scope:
@@ -609,11 +590,7 @@ class TelegramScraperService:
             db.close()
             
             # Publish account health metrics
-            cloudwatch_metrics.publish_account_health(
-                active_accounts=active_count,
-                degraded_accounts=degraded_count,
-                banned_accounts=banned_count
-            )
+# REMOVED (no AWS):             cloudwatch_metrics.publish_account_health(
             
             # Send Slack alert if critical health issues
             if active_count == 0 or active_count <= 2:
@@ -781,13 +758,7 @@ class TelegramScraperService:
                 )
                 
                 # Publish CloudWatch metrics per account
-                cloudwatch_metrics.publish_scrape_metrics(
-                    account_id=account_id,
-                    messages_processed=stats['messages_found'],
-                    channels_scraped=stats['channels_scraped'],
-                    duration_ms=duration_ms,
-                    errors_count=stats['errors']
-                )
+# REMOVED (no AWS):                 cloudwatch_metrics.publish_scrape_metrics(
             
             # Check account health and publish metrics
             await self._check_and_report_account_health()
