@@ -73,7 +73,7 @@ app = FastAPI(
     openapi_url="/openapi.json",
     # Add HTTP and HTTPS schemes for production SSL support
     servers=[
-        {"url": "http://65.0.6.163", "description": "Dev Server (HTTP)"},
+        {"url": "https://api.pd.navgurukul.org", "description": "Dev Server (HTTP)"},
         {"url": "http://localhost:8000", "description": "Local Development (HTTP)"},
     ],
     swagger_ui_parameters={
