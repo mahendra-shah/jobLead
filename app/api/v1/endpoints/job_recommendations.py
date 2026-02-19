@@ -16,6 +16,7 @@ from app.models.student import Student
 from app.models.job import Job
 from app.services.job_recommendation_service import JobRecommendationService
 from app.schemas.student import RecommendedJobsResponse
+from app.schemas.job import CompanyBrief
 
 router = APIRouter()
 
@@ -172,13 +173,13 @@ async def get_similar_jobs(
         "reference_job": {
             "id": str(job.id),
             "title": job.title,
-            "company": job.company
+            "company": CompanyBrief.model_validate(job.company).model_dump() if job.company else None
         },
         "similar_jobs": [
             {
                 "id": str(j.id),
                 "title": j.title,
-                "company": j.company,
+                "company": CompanyBrief.model_validate(j.company).model_dump() if j.company else None,
                 "location": j.location,
                 "job_type": j.job_type,
                 "skills": j.skills_required or [],

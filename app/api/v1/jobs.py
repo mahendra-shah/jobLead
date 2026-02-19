@@ -9,7 +9,7 @@ from sqlalchemy.orm import joinedload
 from app.api.deps import get_db
 from app.models.job import Job
 from app.models.company import Company
-from app.schemas.job import JobListResponse, JobDetailResponse
+from app.schemas.job import JobListResponse, JobDetailResponse, CompanyBrief
 
 router = APIRouter()
 
@@ -329,7 +329,7 @@ async def get_job(
         title=job.title,
         company_id=str(job.company_id) if job.company_id else None,
         company_name=job.company.name if job.company else "Unknown",
-        company=job.company,
+        company=CompanyBrief.model_validate(job.company) if job.company else None,
         description=job.description,
         skills_required=job.skills_required or [],
         

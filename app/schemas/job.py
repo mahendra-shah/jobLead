@@ -2,7 +2,8 @@
 
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field
+from uuid import UUID
+from pydantic import BaseModel, Field, field_validator
 
 
 class CompanyBrief(BaseModel):
@@ -12,6 +13,14 @@ class CompanyBrief(BaseModel):
     domain: Optional[str] = None
     logo_url: Optional[str] = None
     website: Optional[str] = None
+    
+    @field_validator('id', mode='before')
+    @classmethod
+    def convert_uuid_to_str(cls, value: Any) -> str:
+        """Convert UUID to string."""
+        if isinstance(value, UUID):
+            return str(value)
+        return value
     
     class Config:
         from_attributes = True
@@ -25,6 +34,14 @@ class JobBase(BaseModel):
     company_name: str
     description: Optional[str] = None
     skills_required: List[str] = Field(default_factory=list)
+    
+    @field_validator('id', 'company_id', mode='before')
+    @classmethod
+    def convert_uuid_fields(cls, value: Any) -> Optional[str]:
+        """Convert UUID fields to strings."""
+        if isinstance(value, UUID):
+            return str(value)
+        return value
     
     # Legacy fields (kept for backward compatibility)
     experience_required: Optional[str] = None
