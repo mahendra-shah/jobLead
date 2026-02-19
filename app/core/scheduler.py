@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 # Global scheduler instance
 scheduler = AsyncIOScheduler(
-    timezone='UTC',
+    timezone='Asia/Kolkata',  # IST timezone
     job_defaults={
         'coalesce': True,  # Combine multiple missed executions into one
         'max_instances': 1,  # Only one instance of each job at a time
@@ -55,7 +55,7 @@ async def run_telegram_scraper():
     """
     Scheduled task: Run Telegram scraper to fetch messages from all channels.
     
-    This job runs every 4 hours (4AM, 8AM, 12PM, 4PM, 8PM, 12AM).
+    This job runs every 4 hours (4AM, 8AM, 12PM, 4PM, 8PM, 12AM IST).
     Fetches messages from all active Telegram channels using multi-account support.
     """
     from app.services.telegram_scraper_service import get_scraper_service
@@ -94,7 +94,7 @@ async def run_telegram_scraper():
 
 async def send_daily_slack_summary():
     """
-    Scheduled task: Send daily morning update at 9:00 AM UTC (2:30 PM IST).
+    Scheduled task: Send daily morning update at 9:00 AM IST.
     
     Includes:
     - System status overview
@@ -158,29 +158,28 @@ def setup_jobs():
     """
     logger.info("⏰ Setting up scheduled jobs...")
     
-    # Job 1: Telegram Scraper - Every 4 hours (4AM, 8AM, 12PM, 4PM, 8PM, 12AM)
-    # Runs at: 4, 8, 12, 16, 20, 0 hours UTC (adjust for IST if needed)
+    # Job 1: Telegram Scraper - Every 4 hours (4AM, 8AM, 12PM, 4PM, 8PM, 12AM IST)
     scraping_hours = getattr(settings, 'SCRAPING_HOURS', [4, 8, 12, 16, 20, 0])
     hour_str = ','.join(map(str, scraping_hours))
     
     scheduler.add_job(
         run_telegram_scraper,
-        CronTrigger(hour=hour_str, minute=0),  # Run at specified hours
+        CronTrigger(hour=hour_str, minute=0),  # Run at specified hours IST
         id='telegram_scraper_4hourly',
-        name='Telegram Scraper (Every 4 hours)',
+        name='Telegram Scraper (Every 4 hours IST)',
         replace_existing=True
     )
-    logger.info(f"   ✅ Added: telegram_scraper_4hourly (Hours: {hour_str} UTC)")
+    logger.info(f"   ✅ Added: telegram_scraper_4hourly (Hours: {hour_str} IST)")
     
-    # Job 2: Daily Morning Update at 9:00 AM UTC (2:30 PM IST)
+    # Job 2: Daily Morning Update at 9:00 AM IST
     scheduler.add_job(
         send_daily_slack_summary,
-        CronTrigger(hour=9, minute=0),  # 9:00 AM UTC = 2:30 PM IST
+        CronTrigger(hour=9, minute=0),  # 9:00 AM IST
         id='daily_morning_update',
-        name='Daily Morning Update (9:00 AM UTC / 2:30 PM IST)',
+        name='Daily Morning Update (9:00 AM IST)',
         replace_existing=True
     )
-    logger.info("   ✅ Added: daily_morning_update (09:00 UTC / 14:30 IST)")
+    logger.info("   ✅ Added: daily_morning_update (09:00 IST)")
     
     # Job 3: Channel Sync (PostgreSQL ↔ MongoDB) - Every 6 hours
     # Syncs telegram_groups (PostgreSQL) to channels (MongoDB) for Lambda access

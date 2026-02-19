@@ -3270,21 +3270,679 @@
         "confidence": "auto_labeled",
         "text_length": 128
       }
+    },
+    {
+      "text": "@TechStartup is hiring Python Developers! 💻\nExp: 2-4 years\nSkills: Python, Django, PostgreSQL\nLocation: Bangalore\nSalary: 8-12 LPA\nApply: careers@techstartup.com",
+      "is_job": true,
+      "notes": "Telegram @mention format with emoji",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "mention",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "@GoogleIndia looking for SRE Engineer\n📍 Bangalore/Hyderabad\n💰 20-30 LPA\n🎓 3+ years exp\nSkills: Kubernetes, Docker, Prometheus\nApply: https://careers.google.com/jobs",
+      "is_job": true,
+      "notes": "@mention with emoji bullets",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "mention_emoji",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "Join @Flipkart team as Full Stack Developer\nReact + Node.js expert needed\n2-5 years | Bangalore | 12-18 LPA\nDM to apply",
+      "is_job": true,
+      "notes": "@mention in Join format",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "mention",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "@ZomatoJobs: Backend Engineer opening\nGo/Python | 3-6 yrs | Gurgaon\nWork on scale! Apply now👇\nhttps://zomato.careers",
+      "is_job": true,
+      "notes": "@mention with colon separator",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "mention",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "Hiring alert from @PaytmCareers 🚀\nProduct Manager | 4-7 years | Noida\n15-25 LPA | IIT/BITS preferred\nSend CV: hr@paytm.com",
+      "is_job": true,
+      "notes": "@mention in alert format",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "mention",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "@AmazonIndia is expanding! Need SDE-2\nJava/Spring | Bangalore/Chennai\n5+ years | Upto 35 LPA\nApply: amazon.jobs/india",
+      "is_job": true,
+      "notes": "@mention expansion hiring",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "mention",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "@SwiggyTech hiring Android Developers\nKotlin | MVVM | Remote options\n2-4 years | 10-16 LPA\nEmail: android-hiring@swiggy.in",
+      "is_job": true,
+      "notes": "@mention remote option",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "mention",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "@OlaCabs urgently needs Data Scientists\nPython, ML, Spark | Bangalore only\n3-6 years | Great growth opportunity\nApply at careers.ola.com",
+      "is_job": true,
+      "notes": "@mention urgent hiring",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "mention",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "@InfosysDigital looking for freshers!\nB.Tech/BE (CS) | 0-1 year\nTraining provided | Multiple locations\n3.6 LPA starting\nWalk-in details: careers.infosys.com",
+      "is_job": true,
+      "notes": "@mention fresher hiring",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "mention",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "@TCSCareers Mass Hiring Drive 2026\nFreshers & Exp (0-3 years)\nAll India locations\nRegister: tcs.com/careers",
+      "is_job": true,
+      "notes": "@mention mass hiring",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "mention",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "🔥 HOT OPENING 🔥\n🏢 Company: Microsoft India\n💼 Role: Senior SDE\n📍 Location: Bangalore\n💰 Salary: 30-45 LPA\n🎓 Experience: 5-8 years\n🛠 Skills: C++, System Design, Azure\n📧 Apply: careers@microsoft.com",
+      "is_job": true,
+      "notes": "Full emoji-structured format",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "emoji_structured",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "🚀 STARTUP OPENING\n🏢 Adobe\n💼 Frontend Developer\n📍 Noida\n💵 8-14 LPA\n📚 2-4 years React/Vue\n✉️ jobs@adobe.com",
+      "is_job": true,
+      "notes": "Emoji bullets for each field",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "emoji_structured",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "🎯 Data Analyst Position\n🏢 Goldman Sachs\n📍 Bangalore/Mumbai\n💰 12-18 LPA\n🎓 3+ years | SQL, Python, Tableau\n📩 Send resume to: talents@gs.com",
+      "is_job": true,
+      "notes": "Finance sector job",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "emoji_structured",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "💻 DevOps Engineer Needed!\n🏢 Razorpay\n📍 Remote/Bangalore\n💸 15-25 LPA\n⚙️ AWS, Terraform, Jenkins\n🎓 3-6 years experience\n📞 Contact: +91-9876543210",
+      "is_job": true,
+      "notes": "DevOps with remote option",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "emoji_structured",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "🎨 UI/UX Designer Opening\n🏢 Myntra\n📍 Bangalore\n💰 10-15 LPA\n🎓 2-5 years | Figma expert\n🖼 Portfolio required\n📧 design@myntra.com",
+      "is_job": true,
+      "notes": "Design role structured",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "emoji_structured",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "📱 iOS Developer @ PhonePe\n📍 Pune\n💵 12-20 LPA\n🎓 3-5 years Swift/SwiftUI\n🚀 Work on India's top payment app\n✉️ ios-jobs@phonepe.com",
+      "is_job": true,
+      "notes": "Mobile developer role",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "emoji_structured",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "🔬 ML Engineer Opening\n🏢 Walmart Labs\n📍 Bangalore\n💰 18-28 LPA\n🎓 4+ years | PyTorch/TensorFlow\n🧠 Computer Vision experience\n📩 ml-hiring@walmart.com",
+      "is_job": true,
+      "notes": "ML/AI specialized role",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "emoji_structured",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "☁️ Cloud Architect @ Oracle\n📍 Hyderabad\n💰 25-40 LPA\n🎓 6-10 years\n⚡ AWS/Azure certifications\n📧 cloud-jobs@oracle.com",
+      "is_job": true,
+      "notes": "Senior cloud role",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "emoji_structured",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "🎓 FRESHERS WELCOME!\n🏢 Cognizant\n💼 Trainee Software Engineer\n📍 Chennai/Bangalore/Pune\n💰 3.8 LPA\n🎓 B.Tech/BE 2025/2026 batch\n📝 Apply: freshercareers.cognizant.com",
+      "is_job": true,
+      "notes": "Fresher mass hiring",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "emoji_structured",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "🌟 QA Automation Engineer\n🏢 Salesforce\n📍 Hyderabad\n💵 10-18 LPA\n🎓 2-5 years | Selenium/Python\n📧 qa-hiring@salesforce.com",
+      "is_job": true,
+      "notes": "QA automation role",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "emoji_structured",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "@Flipkart | Backend Developer | Java/Spring | 3-5 yrs | Bangalore | 12-18 LPA | Apply: careers@flipkart.com",
+      "is_job": true,
+      "notes": "Compact pipe format with @mention",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "compact_pipes",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "Netflix India | Senior SDE | Python/Go | 5-8 yrs | Mumbai | 35-50 LPA | netflix.com/jobs",
+      "is_job": true,
+      "notes": "Compact pipe without @",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "compact_pipes",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "@Uber | Data Engineer | Spark/Kafka | 4-7 yrs | Bangalore/Hyderabad | 20-30 LPA | uber.com/careers",
+      "is_job": true,
+      "notes": "Pipe format multi-city",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "compact_pipes",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "Apple | iOS Dev | Swift | 3-6 yrs | Bangalore | Top salary | apple.com/careers/in",
+      "is_job": true,
+      "notes": "Pipe without exact salary",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "compact_pipes",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "@Intel | ASIC Engineer | Verilog/SystemVerilog | 5+ yrs | Bangalore | 25-35 LPA | Contact: hr@intel.com",
+      "is_job": true,
+      "notes": "Hardware role pipe format",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "compact_pipes",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "Cisco | Network Engineer | CCNA/CCNP | 2-4 yrs | Bangalore | 8-14 LPA | Apply at cisco.com/careers",
+      "is_job": true,
+      "notes": "Network role compact",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "compact_pipes",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "@Accenture | Full Stack | React+Node | 2-5 yrs | Multiple cities | 6-12 LPA | accenture.com/careers",
+      "is_job": true,
+      "notes": "Fullstack compact format",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "compact_pipes",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "Deloitte | Business Analyst | MBA/B.Tech | 1-3 yrs | Bangalore/Mumbai | 8-12 LPA | deloitte.com/in/careers",
+      "is_job": true,
+      "notes": "Non-tech role compact",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "compact_pipes",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "@Freshworks | Product Manager | 4-7 yrs | Chennai | 18-28 LPA | PM experience must | freshworks.com/jobs",
+      "is_job": true,
+      "notes": "PM role compact",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "compact_pipes",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "Snap Inc | AR Engineer | Unity/C# | 3-6 yrs | Bangalore | 25-40 LPA | snap.com/jobs",
+      "is_job": true,
+      "notes": "Specialized AR role",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "compact_pipes",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "Need React developers. 2-4 years. Bangalore. 10-15 LPA. Email cv@startup.in",
+      "is_job": true,
+      "notes": "Very brief minimal format",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "minimal",
+        "confidence": "medium"
+      }
+    },
+    {
+      "text": "Python developer needed urgently. 3+ years. Mumbai. Good salary. Call 9876543210",
+      "is_job": true,
+      "notes": "Urgent minimal with phone",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "minimal",
+        "confidence": "medium"
+      }
+    },
+    {
+      "text": "Java developers wanted. Freshers OK. Pune. 3-5 LPA. Send resume jobs@company.com",
+      "is_job": true,
+      "notes": "Fresher minimal format",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "minimal",
+        "confidence": "medium"
+      }
+    },
+    {
+      "text": "Looking for DevOps engineer. Bangalore. Remote options. 12-18 LPA. DM resume.",
+      "is_job": true,
+      "notes": "Minimal with remote",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "minimal",
+        "confidence": "medium"
+      }
+    },
+    {
+      "text": "Data analyst position. SQL, Python. 2-3 years. Chennai. Apply at company.com/careers",
+      "is_job": true,
+      "notes": "Data role minimal",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "minimal",
+        "confidence": "medium"
+      }
+    },
+    {
+      "text": "Frontend dev. React/Vue. 2-4 yrs. Bangalore. 8-12L. Send CV hr@tech.com",
+      "is_job": true,
+      "notes": "Super compact minimal",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "minimal",
+        "confidence": "medium"
+      }
+    },
+    {
+      "text": "Immediate opening: Backend engineer. Node/Express. 3+ yrs. Hyderabad. Contact: jobs@startup.io",
+      "is_job": true,
+      "notes": "Immediate minimal",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "minimal",
+        "confidence": "medium"
+      }
+    },
+    {
+      "text": "Mobile developer needed. Flutter. 2-5 years. Remote. 10-18 LPA. Apply now: careers@app.com",
+      "is_job": true,
+      "notes": "Mobile minimal remote",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "minimal",
+        "confidence": "medium"
+      }
+    },
+    {
+      "text": "QA engineer wanted. Automation exp. Bangalore. 6-10 LPA. Email: qa@company.in",
+      "is_job": true,
+      "notes": "QA minimal format",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "minimal",
+        "confidence": "medium"
+      }
+    },
+    {
+      "text": "Blockchain developer. Solidity/Web3. 2-4 yrs. Mumbai. Great package. DM for details.",
+      "is_job": true,
+      "notes": "Blockchain minimal",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "minimal",
+        "confidence": "medium"
+      }
+    },
+    {
+      "text": "Google NYC is hiring Senior SDE. 7+ years. $180k-250k. Must relocate to New York. Onsite only, no remote. Apply: google.com/jobs",
+      "is_job": false,
+      "notes": "International onsite only - should be rejected",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "international_reject",
+        "reason": "usa_onsite_only"
+      }
+    },
+    {
+      "text": "Amazon Seattle office needs SDE-3. 8-12 years exp. $200k+. Must work from Seattle office. No remote work. Contact: aws-jobs@amazon.com",
+      "is_job": false,
+      "notes": "USA onsite mandatory",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "international_reject",
+        "reason": "usa_onsite"
+      }
+    },
+    {
+      "text": "Meta London hiring Software Engineer. 5+ years. £90k-120k. Office based in London. Relocation assistance. meta.com/careers",
+      "is_job": false,
+      "notes": "UK onsite position",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "international_reject",
+        "reason": "uk_onsite"
+      }
+    },
+    {
+      "text": "Apple Singapore needs iOS developer. 4-6 years. S$120k. Must work from Singapore office. Visa sponsorship available. apple.com/sg/jobs",
+      "is_job": false,
+      "notes": "Singapore onsite",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "international_reject",
+        "reason": "singapore_onsite"
+      }
+    },
+    {
+      "text": "Microsoft Vancouver office hiring. Senior PM. 7+ years. CAD $150k. Office-based role, no remote. Relocation package. microsoft.com/careers",
+      "is_job": false,
+      "notes": "Canada onsite",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "international_reject",
+        "reason": "canada_onsite"
+      }
+    },
+    {
+      "text": "Tesla Fremont Factory needs Automation Engineer. 5+ years. $130k-180k. Must work on-site at factory. No WFH. tesla.com/careers",
+      "is_job": false,
+      "notes": "USA factory onsite",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "international_reject",
+        "reason": "usa_factory_onsite"
+      }
+    },
+    {
+      "text": "Netflix Los Gatos office hiring. 6+ years. $180k-250k. Work from HQ campus only. No remote options. netflix.com/jobs",
+      "is_job": false,
+      "notes": "USA HQ onsite only",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "international_reject",
+        "reason": "usa_hq_onsite"
+      }
+    },
+    {
+      "text": "Goldman Sachs Dubai office. Front Office Developer. 5+ years. AED 400k. Must relocate to Dubai. Onsite work. gs.com/careers",
+      "is_job": false,
+      "notes": "Dubai onsite",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "international_reject",
+        "reason": "dubai_onsite"
+      }
+    },
+    {
+      "text": "Shopify hiring Senior Developer. 5+ years Rails. Remote worldwide OK. $120k-180k USD. Work from anywhere including India. shopify.com/careers",
+      "is_job": true,
+      "notes": "International remote allowed",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "international_remote_ok",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "GitLab needs DevOps Engineer. 3-6 years. Remote from India OK. $100k-140k. Fully remote company. gitlab.com/jobs",
+      "is_job": true,
+      "notes": "Fully remote international",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "international_remote_ok",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "Stripe hiring Backend Engineer. Python/Ruby. 4+ years. Remote in India accepted. Competitive USD salary. stripe.com/jobs",
+      "is_job": true,
+      "notes": "India remote accepted",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "international_remote_ok",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "Automattic (WordPress) looking for JS developers. 3-5 years. Work from anywhere. Includes India. $80k-120k. automattic.com/work-with-us",
+      "is_job": true,
+      "notes": "Global remote company",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "international_remote_ok",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "Toptal needs freelance developers. Remote worldwide. India welcome. Competitive rates. toptal.com/developers",
+      "is_job": true,
+      "notes": "Freelance remote global",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "international_remote_ok",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "Remote company hiring Full Stack. React+Node. 3+ years. Work from India. $70k-110k USD. Apply: remote.co/jobs",
+      "is_job": true,
+      "notes": "Remote-first company",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "international_remote_ok",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "Buffer hiring Content Marketer. Remote anywhere including India. 2-4 years exp. $60k-90k. buffer.com/journey",
+      "is_job": true,
+      "notes": "Marketing remote role",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "international_remote_ok",
+        "confidence": "high"
+      }
+    },
+    {
+      "text": "Looking for job as Python developer. 3 years exp. Ready to relocate. Contact: 9876543210",
+      "is_job": false,
+      "notes": "Job seeker, not job posting",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "non_job",
+        "reason": "job_seeker"
+      }
+    },
+    {
+      "text": "Need software engineer job. Fresher. B.Tech CS from IIT. Resume: drive.google.com/myresume",
+      "is_job": false,
+      "notes": "Job seeker fresher",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "non_job",
+        "reason": "job_seeker"
+      }
+    },
+    {
+      "text": "Free webinar on React JS this Saturday. Learn hooks and state management. Register: webinar.com/react",
+      "is_job": false,
+      "notes": "Educational webinar",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "non_job",
+        "reason": "webinar"
+      }
+    },
+    {
+      "text": "Tech meetup in Bangalore this weekend. Discuss latest in AI/ML. Free food and networking. RSVP: meetup.com/tech",
+      "is_job": false,
+      "notes": "Meetup event",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "non_job",
+        "reason": "event"
+      }
+    },
+    {
+      "text": "Breaking: OpenAI launches GPT-5. Read about new features and capabilities. Link: openai.com/blog",
+      "is_job": false,
+      "notes": "Tech news",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "non_job",
+        "reason": "news"
+      }
+    },
+    {
+      "text": "How to crack Google interviews? Study plan and resources shared. Check this: interview-prep.com",
+      "is_job": false,
+      "notes": "Interview preparation content",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "non_job",
+        "reason": "educational"
+      }
+    },
+    {
+      "text": "System Design course starting next week. Learn to design scalable systems. 50% discount code: DESIGN50. Enroll: courses.com",
+      "is_job": false,
+      "notes": "Course promotion",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "non_job",
+        "reason": "course"
+      }
+    },
+    {
+      "text": "Congratulations to our members who got placed at Amazon, Google, Microsoft this month! 🎉 Keep going everyone!",
+      "is_job": false,
+      "notes": "Placement celebration",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "non_job",
+        "reason": "celebration"
+      }
+    },
+    {
+      "text": "Anyone working at Flipkart? Need referral for SDE-2 position. Have 4 years exp in Java. Please DM.",
+      "is_job": false,
+      "notes": "Referral request",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "non_job",
+        "reason": "referral_request"
+      }
+    },
+    {
+      "text": "Share your salary in comments. Let's know what companies pay for our roles. Anonymous poll.",
+      "is_job": false,
+      "notes": "Salary discussion",
+      "metadata": {
+        "source": "manual_telegram",
+        "format": "non_job",
+        "reason": "discussion"
+      }
     }
   ],
-  "updated": "2026-01-16 02:56:48",
-  "total_examples": 228,
+  "updated": "2026-02-19 13:54:48",
+  "total_examples": 293,
   "statistics": {
-    "total": 228,
-    "jobs": 165,
-    "non_jobs": 63,
-    "ratio": "165:63",
+    "total": 293,
+    "jobs": 212,
+    "non_jobs": 81,
+    "ratio": "212:81",
     "sources": {
       "manual": 50,
-      "telegram_csv": 178
+      "telegram_csv": 178,
+      "manual_telegram": 65
     },
-    "with_apply_links": 29,
-    "avg_text_length": 808
+    "telegram_specific_added": 65,
+    "formats": {
+      "mention": 9,
+      "emoji_structured": 10,
+      "compact_pipes": 10,
+      "minimal": 10,
+      "international_reject": 8,
+      "international_remote_ok": 7
+    }
   },
   "last_retrained": "2026-01-15T21:29:19.476329",
   "model_version": 1,

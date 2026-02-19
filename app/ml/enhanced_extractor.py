@@ -43,6 +43,7 @@ class EnhancedJobExtraction:
     # Skills & Requirements
     skills: List[str] = None
     description: str = ""
+    job_category: Optional[str] = None  # tech, data, design, marketing, non-tech
     
     # Metadata
     confidence: float = 0.0
@@ -171,15 +172,44 @@ class EnhancedJobExtractor:
         extraction.location = location_data.get('raw_location')
         extraction.location_data = location_data
         
-        # Salary
-        salary_info = self._extract_salary(text)
-        if salary_info:
-            extraction.salary_min, extraction.salary_max, extraction.salary_raw = salary_info
+        # CRITICAL: Filter international onsite jobs immediately
+        # Reject if: international location + onsite only + not remote/hybrid
+        if (location_data.get('geographic_scope') == 'international' and 
+            location_data.get('is_onsite_only', False) and 
+            not location_data.get('is_remote', False) and 
+            not location_data.get('is_hybrid', False)):
+            # Log rejection for monitoring
+            print(f"❌ Rejected international onsite job: {text[:100]}...")
+            extraction.confidence = 0.0  # Mark as rejected
+            return extraction  # Return with 0 confidence to skip storage
         
-        # Experience
-        exp_info = self._extract_experience(text)
-        if exp_info:
-            extraction.experience_min, extraction.experience_max, extraction.experience_raw, extraction.is_fresher_friendly = exp_info
+        # Salary - Use NEW simplified extraction
+        salary_monthly = self._extract_salary_simple(text)
+        if salary_monthly:
+            extraction.salary_min = salary_monthly
+            extraction.salary_max = salary_monthly
+            extraction.salary_raw = f"₹{salary_monthly:,}/month"
+        else:
+            # Fallback to old method for backwards compatibility
+            salary_info = self._extract_salary(text)
+            if salary_info:
+                extraction.salary_min, extraction.salary_max, extraction.salary_raw = salary_info
+        
+        # Experience - Use NEW string extraction
+        experience_string = self._extract_experience_string(text)
+        if experience_string:
+            extraction.experience_raw = experience_string
+            # Parse string to populate numeric fields
+            exp_parsed = self._parse_experience_string(experience_string)
+            if exp_parsed:
+                extraction.experience_min = exp_parsed.get('min')
+                extraction.experience_max = exp_parsed.get('max')
+                extraction.is_fresher_friendly = exp_parsed.get('is_fresher', False)
+        else:
+            # Fallback to old method
+            exp_info = self._extract_experience(text)
+            if exp_info:
+                extraction.experience_min, extraction.experience_max, extraction.experience_raw, extraction.is_fresher_friendly = exp_info
         
         # Contact info
         extraction.contact_emails = self._extract_emails(text)
@@ -192,42 +222,153 @@ class EnhancedJobExtractor:
         # Skills
         extraction.skills = self._extract_skills(text)
         
+        # Job Category - Use NEW classification
+        extraction.job_category = self._classify_job_category(
+            extraction.job_title or "",
+            extraction.skills or [],
+            text
+        )
+        
         # Calculate confidence
         extraction.confidence = self._calculate_extraction_confidence(extraction)
         
         return extraction if extraction.confidence > 0.3 else None
     
     def _extract_company(self, text: str) -> Optional[str]:
-        """Extract company name with multiple patterns"""
-        patterns = [
-            # "Adobe is hiring"
-            r'^([A-Z][A-Za-z0-9\s&\.]{2,40}?)\s+is\s+hiring',
-            
-            # "Company: Google"
-            r'(?:Company|Organization|Hiring\s+for)\s*:?\s*([A-Z][A-Za-z0-9\s&\.]{2,40})(?:\n|$|,)',
-            
-            # "@ Microsoft"
-            r'@\s*([A-Z][A-Za-z0-9\s&\.]{2,40})(?:\n|$)',
-            
-            # "Join Adobe as"
-            r'Join\s+([A-Z][A-Za-z0-9\s&\.]{2,40})\s+as',
-            
-            # First line if it's a company name
-            r'^([A-Z][A-Za-z0-9\s&\.]{3,30})(?:\n|$)',
-        ]
+        """
+        Extract company name with priority-ordered patterns based on Telegram job posting analysis.
         
-        for pattern in patterns:
+        Pattern priorities (based on real data):
+        1. @mention format (e.g., "@CompanyName")
+        2. "X is hiring" format
+        3. Quoted company names (e.g., "Google")
+        4. "Company:" label format
+        5. "Join X" format  
+        6. First line heuristic
+        """
+        # Priority 1: @mention pattern (most reliable in Telegram)
+        # Pattern: @CompanyName or @company_name
+        mention_match = re.search(r'@([A-Za-z][A-Za-z0-9_]{2,30})', text)
+        if mention_match:
+            company = mention_match.group(1)
+            # Clean up: Remove underscore, capitalize words
+            company = company.replace('_', ' ').title()
+            if self._is_valid_company_name(company):
+                return self._clean_company_name(company)
+        
+        # Priority 2: "Company is hiring" format
+        hiring_match = re.search(
+            r'(?:^|\n|\.)([A-Z][A-Za-z0-9\s&\.,-]{2,40}?)\s+(?:is\s+)?(?:hiring|looking|recruiting)',
+            text,
+            re.MULTILINE | re.IGNORECASE
+        )
+        if hiring_match:
+            company = hiring_match.group(1).strip()
+            if self._is_valid_company_name(company):
+                return self._clean_company_name(company)
+        
+        # Priority 3: Quoted company names
+        # Pattern: "Company Name" or "Company"
+        quoted_match = re.search(r'"([A-Za-z][A-Za-z0-9\s&\.,-]{2,40})"', text)
+        if quoted_match:
+            company = quoted_match.group(1).strip()
+            if self._is_valid_company_name(company):
+                return self._clean_company_name(company)
+        
+        # Priority 4: Labeled format patterns
+        labeled_patterns = [
+            r'(?:Company|Organization|Employer|Client)\s*:?\s*([A-Z][A-Za-z0-9\s&\.,-]{2,40})(?:\n|$|,|\|)',
+            r'(?:Hiring\s+for|Opening\s+at)\s*:?\s*([A-Z][A-Za-z0-9\s&\.,-]{2,40})(?:\n|$|,|\|)',
+        ]
+        for pattern in labeled_patterns:
             match = re.search(pattern, text, re.MULTILINE | re.IGNORECASE)
             if match:
                 company = match.group(1).strip()
-                # Filter out common false positives
-                if company and not re.match(r'^(Role|Position|Location|Experience|Salary|Apply|Join|Hiring)', company, re.IGNORECASE):
-                    # Clean up
-                    company = re.sub(r'\s+', ' ', company)
-                    company = company.strip('.,!?')
-                    return company[:100]  # Max 100 chars
+                if self._is_valid_company_name(company):
+                    return self._clean_company_name(company)
+        
+        # Priority 5: "Join Company" format
+        join_match = re.search(
+            r'(?:Join|Work\s+(?:at|with)|Apply\s+to)\s+([A-Z][A-Za-z0-9\s&\.,-]{2,40})\s+(?:as|team|now)',
+            text,
+            re.MULTILINE | re.IGNORECASE
+        )
+        if join_match:
+            company = join_match.group(1).strip()
+            if self._is_valid_company_name(company):
+                return self._clean_company_name(company)
+        
+        # Priority 6: First line heuristic (lowest priority)
+        # Only if first line looks like a company name (short, capitalized, no job keywords)
+        first_line = text.split('\n')[0].strip() if '\n' in text else text[:50].strip()
+        if len(first_line) >= 3 and len(first_line) <= 50:
+            # Check if it's likely a company name (starts with capital, has 1-5 words)
+            words = first_line.split()
+            if 1 <= len(words) <= 5 and first_line[0].isupper():
+                if self._is_valid_company_name(first_line):
+                    return self._clean_company_name(first_line)
         
         return None
+    
+    def _clean_company_name(self, company: str) -> str:
+        """Clean and normalize company name."""
+        # Remove common prefixes/suffixes
+        company = re.sub(r'^(?:at|for|by)\s+', '', company, flags=re.IGNORECASE)
+        company = re.sub(r'\s+(?:hiring|pvt|ltd|limited|inc|corp|llc)\.?$', '', company, flags=re.IGNORECASE)
+        
+        # Normalize whitespace
+        company = re.sub(r'\s+', ' ', company).strip()
+        
+        # Remove trailing punctuation
+        company = company.strip('.,!?:;-|')
+        
+        # Capitalize properly (handle cases like "abc technologies" -> "ABC Technologies")
+        if company.islower():
+            company = company.title()
+        
+        return company[:100]  # Max 100 chars
+    
+    def _is_valid_company_name(self, company: str) -> bool:
+        """
+        Validate if extracted text is likely a real company name.
+        
+        Filters out:
+        - Job-related keywords (Role, Position, Location, etc.)
+        - Too short (<2 chars) or too long (>50 chars)
+        - Special characters that don't belong in company names
+        - Common false positives
+        """
+        if not company or len(company) < 2 or len(company) > 50:
+            return False
+        
+        # Reject common job-related false positives
+        false_positives = {
+            'role', 'position', 'location', 'experience', 'salary', 'apply', 'join',
+            'hiring', 'opening', 'required', 'skills', 'description', 'details',
+            'responsibilities', 'qualifications', 'benefits', 'package', 'work',
+            'job', 'career', 'opportunity', 'candidate', 'fresher', 'immediate',
+            'urgent', 'looking', 'wanted', 'required', 'seeking', 'need', 'must',
+            'company', 'organization', 'employer', 'client', 'team', 'send', 'contact',
+            'whatsapp', 'email', 'phone', 'call', 'apply now', 'click here'
+        }
+        
+        company_lower = company.lower().strip()
+        if company_lower in false_positives:
+            return False
+        
+        # Reject if starts with false positive keyword
+        if any(company_lower.startswith(fp) for fp in ['apply', 'send', 'call', 'contact', 'whatsapp']):
+            return False
+        
+        # Reject if it's all special characters or numbers
+        if not re.search(r'[A-Za-z]{2,}', company):
+            return False
+        
+        # Reject if it has suspicious patterns (URLs, emails, phone numbers)
+        if re.search(r'@|\.com|\.in|http|www|\d{10}|\+\d+', company):
+            return False
+        
+        return True
     
     def _extract_job_title(self, text: str, company_name: Optional[str] = None) -> Optional[str]:
         """Extract job title with context awareness"""
@@ -374,7 +515,7 @@ class EnhancedJobExtractor:
     
     def _extract_salary(self, text: str) -> Optional[Tuple[int, int, str]]:
         """
-        Extract salary information
+        Extract salary information (legacy method - returns tuple)
         
         Returns:
             (min_salary, max_salary, raw_string) or None
@@ -414,6 +555,108 @@ class EnhancedJobExtractor:
                     nums = re.findall(r'(\d+)', raw.replace(',', ''))
                     if len(nums) >= 2:
                         return (int(nums[0]), int(nums[1]), raw)
+        
+        return None
+    
+    def _extract_salary_simple(self, text: str) -> Optional[int]:
+        """
+        Extract salary as a single monthly INR value (simplified for new schema).
+        
+        Returns:
+            Monthly salary in INR (integer) or None
+        
+        Handles:
+        - LPA ranges: "5-7 LPA" -> average (6) converted to monthly (50,000)
+        - Single LPA: "5 LPA" -> 5,00,000 / 12 = 41,667
+        - Monthly ranges: "30k-40k" -> average (35,000)
+        - "Upto X LPA" -> X converted to monthly
+        - Direct monthly: "₹50,000" -> 50,000
+        """
+        # Pattern 1: LPA range (5-7 LPA, 3.5-4.5 LPA)
+        lpa_range_match = re.search(
+            r'(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*(?:LPA|lakh|lakhs?)\b',
+            text,
+            re.IGNORECASE
+        )
+        if lpa_range_match:
+            min_lpa = float(lpa_range_match.group(1))
+            max_lpa = float(lpa_range_match.group(2))
+            avg_lpa = (min_lpa + max_lpa) / 2
+            annual = int(avg_lpa * 100000)
+            monthly = annual // 12
+            return monthly
+        
+        # Pattern 2: Single LPA value ("5 LPA", "Salary: 6 LPA")
+        single_lpa_match = re.search(
+            r'(?:Salary|CTC|Package|Compensation|Stipend)?\s*:?\s*(\d+(?:\.\d+)?)\s*(?:LPA|lakh|lakhs?)\b',
+            text,
+            re.IGNORECASE
+        )
+        if single_lpa_match:
+            lpa = float(single_lpa_match.group(1))
+            annual = int(lpa * 100000)
+            monthly = annual // 12
+            return monthly
+        
+        # Pattern 3: "Upto X LPA" or "Up to X LPA"
+        upto_lpa_match = re.search(
+            r'(?:upto|up\s+to)\s+(\d+(?:\.\d+)?)\s*(?:LPA|lakh|lakhs?)\b',
+            text,
+            re.IGNORECASE
+        )
+        if upto_lpa_match:
+            lpa = float(upto_lpa_match.group(1))
+            annual = int(lpa * 100000)
+            monthly = annual // 12
+            return monthly
+        
+        # Pattern 4: Monthly in thousands ("30k-40k", "30-40k")
+        monthly_k_range_match = re.search(
+            r'(\d+)\s*[kK]?\s*-\s*(\d+)\s*[kK]\b',
+            text
+        )
+        if monthly_k_range_match:
+            min_k = int(monthly_k_range_match.group(1))
+            max_k = int(monthly_k_range_match.group(2))
+            # Only consider if values look like monthly salary (< 100k)
+            if min_k < 100 and max_k < 100:
+                avg_monthly = ((min_k + max_k) / 2) * 1000
+                return int(avg_monthly)
+        
+        # Pattern 5: Single monthly in thousands ("35k")
+        single_k_match = re.search(
+            r'(?:Salary|Stipend)?\s*:?\s*(\d+)\s*[kK]\b',
+            text
+        )
+        if single_k_match:
+            k_value = int(single_k_match.group(1))
+            # Only if value looks like monthly salary (5k-100k range)
+            if 5 <= k_value < 100:
+                return k_value * 1000
+        
+        # Pattern 6: Direct rupees with symbol ("₹50,000", "₹30000-40000")
+        rupee_range_match = re.search(
+            r'₹\s*(\d+)(?:,\d+)*\s*-\s*₹?\s*(\d+)(?:,\d+)*\b',
+            text
+        )
+        if rupee_range_match:
+            min_rupee = int(rupee_range_match.group(1).replace(',', ''))
+            max_rupee = int(rupee_range_match.group(2).replace(',', ''))
+            # Only if values look like monthly (10k-200k range)
+            if 10000 <= min_rupee < 200000 and 10000 <= max_rupee < 200000:
+                avg = (min_rupee + max_rupee) // 2
+                return avg
+        
+        # Pattern 7: Single rupee value ("₹50,000")
+        single_rupee_match = re.search(
+            r'₹\s*(\d+)(?:,\d+)*\b',
+            text
+        )
+        if single_rupee_match:
+            rupee_value = int(single_rupee_match.group(1).replace(',', ''))
+            # Only if value looks like monthly salary (10k-200k)
+            if 10000 <= rupee_value < 200000:
+                return rupee_value
         
         return None
     
@@ -470,6 +713,184 @@ class EnhancedJobExtractor:
             return (0, 1, "Fresher", True)
         
         return None
+    
+    def _extract_experience_string(self, text: str) -> Optional[str]:
+        """
+        Extract experience requirement as a simple string (simplified for new schema).
+        
+        Returns:
+            Experience string like "Fresher", "0-2 years", "3+ years", or None
+        """
+        # Check for fresher keywords first
+        fresher_patterns = [
+            r'\b(fresher|freshers?|entry\s+level|0\s+years?)\b',
+        ]
+        
+        for pattern in fresher_patterns:
+            if re.search(pattern, text, re.IGNORECASE):
+                return "Fresher"
+        
+        # Extract experience ranges or values
+        patterns = [
+            # "2-5 years experience"
+            (r'(\d+)\s*-\s*(\d+)\s*(?:years?|yrs?)', lambda m: f"{m.group(1)}-{m.group(2)} years"),
+            
+            # "Experience: 3+ years"
+            (r'Experience\s*:?\s*(\d+)\+?\s*(?:years?|yrs?)', lambda m: f"{m.group(1)}+ years"),
+            
+            # "3+ years"
+            (r'(\d+)\+\s*(?:years?|yrs?)', lambda m: f"{m.group(1)}+ years"),
+            
+            # "Minimum 2 years"
+            (r'(?:Minimum|Min|Atleast)\s*(\d+)\s*(?:years?|yrs?)', lambda m: f"{m.group(1)}+ years"),
+            
+            # "2 years experience"
+            (r'(\d+)\s*(?:years?|yrs?)\s*(?:experience|exp)?', lambda m: f"{m.group(1)} years"),
+        ]
+        
+        for pattern, formatter in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                return formatter(match)
+        
+        return None
+    
+    def _parse_experience_string(self, experience_str: str) -> Optional[Dict]:
+        """
+        Parse experience string into structured data for database fields.
+        
+        Args:
+            experience_str: String like "2-4 years", "Fresher", "3+ years"
+        
+        Returns:
+            Dict with 'min', 'max', 'is_fresher' keys or None
+        """
+        if not experience_str:
+            return None
+        
+        exp_str = experience_str.lower().strip()
+        
+        # Fresher jobs (0-1 year)
+        if exp_str == 'fresher':
+            return {'min': 0, 'max': 1, 'is_fresher': True}
+        
+        # Range: "2-4 years"
+        range_match = re.match(r'(\d+)\s*-\s*(\d+)\s*years?', exp_str)
+        if range_match:
+            min_exp = int(range_match.group(1))
+            max_exp = int(range_match.group(2))
+            return {
+                'min': min_exp,
+                'max': max_exp,
+                'is_fresher': (min_exp == 0 and max_exp <= 2)
+            }
+        
+        # Plus: "3+ years"
+        plus_match = re.match(r'(\d+)\+\s*years?', exp_str)
+        if plus_match:
+            min_exp = int(plus_match.group(1))
+            return {
+                'min': min_exp,
+                'max': min_exp + 3,  # Estimate max as min+3
+                'is_fresher': False
+            }
+        
+        # Single value: "2 years"
+        single_match = re.match(r'(\d+)\s*years?', exp_str)
+        if single_match:
+            exp_val = int(single_match.group(1))
+            return {
+                'min': exp_val,
+                'max': exp_val,
+                'is_fresher': (exp_val <= 1)
+            }
+        
+        return None
+    
+    def _classify_job_category(self, job_title: str, skills: List[str], description: str) -> str:
+        """
+        Classify job into categories: tech, data, design, marketing, non-tech
+        
+        Args:
+            job_title: Job title
+            skills: List of required skills
+            description: Job description text
+        
+        Returns:
+            Category: 'tech', 'data', 'design', 'marketing', 'non-tech', 'unspecified'
+        """
+        # Combine all text for analysis
+        combined_text = f"{job_title} {' '.join(skills)} {description}".lower()
+        
+        # Define category keywords with weights
+        category_keywords = {
+            'tech': {
+                'primary': ['developer', 'engineer', 'programmer', 'software', 'backend', 'frontend', 
+                           'fullstack', 'devops', 'sre', 'architect', 'sde', 'android', 'ios', 'react', 
+                           'node', 'java', 'python', 'javascript', 'typescript', '.net', 'php', 'ruby',
+                           'golang', 'rust', 'c++', 'c#', 'coding', 'programming'],
+                'secondary': ['api', 'database', 'cloud', 'aws', 'azure', 'gcp', 'docker', 'kubernetes',
+                             'git', 'ci/cd', 'microservices', 'rest', 'graphql', 'testing', 'qa']
+            },
+            'data': {
+                'primary': ['data scientist', 'data engineer', 'data analyst', 'ml engineer', 
+                           'machine learning', 'ai engineer', 'analytics', 'bi analyst', 'etl',
+                           'big data', 'data mining', 'statistician'],
+                'secondary': ['python', 'sql', 'tableau', 'power bi', 'spark', 'hadoop', 'pandas',
+                             'numpy', 'tensorflow', 'pytorch', 'scikit', 'keras', 'r programming']
+            },
+            'design': {
+                'primary': ['designer', 'ui/ux', 'graphic designer', 'product designer', 'ux researcher',
+                           'visual designer', 'interaction designer', 'creative', 'illustrator'],
+                'secondary': ['figma', 'sketch', 'adobe', 'photoshop', 'illustrator', 'xd', 'prototyping',
+                             'wireframe', 'mockup', 'design system', 'typography']
+            },
+            'marketing': {
+                'primary': ['marketing', 'digital marketing', 'content writer', 'copywriter', 'seo',
+                           'social media', 'brand manager', 'growth hacker', 'performance marketing',
+                           'marketing analyst', 'content strategist'],
+                'secondary': ['google analytics', 'facebook ads', 'instagram', 'linkedin', 'content creation',
+                             'email marketing', 'sem', 'ppc', 'campaign', 'branding']
+            },
+            'non-tech': {
+                'primary': ['sales', 'hr', 'recruiter', 'account manager', 'business development',
+                           'operations', 'finance', 'accountant', 'customer success', 'support',
+                           'project manager', 'product manager', 'consultant', 'analyst (non-tech)',
+                           'coordinator', 'executive', 'manager', 'administrator'],
+                'secondary': ['excel', 'crm', 'salesforce', 'hubspot', 'communication', 'negotiation',
+                             'client management', 'team management']
+            }
+        }
+        
+        # Calculate scores for each category
+        scores = {}
+        for category, keywords in category_keywords.items():
+            score = 0
+            
+            # Primary keywords (weight: 3)
+            for keyword in keywords['primary']:
+                if keyword in combined_text:
+                    score += 3
+            
+            # Secondary keywords (weight: 1)
+            for keyword in keywords['secondary']:
+                if keyword in combined_text:
+                    score += 1
+            
+            scores[category] = score
+        
+        # Find category with highest score
+        if max(scores.values()) == 0:
+            return 'unspecified'
+        
+        # Return category with highest score
+        best_category = max(scores, key=scores.get)
+        
+        # Special case: If 'data' and 'tech' both have high scores, prefer 'data'
+        if scores.get('data', 0) >= 5 and scores.get('tech', 0) > 0:
+            return 'data'
+        
+        return best_category
     
     def _extract_emails(self, text: str) -> List[str]:
         """Extract all email addresses"""

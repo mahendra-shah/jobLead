@@ -101,13 +101,12 @@ def upgrade() -> None:
     
     # 7. EXPERIENCE RANGE INDEX
     # For matching student experience against job requirements
-    op.create_index(
-        'idx_jobs_experience_range',
-        'jobs',
-        ['experience_min', 'experience_max', 'is_active'],
-        postgresql_using='btree',
-        postgresql_where=sa.text("is_active = TRUE")
-    )
+    # Note: Using IF NOT EXISTS to handle case where index already exists
+    op.execute("""
+        CREATE INDEX IF NOT EXISTS idx_jobs_experience_range 
+        ON jobs USING btree (experience_min, experience_max, is_active) 
+        WHERE is_active = TRUE
+    """)
     
     # 8. IS_FRESHER + ACTIVE INDEX
     # Fast filtering for fresher-specific jobs

@@ -45,10 +45,36 @@ class FeatureExtractor:
     
     # Work locations
     LOCATIONS = {
-        'bangalore', 'bengaluru', 'mumbai', 'delhi', 'hyderabad',
+        'bangalore', 'bengluru', 'mumbai', 'delhi', 'hyderabad',
         'pune', 'chennai', 'kolkata', 'gurgaon', 'noida',
         'remote', 'work from home', 'wfh', 'hybrid', 'onsite',
         'india', 'usa', 'uk', 'singapore', 'dubai'
+    }
+    
+    # International locations (for filtering)
+    INTERNATIONAL_LOCATIONS = {
+        'usa', 'united states', 'america', 'new york', 'nyc', 'san francisco',
+        'seattle', 'boston', 'austin', 'silicon valley', 'california',
+        'uk', 'united kingdom', 'london', 'manchester', 'scotland',
+        'canada', 'toronto', 'vancouver', 'montreal',
+        'singapore', 'dubai', 'uae', 'abu dhabi',
+        'germany', 'berlin', 'munich', 'frankfurt',
+        'australia', 'sydney', 'melbourne',
+        'netherlands', 'amsterdam',
+        'ireland', 'dublin',
+        'israel', 'tel aviv',
+        'japan', 'tokyo',
+        'china', 'beijing', 'shanghai',
+        'hong kong'
+    }
+    
+    # Onsite-only keywords
+    ONSITE_ONLY_KEYWORDS = {
+        'onsite only', 'office only', 'no remote', 'not remote',
+        'no wfh', 'not wfh', 'work from office', 'office based',
+        'must relocate', 'relocation', 'relocation required',
+        'office work', 'on-site', 'in-office', 'campus',
+        'cannot work from home', 'office hours'
     }
     
     # Job types
@@ -159,6 +185,14 @@ class FeatureExtractor:
         has_apply_link = bool(re.search(r'\bapply\s+(?:here|now|link)\b', text_lower))
         has_email_resume = bool(re.search(r'\b(?:send|mail|email)\s+(?:resume|cv)\b', text_lower))
         
+        # International job detection
+        has_international_location = any(loc in text_lower for loc in self.INTERNATIONAL_LOCATIONS)
+        has_onsite_only_keywords = any(kw in text_lower for kw in self.ONSITE_ONLY_KEYWORDS)
+        is_international_onsite = has_international_location and has_onsite_only_keywords
+        
+        # Remote indicators
+        has_remote_keywords = bool(re.search(r'\b(?:remote|wfh|work from home|work from anywhere)\b', text_lower))
+        
         return {
             'has_experience_requirement': has_experience,
             'has_salary_info': has_salary,
@@ -169,6 +203,10 @@ class FeatureExtractor:
             'has_email_resume': has_email_resume,
             'has_contact_info': has_email or has_phone,
             'has_application_method': has_apply_link or has_email_resume or has_email,
+            'has_international_location': has_international_location,
+            'has_onsite_only_keywords': has_onsite_only_keywords,
+            'is_international_onsite': is_international_onsite,
+            'has_remote_keywords': has_remote_keywords,
         }
     
     def extract_statistical_features(self, text: str) -> Dict[str, any]:

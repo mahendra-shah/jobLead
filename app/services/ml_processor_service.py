@@ -261,12 +261,19 @@ class MLProcessorService:
                     logger.info(f"   📋 Processing job {idx}/{len(extractions)}:")
                     logger.info(f"      Company: {extraction.company_name or 'Not found'}")
                     logger.info(f"      Job Title: {extraction.job_title or 'Not found'}")
+                    logger.info(f"      Category: {extraction.job_category or 'Not classified'}")
                     logger.info(f"      Location: {extraction.location or 'Not found'}")
                     logger.info(f"      Salary: {extraction.salary_raw or 'Not found'}")
                     logger.info(f"      Experience: {extraction.experience_raw or 'Not found'}")
                     logger.info(f"      Skills: {', '.join(extraction.skills[:5]) if extraction.skills else 'None'}")
                     logger.info(f"      Apply Link: {extraction.apply_link or 'Not found'}")
                     logger.info(f"      Confidence: {extraction.confidence:.2f}")
+                    
+                    # Skip jobs with 0 confidence (filtered by international onsite check)
+                    if extraction.confidence == 0.0:
+                        logger.warning(f"      ⚠️  Job rejected by international filtering")
+                        result['quality_filtered'] += 1
+                        continue
                     
                     # Get or create company
                     company = None
@@ -325,15 +332,25 @@ class MLProcessorService:
                         description=extraction.description[:5000] if extraction.description else text[:5000],
                         location=extraction.location,
                         
-                        # Job details with enhanced extraction
+                        # Job details with NEW simplified extraction
                         skills_required=extraction.skills if extraction.skills else [],
-                        experience_required=extraction.experience_raw,
-                        salary_range={
+                        experience_required=extraction.experience_raw,  # NEW: String format "2-4 years"
+                        
+                        # Numeric experience fields (for filtering)
+                        experience_min=extraction.experience_min,
+                        experience_max=extraction.experience_max,
+                        is_fresher=extraction.is_fresher_friendly,
+                        
+                        # Salary fields (NEW: simplified monthly value)
+                        salary_min=extraction.salary_min,  # Monthly INR from new method
+                        salary_max=extraction.salary_max,
+                        salary_range={  # Legacy JSONB field
                             "min": extraction.salary_min,
                             "max": extraction.salary_max,
                             "currency": extraction.salary_currency or "INR",
                             "raw": extraction.salary_raw
                         } if extraction.salary_raw else {},
+                        
                         job_type="fulltime",  # Default
                         employment_type="fulltime",  # Default
                         
