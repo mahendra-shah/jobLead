@@ -167,15 +167,22 @@ def upgrade() -> None:
     # SAVED_JOBS TABLE INDEXES - EXCLUDE SAVED JOBS IN RECOMMENDATIONS
     # ============================================================================
     
-    # 13. STUDENT + JOB COMPOSITE INDEX
+    # 13. USER + JOB COMPOSITE INDEX
     # For fast "WHERE job_id NOT IN (saved_jobs)" checks
-    op.create_index(
-        'idx_saved_jobs_student_job',
-        'saved_jobs',
-        ['student_id', 'job_id'],
-        unique=True,  # Prevent duplicate saves
-        postgresql_using='btree'
-    )
+    # Note: saved_jobs uses user_id, not student_id
+    op.execute("""
+        DO $$ 
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_indexes 
+                WHERE tablename = 'saved_jobs' 
+                AND indexname = 'idx_saved_jobs_user_job'
+            ) THEN
+                CREATE UNIQUE INDEX idx_saved_jobs_user_job 
+                ON saved_jobs(user_id, job_id);
+            END IF;
+        END $$;
+    """)
     
     # ============================================================================
     # APPLICATIONS TABLE INDEXES - EXCLUDE APPLIED JOBS IN RECOMMENDATIONS

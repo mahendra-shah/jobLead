@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from uuid import UUID
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class CompanyBrief(BaseModel):
@@ -14,13 +14,27 @@ class CompanyBrief(BaseModel):
     logo_url: Optional[str] = None
     website: Optional[str] = None
     
-    @field_validator('id', mode='before')
+    @model_validator(mode='before')
     @classmethod
-    def convert_uuid_to_str(cls, value: Any) -> str:
-        """Convert UUID to string."""
-        if isinstance(value, UUID):
-            return str(value)
-        return value
+    def convert_uuid_fields(cls, data: Any) -> Any:
+        """Convert UUID objects to strings before validation.
+        
+        This handles both SQLAlchemy ORM objects (from from_attributes=True)
+        and dict inputs, ensuring UUIDs are always converted to strings.
+        """
+        if hasattr(data, 'id'):  # SQLAlchemy object
+            return {
+                'id': str(data.id) if data.id else None,
+                'name': data.name,
+                'domain': getattr(data, 'domain', None),
+                'logo_url': getattr(data, 'logo_url', None),
+                'website': getattr(data, 'website', None),
+            }
+        elif isinstance(data, dict):
+            if 'id' in data and isinstance(data['id'], UUID):
+                data = data.copy()
+                data['id'] = str(data['id'])
+        return data
     
     class Config:
         from_attributes = True
@@ -35,13 +49,51 @@ class JobBase(BaseModel):
     description: Optional[str] = None
     skills_required: List[str] = Field(default_factory=list)
     
-    @field_validator('id', 'company_id', mode='before')
+    @model_validator(mode='before')
     @classmethod
-    def convert_uuid_fields(cls, value: Any) -> Optional[str]:
-        """Convert UUID fields to strings."""
-        if isinstance(value, UUID):
-            return str(value)
-        return value
+    def convert_uuid_fields(cls, data: Any) -> Any:
+        """Convert UUID objects to strings before validation.
+        
+        Handles SQLAlchemy ORM objects and dicts, converting id and company_id
+        UUID fields to strings for proper Pydantic validation.
+        """
+        if hasattr(data, 'id'):  # SQLAlchemy Job object
+            # Convert ORM object to dict with UUID fields as strings
+            result = {
+                'id': str(data.id) if data.id else None,
+                'title': data.title,
+                'company_id': str(data.company_id) if data.company_id else None,
+                'company_name': getattr(data, 'company_name', 'Unknown'),
+                'description': getattr(data, 'description', None),
+                'skills_required': getattr(data, 'skills_required', []) or [],
+                'experience_required': getattr(data, 'experience_required', None),
+                'salary_range': getattr(data, 'salary_range', {}) or {},
+                'is_fresher': getattr(data, 'is_fresher', None),
+                'work_type': getattr(data, 'work_type', None),
+                'experience_min': getattr(data, 'experience_min', None),
+                'experience_max': getattr(data, 'experience_max', None),
+                'salary_min': getattr(data, 'salary_min', None),
+                'salary_max': getattr(data, 'salary_max', None),
+                'location': getattr(data, 'location', None),
+                'job_type': getattr(data, 'job_type', None),
+                'employment_type': getattr(data, 'employment_type', None),
+                'source': getattr(data, 'source', None),
+                'source_url': getattr(data, 'source_url', None),
+                'is_active': getattr(data, 'is_active', True),
+                'view_count': getattr(data, 'view_count', 0),
+                'application_count': getattr(data, 'application_count', 0),
+                'created_at': getattr(data, 'created_at', None),
+                'updated_at': getattr(data, 'updated_at', None),
+            }
+            return result
+        elif isinstance(data, dict):
+            # Handle dict input - convert UUID fields if present
+            data = data.copy()
+            if 'id' in data and isinstance(data['id'], UUID):
+                data['id'] = str(data['id'])
+            if 'company_id' in data and isinstance(data['company_id'], UUID):
+                data['company_id'] = str(data['company_id'])
+        return data
     
     # Legacy fields (kept for backward compatibility)
     experience_required: Optional[str] = None
