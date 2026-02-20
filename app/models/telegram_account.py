@@ -13,9 +13,9 @@ from app.db.base import Base
 
 class HealthStatus(str, enum.Enum):
     """Account health status enum."""
-    HEALTHY = "healthy"
-    DEGRADED = "degraded"
-    BANNED = "banned"
+    HEALTHY = "HEALTHY"
+    DEGRADED = "DEGRADED"
+    BANNED = "BANNED"
 
 
 class TelegramAccount(Base):
