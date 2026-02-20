@@ -224,7 +224,8 @@ class TelegramService:
             
             # Update group record
             group.is_joined = True
-            group.joined_by_account_id = account.id
+            group.joined_by_account_id = account.id  # UUID for legacy compatibility
+            group.joined_by_phone = account.phone  # Store phone number for tracking
             group.joined_at = datetime.now()
             group.title = entity.title if hasattr(entity, 'title') else username
             

@@ -26,7 +26,8 @@ class TelegramGroup(Base):
     
     # Join status
     is_joined = Column(Boolean, default=False, nullable=False)
-    joined_by_account_id = Column(UUID(as_uuid=True), nullable=True)
+    joined_by_account_id = Column(Integer, nullable=True)  # Account number (1-5) that joined this group
+    joined_by_phone = Column(String(20), nullable=True)  # Phone number of account that joined
     joined_at = Column(DateTime(timezone=True), nullable=True)
     
     # Scraping info

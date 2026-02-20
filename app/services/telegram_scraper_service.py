@@ -50,7 +50,9 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.utils.slack_notifier import slack_notifier
 from app.models.telegram_account import TelegramAccount, HealthStatus
+from app.models.telegram_group import TelegramGroup
 from app.db.session import SyncSessionLocal
+from sqlalchemy import select
 
 logger = structlog.get_logger(__name__)
 
@@ -385,7 +387,7 @@ class TelegramScraperService:
                     )
                     stored_count += 1
             
-            # Update channel metadata
+            # Update channel metadata in MongoDB
             last_message = messages[0] if messages else None
             channels_collection.update_one(
                 {'username': username},
@@ -399,6 +401,29 @@ class TelegramScraperService:
                     }
                 }
             )
+            
+            # Also update PostgreSQL telegram_groups table
+            try:
+                pg_session = SyncSessionLocal()
+                pg_group = pg_session.execute(
+                    select(TelegramGroup).where(TelegramGroup.username == username)
+                ).scalar_one_or_none()
+                
+                if pg_group:
+                    pg_group.last_scraped_at = datetime.utcnow()
+                    pg_group.last_scraped_by_account = account_id
+                    pg_group.last_message_id = last_message.id if last_message else None
+                    pg_group.last_message_date = last_message.date if last_message else None
+                    pg_group.total_messages_scraped = pg_group.total_messages_scraped + stored_count
+                    pg_session.commit()
+                
+                pg_session.close()
+            except Exception as pg_error:
+                logger.warning(
+                    "postgres_update_failed",
+                    channel=username,
+                    error=str(pg_error)
+                )
             
             stats['messages_fetched'] = stored_count
             stats['success'] = True
