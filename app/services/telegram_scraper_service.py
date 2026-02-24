@@ -20,6 +20,7 @@ Date: 2026-02-10
 import asyncio
 import time
 import random
+import base64
 from datetime import datetime
 from typing import Dict, List, Optional
 from collections import defaultdict
@@ -46,6 +47,9 @@ from telethon.errors import (
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 from sqlalchemy.orm import Session
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 from app.config import settings
 from app.utils.slack_notifier import slack_notifier
@@ -56,6 +60,24 @@ from sqlalchemy import select
 
 logger = structlog.get_logger(__name__)
 
+# Decryption for API credentials
+def get_encryption_key():
+    """Derive Fernet key from SECRET_KEY"""
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=b'telegram_account_salt',
+        iterations=100000,
+    )
+    key = base64.urlsafe_b64encode(kdf.derive(settings.SECRET_KEY.encode()))
+    return Fernet(key)
+
+cipher = get_encryption_key()
+
+def decrypt_credential(encrypted):
+    """Decrypt API credentials"""
+    return cipher.decrypt(encrypted.encode()).decode()
+
 
 class TelegramScraperService:
     """
@@ -64,10 +86,13 @@ class TelegramScraperService:
     This service manages multiple Telegram accounts for distributed scraping,
     implementing rate limiting, incremental fetching, and error handling.
     
+    Uses joined_by_phone to determine which account should scrape each group.
+    
     Attributes:
-        session_dir: Directory containing session files (default: app/sessions)
-        clients: Dictionary mapping account_id to TelegramClient instances
-        account_stats: Statistics per account (channels scraped, messages, rate limits)
+        session_dir: Directory containing session files (default: sessions/)
+        clients: Dictionary mapping phone_number to TelegramClient instances
+        account_credentials: Cached account credentials from database
+        account_stats: Statistics per phone (channels scraped, messages, rate limits)
         mongo_client: MongoDB client for storing raw messages
     """
     
@@ -75,7 +100,6 @@ class TelegramScraperService:
     MAX_MESSAGES_PER_CHANNEL = 100
     RATE_LIMIT_DELAY_MIN = 0.5  # Minimum 500ms between channels
     RATE_LIMIT_DELAY_MAX = 2.0  # Maximum 2s between channels (human-like randomness)
-    ACCOUNTS_AVAILABLE = 5  # Total number of Telegram accounts
     FIRST_TIME_FETCH_LIMIT = 10  # Only 10 messages on first fetch
     
     def __init__(self, session_dir: Optional[str] = None):
@@ -83,16 +107,17 @@ class TelegramScraperService:
         Initialize the Telegram Scraper Service.
         
         Args:
-            session_dir: Path to directory containing session files (default: app/sessions)
+            session_dir: Path to directory containing session files (default: sessions/)
         """
         if session_dir is None:
-            # Use absolute path from project root
+            # Use sessions directory from project root
             import os
             project_root = Path(__file__).parent.parent.parent
-            session_dir = str(project_root / "app" / "sessions")
+            session_dir = str(project_root / "sessions")
         
         self.session_dir = Path(session_dir)
-        self.clients: Dict[int, TelegramClient] = {}
+        self.clients: Dict[str, TelegramClient] = {}  # phone -> client
+        self.account_credentials: Dict[str, Dict] = {}  # phone -> {api_id, api_hash}
         self.account_stats = defaultdict(
             lambda: {
                 'channels_scraped': 0,
@@ -152,43 +177,86 @@ class TelegramScraperService:
             
             raise
     
-    def get_session_path(self, account_id: int) -> str:
+    def get_session_path(self, phone: str) -> str:
         """
-        Get session file path for a specific account.
+        Get session file path for a specific phone number.
         
         Args:
-            account_id: Account number (1-5)
+            phone: Phone number (e.g., "+917398227455")
         
         Returns:
             Path to session file (without .session extension)
         """
-        return str(self.session_dir / f"session_account{account_id}")
+        return str(self.session_dir / phone)
     
-    async def get_telegram_client(self, account_id: int) -> TelegramClient:
+    async def load_account_credentials(self, phone: str) -> Dict:
         """
-        Get or create Telegram client for specific account.
+        Load and decrypt account credentials from database.
+        
+        Args:
+            phone: Phone number
+        
+        Returns:
+            Dict with api_id and api_hash (decrypted)
+        """
+        if phone in self.account_credentials:
+            return self.account_credentials[phone]
+        
+        db = SyncSessionLocal()
+        try:
+            account = db.query(TelegramAccount).filter(
+                TelegramAccount.phone == phone
+            ).first()
+            
+            if not account:
+                raise ValueError(f"Account {phone} not found in database")
+            
+            # Decrypt credentials
+            api_id = int(decrypt_credential(account.api_id))
+            api_hash = decrypt_credential(account.api_hash)
+            
+            credentials = {
+                "api_id": api_id,
+                "api_hash": api_hash
+            }
+            
+            # Cache it
+            self.account_credentials[phone] = credentials
+            return credentials
+            
+        finally:
+            db.close()
+    
+    async def get_telegram_client(self, phone: str) -> TelegramClient:
+        """
+        Get or create Telegram client for specific phone number.
         
         Reuses existing client if already connected, otherwise creates new one.
         Verifies session file exists and account is authorized.
         
         Args:
-            account_id: Account number (1-5)
+            phone: Phone number (e.g., "+917955507455")
         
         Returns:
             TelegramClient instance for that account
         
         Raises:
             FileNotFoundError: If session file doesn't exist
-            RuntimeError: If account is not authorized
+            RuntimeError: If  account is not authorized
         """
-        # Bind account context for logging
-        log = logger.bind(account_id=account_id)
+        # Bind phone context for logging
+        log = logger.bind(phone=phone)
         
-        if account_id in self.clients:
-            return self.clients[account_id]
+        if phone in self.clients:
+            return self.clients[phone]
+        
+        # Load credentials from database
+        credentials = await self.load_account_credentials(phone)
+        api_id = credentials["api_id"]
+        api_hash = credentials["api_hash"]
         
         # Verify session file exists
-        session_path = self.get_session_path(account_id)
+        session_path = self.get_session_path(phone)
         session_file = f"{session_path}.session"
         
         # Create directory if it doesn't exist
@@ -197,13 +265,13 @@ class TelegramScraperService:
         if not Path(session_file).exists():
             error_msg = (
                 f"Session file not found: {session_file}. "
-                f"Run 'python generate_telegram_session.py' to create session files."
+                f"Run 'python3 telegram_account_manager.py' to login and create session."
             )
             log.error("session_file_not_found", session_file=session_file)
             
             # Send Slack alert
             await slack_notifier.send_session_error_alert(
-                account_id=account_id,
+                account_id=phone,
                 error_message="Session file not found"
             )
             
@@ -218,11 +286,11 @@ class TelegramScraperService:
         )
         
         try:
-            # Create client
+            # Create client with account-specific API credentials
             client = TelegramClient(
                 session_path,
-                int(settings.TELEGRAM_API_ID),
-                settings.TELEGRAM_API_HASH,
+                api_id,
+                api_hash,
                 connection_retries=3,
                 retry_delay=3,
                 timeout=120
@@ -232,12 +300,12 @@ class TelegramScraperService:
             
             # Verify authorization
             if not await client.is_user_authorized():
-                error_msg = f"Account {account_id} not authorized"
+                error_msg = f"Account {phone} not authorized"
                 log.error("account_not_authorized")
                 
                 # Update account health in database
                 await self._update_account_health(
-                    account_id,
+                    phone,
                     success=False,
                     error="Not authorized - session expired"
                 )
@@ -255,11 +323,11 @@ class TelegramScraperService:
             # Add Sentry breadcrumb
             sentry_sdk.add_breadcrumb(
                 category="telegram",
-                message=f"Connected to account {account_id}",
+                message=f"Connected to account {phone}",
                 level="info"
             )
             
-            self.clients[account_id] = client
+            self.clients[phone] = client
             return client
             
         except AuthKeyError as e:
@@ -271,7 +339,7 @@ class TelegramScraperService:
             
             # Mark account as banned
             await self._update_account_health(
-                account_id,
+                phone,
                 success=False,
                 error=f"AuthKeyError: {str(e)}",
                 mark_banned=True
@@ -291,7 +359,7 @@ class TelegramScraperService:
         mongo_db
     ) -> Dict:
         """
-        Scrape a single channel using its assigned account.
+        Scrape a single channel using the phone number that joined it.
         
         Implements incremental fetching: only fetches messages newer than
         last_message_id if it exists, otherwise fetches first 10 messages.
@@ -299,47 +367,47 @@ class TelegramScraperService:
         Args:
             channel: Channel document from MongoDB with fields:
                 - username: Channel username (without @)
-                - joined_by_account_id: Account ID to use (1-5)
+                - joined_by_phone: Phone number that joined this group
                 - last_message_id: Last fetched message ID (optional)
             mongo_db: MongoDB database instance
         
         Returns:
             Dict with scraping statistics:
                 - channel: Channel username
-                - account_id: Account used
+                - phone: Phone number used
                 - messages_fetched: Number of messages stored
                 - success: Whether scraping succeeded
                 - error: Error message if failed
         """
         username = channel.get('username', '').lstrip('@')
-        account_id = channel.get('joined_by_account_id')
+        phone = channel.get('joined_by_phone')
         
-        # Ensure we use the SAME account that joined the group
-        if not account_id:
+        # Ensure we use the SAME phone that joined the group
+        if not phone:
             logger.warning(
-                f"⚠️  @{username} has no joined_by_account_id! Skipping scrape."
+                f"⚠️  @{username} has no joined_by_phone! Skipping scrape."
             )
             return {
                 'channel': username,
-                'account_id': None,
+                'phone': None,
                 'messages_fetched': 0,
                 'success': False,
-                'error': 'No joined_by_account_id - group not joined properly'
+                'error': 'No joined_by_phone - group not joined properly'
             }
         
         stats = {
             'channel': username,
-            'account_id': account_id,
+            'phone': phone,
             'messages_fetched': 0,
             'success': False,
             'error': None
         }
         
         try:
-            # Get client for this channel's account
-            client = await self.get_telegram_client(account_id)
+            # Get client for the phone that joined this channel
+            client = await self.get_telegram_client(phone)
             
-            logger.info(f"📱 Account {account_id} → scraping @{username}")
+            logger.info(f"📱 {phone} → scraping @{username}")
             
             # Incremental fetching logic
             last_message_id = channel.get('last_message_id')
@@ -554,7 +622,7 @@ class TelegramScraperService:
     
     async def _update_account_health(
         self,
-        account_id: int,
+        phone: str,
         success: bool,
         error: Optional[str] = None,
         mark_banned: bool = False
@@ -563,7 +631,7 @@ class TelegramScraperService:
         Update account health status in database.
         
         Args:
-            account_id: Account ID
+            phone: Phone number
             success: Whether operation was successful
             error: Error message if failed
             mark_banned: Whether to mark account as banned
@@ -571,16 +639,15 @@ class TelegramScraperService:
         try:
             db = SyncSessionLocal()
             
-            # Find account by phone number (assuming account_id maps to phone)
-            # Note: This is a simplified lookup - adjust based on your actual data model
+            # Find account by phone number
             account = db.query(TelegramAccount).filter(
-                TelegramAccount.phone.like(f"%{account_id}%")
+                TelegramAccount.phone == phone
             ).first()
             
             if not account:
                 logger.warning(
                     "account_not_found_in_db",
-                    account_id=account_id
+                    phone=phone
                 )
                 db.close()
                 return
@@ -601,7 +668,7 @@ class TelegramScraperService:
             
             logger.info(
                 "account_health_updated",
-                account_id=account_id,
+                phone=phone,
                 health_status=account.health_status.value if account else None,
                 consecutive_errors=account.consecutive_errors if account else None
             )
