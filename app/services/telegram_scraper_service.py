@@ -50,7 +50,9 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.utils.slack_notifier import slack_notifier
 from app.models.telegram_account import TelegramAccount, HealthStatus
+from app.models.telegram_group import TelegramGroup
 from app.db.session import SyncSessionLocal
+from sqlalchemy import select
 
 logger = structlog.get_logger(__name__)
 
@@ -310,7 +312,20 @@ class TelegramScraperService:
                 - error: Error message if failed
         """
         username = channel.get('username', '').lstrip('@')
-        account_id = channel.get('joined_by_account_id', 1)
+        account_id = channel.get('joined_by_account_id')
+        
+        # Ensure we use the SAME account that joined the group
+        if not account_id:
+            logger.warning(
+                f"⚠️  @{username} has no joined_by_account_id! Skipping scrape."
+            )
+            return {
+                'channel': username,
+                'account_id': None,
+                'messages_fetched': 0,
+                'success': False,
+                'error': 'No joined_by_account_id - group not joined properly'
+            }
         
         stats = {
             'channel': username,
@@ -385,7 +400,7 @@ class TelegramScraperService:
                     )
                     stored_count += 1
             
-            # Update channel metadata
+            # Update channel metadata in MongoDB
             last_message = messages[0] if messages else None
             channels_collection.update_one(
                 {'username': username},
@@ -399,6 +414,29 @@ class TelegramScraperService:
                     }
                 }
             )
+            
+            # Also update PostgreSQL telegram_groups table
+            try:
+                pg_session = SyncSessionLocal()
+                pg_group = pg_session.execute(
+                    select(TelegramGroup).where(TelegramGroup.username == username)
+                ).scalar_one_or_none()
+                
+                if pg_group:
+                    pg_group.last_scraped_at = datetime.utcnow()
+                    pg_group.last_scraped_by_account = account_id
+                    pg_group.last_message_id = last_message.id if last_message else None
+                    pg_group.last_message_date = last_message.date if last_message else None
+                    pg_group.total_messages_scraped = pg_group.total_messages_scraped + stored_count
+                    pg_session.commit()
+                
+                pg_session.close()
+            except Exception as pg_error:
+                logger.warning(
+                    "postgres_update_failed",
+                    channel=username,
+                    error=str(pg_error)
+                )
             
             stats['messages_fetched'] = stored_count
             stats['success'] = True
@@ -636,9 +674,13 @@ class TelegramScraperService:
         mongo_db = self.mongo_client[settings.MONGODB_DATABASE]
         channels_collection = mongo_db['channels']
         
-        # Get all active channels
+        # Get only JOINED and ACTIVE channels
+        # We can't scrape groups we haven't joined!
         channels = list(channels_collection.find(
-            {'is_active': True},
+            {
+                'is_active': True,
+                'is_joined': True  # ← ONLY joined groups! ✅
+            },
             {
                 '_id': 1,
                 'username': 1,
@@ -648,7 +690,7 @@ class TelegramScraperService:
             }
         ))
         
-        logger.info(f"Found {len(channels)} active channels to scrape")
+        logger.info(f"Found {len(channels)} joined channels to scrape")
         return channels
     
     async def scrape_all_channels(self) -> Dict:
@@ -700,13 +742,19 @@ class TelegramScraperService:
             # Group channels by account for logging
             channels_by_account = defaultdict(list)
             for channel in channels:
-                account_id = channel.get('joined_by_account_id', 1)
-                channels_by_account[account_id].append(channel['username'])
+                account_id = channel.get('joined_by_account_id')
+                if account_id:  # Only count properly joined channels
+                    channels_by_account[account_id].append(channel['username'])
+                else:
+                    channels_by_account['unassigned'].append(channel['username'])
             
             logger.info("\n📊 Channel distribution:")
-            for account_id in sorted(channels_by_account.keys()):
-                channel_list = channels_by_account[account_id]
-                logger.info(f"   Account {account_id}: {len(channel_list)} channels")
+            for key in sorted(channels_by_account.keys(), key=lambda x: x if isinstance(x, int) else 999):
+                channel_list = channels_by_account[key]
+                if key == 'unassigned':
+                    logger.warning(f"   ⚠️  Unassigned: {len(channel_list)} channels (not properly joined)")
+                else:
+                    logger.info(f"   Account {key}: {len(channel_list)} channels")
             
             # Scrape all channels
             mongo_db = self.mongo_client[settings.MONGODB_DATABASE]
