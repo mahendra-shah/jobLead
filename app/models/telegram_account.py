@@ -23,8 +23,8 @@ class TelegramAccount(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     phone = Column(String(20), unique=True, nullable=False, index=True)
-    api_id = Column(String(50), nullable=False)
-    api_hash = Column(String(100), nullable=False)
+    api_id = Column(String(255), nullable=False)  # Encrypted with Fernet
+    api_hash = Column(String(255), nullable=False)  # Encrypted with Fernet
     session_string = Column(Text, nullable=True)  # Encrypted session data
     
     # Status
