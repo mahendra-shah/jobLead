@@ -12,11 +12,15 @@ import sys
 import json
 import asyncio
 import argparse
+import base64
 from pathlib import Path
 from typing import Dict, Optional
 from datetime import datetime
 import time
 import random
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -27,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import AsyncSessionLocal
 from app.models.telegram_group import TelegramGroup
 from app.models.telegram_account import TelegramAccount
+from app.config import Settings
 
 # Telegram imports (only if --join flag is used)
 from telethon import TelegramClient
@@ -36,6 +41,26 @@ from telethon.errors import (
 )
 from telethon.tl.types import Channel
 from telethon.tl.functions.channels import JoinChannelRequest
+
+# Decryption for API credentials
+settings = Settings()
+
+def get_encryption_key():
+    """Derive Fernet key from SECRET_KEY"""
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=b'telegram_account_salt',
+        iterations=100000,
+    )
+    key = base64.urlsafe_b64encode(kdf.derive(settings.SECRET_KEY.encode()))
+    return Fernet(key)
+
+cipher = get_encryption_key()
+
+def decrypt_credential(encrypted):
+    """Decrypt API credentials"""
+    return cipher.decrypt(encrypted.encode()).decode()
 
 
 class ChannelImporter:
@@ -175,8 +200,14 @@ class ChannelImporter:
         
         for account_num, account_data in self.account_map.items():
             phone = account_data["phone"]
-            api_id = int(account_data["api_id"])
-            api_hash = account_data["api_hash"]
+            
+            # Decrypt credentials
+            try:
+                api_id = int(decrypt_credential(account_data["api_id"]))
+                api_hash = decrypt_credential(account_data["api_hash"])
+            except Exception as e:
+                print(f"❌ Failed to decrypt credentials for Account {account_num}: {e}")
+                continue
             
             session_path = f"sessions/{phone}"
             session_file = Path(f"{session_path}.session")
