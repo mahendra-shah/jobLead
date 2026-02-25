@@ -2,7 +2,7 @@
 Telegram Group Model
 Stores Telegram channels/groups being monitored
 """
-from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, Text
+from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, Text, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -26,9 +26,13 @@ class TelegramGroup(Base):
     
     # Join status
     is_joined = Column(Boolean, default=False, nullable=False)
-    joined_by_account_id = Column(Integer, nullable=True)  # Account number (1-5) that joined this group
+    joined_by_account_id = Column(Integer, nullable=True)  # LEGACY: Account number (1-5) - use telegram_account_id instead
+    telegram_account_id = Column(UUID(as_uuid=True), ForeignKey('telegram_accounts.id', ondelete='SET NULL'), nullable=True, index=True)  # NEW: FK to telegram_accounts
     joined_by_phone = Column(String(20), nullable=True)  # Phone number of account that joined
     joined_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Relationship to TelegramAccount
+    telegram_account = relationship("TelegramAccount", foreign_keys=[telegram_account_id], backref="joined_groups")
     
     # Scraping info
     last_scraped_at = Column(DateTime(timezone=True), nullable=True)
