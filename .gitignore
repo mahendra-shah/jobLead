@@ -155,6 +155,7 @@ docs/
 *.md
 !README.md
 
+
 # ===================================
 # Test Scripts & Debug Files
 # ===================================
@@ -172,6 +173,7 @@ sync_*.py
 add_test_*.py
 setup_test_*.py
 update_*.py
+!update_telegram_accounts_mapping.py
 quick_test.sh
 test_*.sh
 setup_aws_*.sh
