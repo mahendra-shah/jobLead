@@ -20,7 +20,7 @@ import asyncio
 import random
 import base64
 from typing import List, Dict, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from telethon import TelegramClient
@@ -200,7 +200,7 @@ class TelegramGroupJoinerService:
                 channel.is_joined = True
                 channel.telegram_account_id = account.id
                 channel.joined_by_phone = account.phone
-                channel.joined_at = datetime.utcnow()
+                channel.joined_at = datetime.now(timezone.utc)
                 channel.title = entity.title
                 channel.members_count = getattr(entity, 'participants_count', 0)
                 
@@ -220,12 +220,12 @@ class TelegramGroupJoinerService:
             channel.is_joined = True
             channel.telegram_account_id = account.id
             channel.joined_by_phone = account.phone
-            channel.joined_at = datetime.utcnow()
+            channel.joined_at = datetime.now(timezone.utc)
             channel.title = entity.title
             channel.members_count = getattr(entity, 'participants_count', 0)
             
             account.groups_joined_count += 1
-            account.last_join_at = datetime.utcnow()
+            account.last_join_at = datetime.now(timezone.utc)
             
             await db.commit()
             
@@ -252,7 +252,7 @@ class TelegramGroupJoinerService:
             
             # Mark account as temporarily unavailable
             account.last_error_message = f"FloodWait {wait_seconds}s"
-            account.last_error_at = datetime.utcnow()
+            account.last_error_at = datetime.now(timezone.utc)
             await db.commit()
             
             return False
@@ -290,7 +290,7 @@ class TelegramGroupJoinerService:
             channel.is_joined = True
             channel.telegram_account_id = account.id
             channel.joined_by_phone = account.phone
-            channel.joined_at = datetime.utcnow()
+            channel.joined_at = datetime.now(timezone.utc)
             await db.commit()
             
             self.stats["already_joined"] += 1
@@ -300,7 +300,7 @@ class TelegramGroupJoinerService:
             logger.error(f"❌ Failed to join @{channel.username}: {e}")
             
             account.last_error_message = str(e)[:500]
-            account.last_error_at = datetime.utcnow()
+            account.last_error_at = datetime.now(timezone.utc)
             await db.commit()
             
             self.stats["errors"].append(f"Error joining @{channel.username}: {str(e)[:100]}")

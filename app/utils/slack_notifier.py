@@ -1,7 +1,7 @@
 """Slack notification utility for critical alerts."""
 
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional, List
 from collections import deque
 import structlog
@@ -178,7 +178,7 @@ class SlackNotifier:
             "elements": [
                 {
                     "type": "mrkdwn",
-                    "text": f"🕒 {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+                    "text": f"🕒 {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}"
                 }
             ]
         })
@@ -343,7 +343,7 @@ class SlackNotifier:
         
         context = {}
         if last_successful_fetch:
-            hours_ago = (datetime.utcnow() - last_successful_fetch).total_seconds() / 3600
+            hours_ago = (datetime.now(timezone.utc) - last_successful_fetch).total_seconds() / 3600
             context["Last Successful Fetch"] = f"{hours_ago:.1f} hours ago"
             context["Timestamp"] = last_successful_fetch.strftime('%Y-%m-%d %H:%M:%S UTC')
 
@@ -428,7 +428,7 @@ class SlackNotifier:
             from app.services.telegram_scraper_service import get_scraper_service
             
             # Get yesterday's date range
-            today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+            today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
             yesterday = today - timedelta(days=1)
             
             # Account health

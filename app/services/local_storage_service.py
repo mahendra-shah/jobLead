@@ -6,7 +6,7 @@ Later we can swap this with DynamoDB service without changing the interface
 
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional, Any
 from uuid import uuid4
 import logging
@@ -82,11 +82,11 @@ class LocalStorageService:
         try:
             # Add created_at if not present
             if 'created_at' not in item:
-                item['created_at'] = datetime.utcnow().isoformat()
+                item['created_at'] = datetime.now(timezone.utc).isoformat()
             
             # Add TTL if not present (7 days)
             if 'ttl' not in item:
-                ttl_date = datetime.utcnow() + timedelta(days=7)
+                ttl_date = datetime.now(timezone.utc) + timedelta(days=7)
                 item['ttl'] = int(ttl_date.timestamp())
             
             # Read current data
@@ -255,7 +255,7 @@ class LocalStorageService:
                 data[message_idx][key] = value
             
             # Add updated_at timestamp
-            data[message_idx]['updated_at'] = datetime.utcnow().isoformat()
+            data[message_idx]['updated_at'] = datetime.now(timezone.utc).isoformat()
             
             # Write back
             self._write_data(data)
@@ -288,7 +288,7 @@ class LocalStorageService:
         updates = {
             'processed': True,
             'processing_status': status,
-            'processed_at': datetime.utcnow().isoformat()
+            'processed_at': datetime.now(timezone.utc).isoformat()
         }
         
         if rejection_reason:
@@ -321,7 +321,7 @@ class LocalStorageService:
             # Increment attempts
             current_attempts = data[message_idx].get('processing_attempts', 0)
             data[message_idx]['processing_attempts'] = current_attempts + 1
-            data[message_idx]['last_attempt_at'] = datetime.utcnow().isoformat()
+            data[message_idx]['last_attempt_at'] = datetime.now(timezone.utc).isoformat()
             
             # Write back
             self._write_data(data)
@@ -345,7 +345,7 @@ class LocalStorageService:
             data = self._read_data()
             
             # Filter by date range
-            cutoff = datetime.utcnow() - timedelta(days=days)
+            cutoff = datetime.now(timezone.utc) - timedelta(days=days)
             cutoff_str = cutoff.isoformat()
             recent = [msg for msg in data if msg.get('created_at', '') >= cutoff_str]
             
@@ -391,7 +391,7 @@ class LocalStorageService:
             data = self._read_data()
             
             # Calculate cutoff
-            cutoff = datetime.utcnow() - timedelta(days=days)
+            cutoff = datetime.now(timezone.utc) - timedelta(days=days)
             cutoff_str = cutoff.isoformat()
             
             # Filter out old messages

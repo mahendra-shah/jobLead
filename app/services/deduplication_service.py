@@ -2,7 +2,7 @@
 
 import hashlib
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -147,7 +147,7 @@ class DeduplicationService:
             from sqlalchemy import and_
             
             # Calculate cutoff date
-            cutoff_date = datetime.utcnow() - timedelta(days=days_back)
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_back)
             
             # Strategy 1: Exact hash match (fastest)
             content_hash = self.compute_content_hash(job_text)

@@ -10,7 +10,7 @@ Enables admins to:
 This powers the continuous improvement loop.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy import select, func, desc
@@ -96,7 +96,7 @@ async def submit_job_feedback(
     
     # Store feedback in JSONB column
     feedback_data = {
-        'reviewed_at': datetime.utcnow().isoformat(),
+        'reviewed_at': datetime.now(timezone.utc).isoformat(),
         'reviewed_by': feedback.reviewed_by,
         'is_relevant': feedback.is_relevant,
         'corrections': {
@@ -136,7 +136,7 @@ async def submit_job_feedback(
         pass
     else:
         job.admin_reviewed = True
-        job.admin_reviewed_at = datetime.utcnow()
+        job.admin_reviewed_at = datetime.now(timezone.utc)
     
     await db.commit()
     
@@ -183,7 +183,7 @@ async def get_pending_review_jobs(
     # Get recent jobs without feedback or with low confidence
     # Note: Adjust this query based on your actual schema
     stmt = select(Job).where(
-        Job.created_at >= datetime.utcnow() - timedelta(days=7)
+        Job.created_at >= datetime.now(timezone.utc) - timedelta(days=7)
     )
     
     # Filter by confidence if column exists
@@ -382,7 +382,7 @@ async def trigger_model_retrain(
     # For now, return a placeholder response
     return {
         'status': 'queued',
-        'training_job_id': f"retrain_{int(datetime.utcnow().timestamp())}",
+        'training_job_id': f"retrain_{int(datetime.now(timezone.utc).timestamp())}",
         'triggered_by': triggered_by,
         'feedback_samples': feedback_count,
         'estimated_duration_minutes': 15,
