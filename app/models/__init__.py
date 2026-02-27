@@ -7,6 +7,7 @@
 from app.models.user import User
 from app.models.company import Company
 from app.models.channel import Channel
+from app.models.telegram_account import TelegramAccount
 from app.models.telegram_group import TelegramGroup
 
 # Models with foreign keys to base models
@@ -22,6 +23,7 @@ __all__ = [
     "User",
     "Company",
     "Channel",
+    "TelegramAccount",
     "TelegramGroup",
     "Student",
     "Job",

@@ -57,12 +57,16 @@ async def run_telegram_scraper():
     
     This job runs every 4 hours (4AM, 8AM, 12PM, 4PM, 8PM, 12AM IST).
     Fetches messages from all active Telegram channels using multi-account support.
+    
+    IMPORTANT: Automatically triggers ML processing after scraping completes.
     """
     from app.services.telegram_scraper_service import get_scraper_service
     
     logger.info("=" * 60)
     logger.info("TELEGRAM SCRAPER - SCHEDULED JOB")
     logger.info("=" * 60)
+    
+    scraper_result = None
     
     try:
         # Get scraper service
@@ -72,20 +76,78 @@ async def run_telegram_scraper():
         await scraper.initialize()
         
         # Run scraping
-        result = await scraper.scrape_all_channels()
+        scraper_result = await scraper.scrape_all_channels()
         
         # Log results
         logger.info(f"\n✅ Telegram scraper completed successfully:")
-        logger.info(f"   Total channels: {result['total_channels']}")
-        logger.info(f"   Successful: {result['successful']}")
-        logger.info(f"   Failed: {result['failed']}")
-        logger.info(f"   Total messages: {result['total_messages']}")
-        logger.info(f"   Duration: {result['duration_seconds']:.2f}s")
+        logger.info(f"   Total channels: {scraper_result['total_channels']}")
+        logger.info(f"   Successful: {scraper_result['successful']}")
+        logger.info(f"   Failed: {scraper_result['failed']}")
+        logger.info(f"   Total messages: {scraper_result['total_messages']}")
+        logger.info(f"   Duration: {scraper_result['duration_seconds']:.2f}s")
         
-        return result
+        # 🔥 AUTOMATICALLY TRIGGER ML PROCESSING if messages were fetched
+        if scraper_result['total_messages'] > 0:
+            logger.info("\n🤖 Auto-triggering ML pipeline to process new messages...")
+            try:
+                ml_result = await run_ml_processor()
+                logger.info(f"✅ ML processing completed: {ml_result.get('jobs_created', 0)} jobs created")
+            except Exception as ml_error:
+                logger.error(f"⚠️  ML processing failed: {ml_error}", exc_info=True)
+                # Don't fail the scraper job if ML fails
+        else:
+            logger.info("\nℹ️  No new messages to process")
+        
+        return scraper_result
     
     except Exception as e:
         logger.error(f"❌ Telegram scraper failed: {e}", exc_info=True)
+        raise
+    
+    finally:
+        logger.info("=" * 60)
+
+
+async def run_ml_processor() -> dict:
+    """
+    Scheduled task: Run ML processor to classify and extract jobs from messages.
+    
+    Processes unprocessed messages from MongoDB:
+    - Classifies messages (job vs non-job)
+    - Extracts job details (title, company, location, skills, salary)
+    - Applies quality scoring
+    - Stores jobs in PostgreSQL
+    
+    Returns:
+        Dict with processing statistics
+    """
+    from app.services.ml_processor_service import get_ml_processor
+    
+    logger.info("=" * 60)
+    logger.info("ML PROCESSOR - SCHEDULED JOB")
+    logger.info("=" * 60)
+    
+    try:
+        # Get ML processor
+        processor = get_ml_processor()
+        
+        # Process all unprocessed messages
+        stats = processor.process_unprocessed_messages(
+            limit=None,  # Process all
+            min_confidence=0.6  # 60% confidence threshold
+        )
+        
+        # Log results
+        logger.info(f"\n✅ ML processing completed:")
+        logger.info(f"   Messages processed: {stats.get('processed', 0)}")
+        logger.info(f"   Jobs created: {stats.get('jobs_created', 0)}")
+        logger.info(f"   Failed: {stats.get('failed', 0)}")
+        logger.info(f"   Duration: {stats.get('duration_seconds', 0):.2f}s")
+        
+        return stats
+    
+    except Exception as e:
+        logger.error(f"❌ ML processor failed: {e}", exc_info=True)
         raise
     
     finally:
@@ -120,33 +182,37 @@ async def send_daily_slack_summary():
         logger.error(f"❌ Failed to send morning update: {e}", exc_info=True)
 
 
-async def run_channel_sync():
+async def run_telegram_group_joiner():
     """
-    Scheduled task: Sync PostgreSQL telegram_groups ↔ MongoDB channels.
+    Scheduled task: Join Telegram groups (1 per account per cycle).
     
-    Ensures Lambda functions have up-to-date channel list with health scores.
-    Runs every 6 hours to keep channels synchronized.
+    Runs every 5 hours to gradually join channels.
+    Early exits if no unjoined channels exist.
     """
-    from app.services.channel_sync_service import ChannelSyncService
-    from app.db.session import AsyncSessionLocal
+    from app.services.telegram_group_joiner_service import TelegramGroupJoinerService
     
-    logger.info("🔄 Running channel synchronization...")
+    logger.info("🔗 Starting Telegram group joiner cycle...")
     
     try:
-        sync_service = ChannelSyncService()
-        await sync_service.initialize()
+        joiner = TelegramGroupJoinerService()
+        result = await joiner.run_join_cycle()
         
-        async with AsyncSessionLocal() as db:
-            stats = await sync_service.sync_all_channels(db)
+        if result["success"]:
+            stats = result["stats"]
+            total_joined = stats["successful_joins"] + stats["already_joined"]
+            
             logger.info(
-                f"✅ Channel sync complete: "
-                f"{stats['synced']}/{stats['total']} synced, "
-                f"{stats['failed']} failed"
+                f"✅ Group joiner completed: {total_joined} joined, "
+                f"{stats['failed_joins']} failed"
             )
-            return stats
-        
+            
+            return result
+        else:
+            logger.warning(f"⚠️ Group joiner finished with issues: {result['message']}")
+            return result
+            
     except Exception as e:
-        logger.error(f"❌ Channel sync failed: {e}", exc_info=True)
+        logger.error(f"❌ Group joiner failed: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
 
 
@@ -181,16 +247,26 @@ def setup_jobs():
     )
     logger.info("   ✅ Added: daily_morning_update (09:00 IST)")
     
-    # Job 3: Channel Sync (PostgreSQL ↔ MongoDB) - Every 6 hours
-    # Syncs telegram_groups (PostgreSQL) to channels (MongoDB) for Lambda access
+    # Job 3: ML Processor - 15 minutes after scraper (catches any missed messages)
+    for hour in scraping_hours:
+        scheduler.add_job(
+            run_ml_processor,
+            CronTrigger(hour=hour, minute=20),  # 20 minutes after scraper
+            id=f'ml_processor_after_scrape_{hour}h',
+            name=f'ML Processor (AfterScrape {hour:02d}:20 IST)',
+            replace_existing=True
+        )
+    logger.info(f"   ✅ Added: ML Processor jobs (20 min after each scrape)")
+    
+    # Job 4: Telegram Group Joiner - Every 5 hours
     scheduler.add_job(
-        run_channel_sync,
-        IntervalTrigger(hours=6),
-        id='channel_sync',
-        name='Channel Sync (PostgreSQL ↔ MongoDB) - Every 6 hours',
+        run_telegram_group_joiner,
+        IntervalTrigger(hours=5),
+        id='telegram_group_joiner_5hourly',
+        name='Telegram Group Joiner (Every 5 hours)',
         replace_existing=True
     )
-    logger.info("   ✅ Added: channel_sync (Every 6 hours)")
+    logger.info("   ✅ Added: telegram_group_joiner_5hourly (Every 5 hours)")
     
     logger.info("✅ All scheduled jobs configured")
 

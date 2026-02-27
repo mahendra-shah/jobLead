@@ -21,7 +21,7 @@ import asyncio
 import time
 import random
 import base64
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 from collections import defaultdict
 from pathlib import Path
@@ -39,6 +39,7 @@ from telethon import TelegramClient
 from telethon.errors import (
     FloodWaitError,
     ChannelPrivateError,
+    ChannelInvalidError,
     UsernameInvalidError,
     AuthKeyError,
     ServerError,
@@ -101,6 +102,16 @@ class TelegramScraperService:
     RATE_LIMIT_DELAY_MIN = 0.5  # Minimum 500ms between channels
     RATE_LIMIT_DELAY_MAX = 2.0  # Maximum 2s between channels (human-like randomness)
     FIRST_TIME_FETCH_LIMIT = 10  # Only 10 messages on first fetch
+    FIRST_SCRAPE_DAYS = 2  # For first-time scrape, fetch messages from last N days
+    
+    # Phone to Account ID mapping (1-5)
+    ACCOUNT_PHONE_MAPPING = {
+        1: "+919794670665",
+        2: "+917398227455",
+        3: "+919140057096",
+        4: "+917828629905",
+        5: "+919329796819",
+    }
     
     def __init__(self, session_dir: Optional[str] = None):
         """
@@ -176,6 +187,49 @@ class TelegramScraperService:
             sentry_sdk.capture_exception(e)
             
             raise
+    
+    def _get_account_id_from_phone(self, phone: Optional[str]) -> Optional[int]:
+        """
+        Map phone number to account_id (1-5) using ACCOUNT_PHONE_MAPPING.
+        
+        Args:
+            phone: Phone number string (e.g., "+919794670665")
+        
+        Returns:
+            Account ID (1-5) or None if not found
+        """
+        if not phone:
+            return None
+        
+        # Reverse lookup from mapping
+        for account_id, mapped_phone in self.ACCOUNT_PHONE_MAPPING.items():
+            if phone == mapped_phone:
+                return account_id
+        
+        return None
+    
+    def _get_account_uuid_from_phone(self, phone: Optional[str]) -> Optional[str]:
+        """
+        Get telegram_account UUID from phone number.
+        
+        Args:
+            phone: Phone number (e.g., "+919794670665")
+        
+        Returns:
+            UUID string of the telegram_account or None
+        """
+        if not phone:
+            return None
+        
+        db = SyncSessionLocal()
+        try:
+            account = db.execute(
+                select(TelegramAccount).where(TelegramAccount.phone == phone)
+            ).scalar_one_or_none()
+            
+            return str(account.id) if account else None
+        finally:
+            db.close()
     
     def get_session_path(self, phone: str) -> str:
         """
@@ -395,6 +449,9 @@ class TelegramScraperService:
                 'error': 'No joined_by_phone - group not joined properly'
             }
         
+        # Initialize account_id before try block for error handling
+        account_id = channel.get('joined_by_account_id', 'unknown')  # For tracking/stats
+        
         stats = {
             'channel': username,
             'phone': phone,
@@ -409,111 +466,103 @@ class TelegramScraperService:
             
             logger.info(f"📱 {phone} → scraping @{username}")
             
-            # Incremental fetching logic
+            # Determine if this is first scrape (last_scraped_at is NULL)
+            is_first_scrape = (channel.get('last_scraped_at') is None)
+            
+            # Fetch messages based on scrape history
             last_message_id = channel.get('last_message_id')
             
-            if last_message_id:
+            if is_first_scrape:
+                # 🆕 FIRST SCRAPE: Get last 2 days of messages
+                from datetime import timedelta
+                two_days_ago = datetime.now(timezone.utc) - timedelta(days=self.FIRST_SCRAPE_DAYS)
+                logger.info(
+                    f"   🆕 FIRST SCRAPE for @{username} (last_scraped_at=NULL) → fetching last {self.FIRST_SCRAPE_DAYS} days"
+                )
+                
+                # TODO: Remove this 2-day logic after initial deployment (2026-03-05)
+                # After all channels have been scraped once, use standard incremental logic
+                
+                messages = []
+                async for message in client.iter_messages(username, offset_date=two_days_ago, limit=500):
+                    # message.date is timezone-aware, two_days_ago is now also timezone-aware
+                    if message.date < two_days_ago:
+                        break
+                    if message.text:  # Only text messages
+                        messages.append(message)
+                
+                logger.info(f"   📥 FIRST SCRAPE result: {len(messages)} messages from last {self.FIRST_SCRAPE_DAYS} days for @{username}")
+                if len(messages) == 0:
+                    logger.warning(f"   ⚠️  Channel @{username} has NO messages in last {self.FIRST_SCRAPE_DAYS} days (inactive or new channel)")
+            
+            elif last_message_id:
                 # Incremental fetch: Get messages after last_message_id
                 logger.info(
-                    f"   📥 Incremental fetch: messages newer than ID {last_message_id}"
+                    f"   📥 INCREMENTAL fetch for @{username} (has last_message_id={last_message_id}) → fetching newer messages only"
                 )
                 messages = await client.get_messages(
                     username,
                     limit=self.MAX_MESSAGES_PER_CHANNEL,
                     min_id=last_message_id
                 )
+                messages = [m for m in messages if m and m.text]
+            
             else:
-                # First time fetch: Get last 10 messages only
-                logger.info(f"   📥 First time fetch: last {self.FIRST_TIME_FETCH_LIMIT} messages")
+                # Fallback: Channel was scraped but has no last_message_id (got 0 messages before)
+                logger.warning(f"   ⚠️  FALLBACK for @{username} (last_scraped_at exists but no last_message_id) → fetching last {self.FIRST_TIME_FETCH_LIMIT} messages")
                 messages = await client.get_messages(username, limit=self.FIRST_TIME_FETCH_LIMIT)
-                # Explicitly slice to ensure limit (Telethon sometimes returns more)
                 messages = messages[:self.FIRST_TIME_FETCH_LIMIT] if len(messages) > self.FIRST_TIME_FETCH_LIMIT else messages
-                logger.info(
-                    f"   📊 Fetched {len(messages)} messages "
-                    f"(first-time limit: {self.FIRST_TIME_FETCH_LIMIT})"
-                )
+                messages = [m for m in messages if m and m.text]
+                logger.info(f"   📥 FALLBACK result: {len(messages)} messages for @{username}")
             
-            if not messages:
-                logger.info(f"   ℹ️  No new messages in @{username}")
-                stats['success'] = True
-                return stats
             
-            # Process and store messages
-            raw_messages_collection = mongo_db['raw_messages']
-            channels_collection = mongo_db['channels']
-            
-            stored_count = 0
-            for msg in messages:
-                if msg.text:
-                    # Create document
-                    doc = {
-                        'message_id': msg.id,
-                        'channel_username': username,
-                        'channel_id': channel.get('_id'),
-                        'text': msg.text,
-                        'date': msg.date,
-                        'sender_id': msg.sender_id if hasattr(msg, 'sender_id') else None,
-                        'views': msg.views if hasattr(msg, 'views') else None,
-                        'forwards': msg.forwards if hasattr(msg, 'forwards') else None,
-                        'fetched_at': datetime.utcnow(),
-                        'fetched_by_account': account_id,
-                        'is_processed': False
-                    }
-                    
-                    # Upsert (avoid duplicates)
-                    raw_messages_collection.update_one(
-                        {'message_id': msg.id, 'channel_username': username},
-                        {'$set': doc},
-                        upsert=True
-                    )
-                    stored_count += 1
-            
-            # Update channel metadata in MongoDB
+            # IMPORTANT: Update PostgreSQL even if no messages fetched
+            # This prevents channels from being stuck in "never scraped" state
             last_message = messages[0] if messages else None
-            channels_collection.update_one(
-                {'username': username},
-                {
-                    '$set': {
-                        'last_scraped_at': datetime.utcnow(),
-                        'last_scraped_by_account': account_id,
-                        'last_message_id': last_message.id if last_message else None,
-                        'last_message_date': last_message.date if last_message else None,
-                        'total_messages_scraped': channel.get('total_messages_scraped', 0) + stored_count
-                    }
-                }
-            )
+            account_uuid = self._get_account_uuid_from_phone(phone)
             
-            # Also update PostgreSQL telegram_groups table
             try:
                 pg_session = SyncSessionLocal()
                 pg_group = pg_session.execute(
                     select(TelegramGroup).where(TelegramGroup.username == username)
                 ).scalar_one_or_none()
                 
-                if pg_group:
+                if pg_group and account_uuid:
+                    # Always update scrape timestamp, even with 0 messages
                     pg_group.last_scraped_at = datetime.utcnow()
-                    pg_group.last_scraped_by_account = account_id
-                    pg_group.last_message_id = last_message.id if last_message else None
-                    pg_group.last_message_date = last_message.date if last_message else None
-                    pg_group.total_messages_scraped = pg_group.total_messages_scraped + stored_count
+                    pg_group.last_scraped_by_account = account_uuid
+                    
+                    # Update message info only if we got messages
+                    if messages:
+                        stored_count = self.store_messages_to_mongodb(messages, username, account_id, mongo_db)
+                        pg_group.last_message_id = str(last_message.id)
+                        pg_group.last_message_date = last_message.date
+                        pg_group.total_messages_scraped = (pg_group.total_messages_scraped or 0) + stored_count
+                        stats['messages_fetched'] = stored_count
+                        logger.info(f"   ✅ Updated @{username}: {stored_count} messages stored")
+                    else:
+                        stats['messages_fetched'] = 0
+                        logger.info(f"   ✅ Updated @{username}: 0 messages (scrape timestamp recorded)")
+                    
                     pg_session.commit()
+                elif not account_uuid:
+                    logger.warning(f"   ⚠️  Could not get account UUID for phone {phone}")
                 
                 pg_session.close()
             except Exception as pg_error:
-                logger.warning(
-                    "postgres_update_failed",
-                    channel=username,
-                    error=str(pg_error)
+                logger.error(
+                    f"   ❌ Failed to update PostgreSQL for @{username}: {pg_error}",
+                    exc_info=True
                 )
+                if 'pg_session' in locals():
+                    pg_session.rollback()
+                    pg_session.close()
             
-            stats['messages_fetched'] = stored_count
             stats['success'] = True
             
             # Update account stats
             self.account_stats[account_id]['channels_scraped'] += 1
-            self.account_stats[account_id]['messages_found'] += stored_count
-            
-            logger.info(f"   ✅ Stored {stored_count} messages from @{username}")
+            self.account_stats[account_id]['messages_found'] += stats.get('messages_fetched', 0)
             
             # Rate limiting between channels - random delay for human-like behavior
             delay = random.uniform(self.RATE_LIMIT_DELAY_MIN, self.RATE_LIMIT_DELAY_MAX)
@@ -553,15 +602,69 @@ class TelegramScraperService:
                 "channel_access_error",
                 account_id=account_id,
                 channel=username,
-                error=str(e),
+               error=str(e),
                 error_type=error_type
             )
             
             stats['error'] = error_msg
             self.account_stats[account_id]['errors'] += 1
             
+            # Update PostgreSQL: Mark channel as not joined or inactive
+            try:
+                pg_session = SyncSessionLocal()
+                pg_group = pg_session.execute(
+                    select(TelegramGroup).where(TelegramGroup.username == username)
+                ).scalar_one_or_none()
+                
+                if pg_group:
+                    pg_group.is_joined = False
+                    pg_group.is_active = False
+                    pg_group.deactivated_at = datetime.utcnow()
+                    pg_group.deactivation_reason = f"{error_type}: {str(e)}"
+                    pg_session.commit()
+                    logger.info(f"   🚫 Marked @{username} as inactive in PostgreSQL (kicked or private)")
+                
+                pg_session.close()
+            except Exception as pg_err:
+                logger.warning(f"   ⚠️ Failed to update channel status: {pg_err}")
+                if 'pg_session' in locals():
+                    pg_session.close()
+            
             # Publish metric
 # REMOVED (no AWS):             cloudwatch_metrics.publish_error_metric(
+        
+        except ChannelInvalidError as e:
+            error_msg = f"Channel invalid or deleted: {str(e)}"
+            
+            logger.error(
+                "channel_invalid",
+                account_id=account_id,
+                channel=username,
+                error=str(e)
+            )
+            
+            stats['error'] = error_msg
+            self.account_stats[account_id]['errors'] += 1
+            
+            # Update PostgreSQL: Mark channel as inactive (deleted or invalid)
+            try:
+                pg_session = SyncSessionLocal()
+                pg_group = pg_session.execute(
+                    select(TelegramGroup).where(TelegramGroup.username == username)
+                ).scalar_one_or_none()
+                
+                if pg_group:
+                    pg_group.is_active = False
+                    pg_group.deactivated_at = datetime.utcnow()
+                    pg_group.deactivation_reason = f"Channel deleted or invalid: {str(e)}"
+                    pg_session.commit()
+                    logger.info(f"   🗑️ Marked @{username} as inactive (channel invalid/deleted)")
+                
+                pg_session.close()
+            except Exception as pg_err:
+                logger.warning(f"   ⚠️ Failed to update channel status: {pg_err}")
+                if 'pg_session' in locals():
+                    pg_session.close()
         
         except AuthKeyError as e:
             error_msg = f"Auth key error: {str(e)}"
@@ -619,6 +722,138 @@ class TelegramScraperService:
                 sentry_sdk.capture_exception(e)
         
         return stats
+    
+    def store_messages_to_mongodb(
+        self,
+        messages: List,
+        channel_username: str,
+        account_id: int,
+        mongo_db
+    ) -> int:
+        """
+        Store messages to MongoDB raw_messages with retry logic.
+        
+        Args:
+            messages: List of Telegram message objects
+            channel_username: Channel username
+            account_id: Account ID for tracking
+            mongo_db: MongoDB database instance
+        
+        Returns:
+            int: Number of messages successfully stored
+        """
+        from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError, DuplicateKeyError
+        
+        raw_messages_collection = mongo_db['raw_messages']
+        max_retries = 3
+        retry_delay = 2  # seconds
+        stored_count = 0
+        skipped_duplicates = 0
+        
+        for attempt in range(max_retries):
+            try:
+                for msg in messages:
+                    if msg.text:
+                        doc = {
+                            'message_id': msg.id,
+                            'channel_username': channel_username,
+                            'text': msg.text,
+                            'date': msg.date,
+                            'sender_id': msg.sender_id if hasattr(msg, 'sender_id') else None,
+                            'views': msg.views if hasattr(msg, 'views') else None,
+                            'forwards': msg.forwards if hasattr(msg, 'forwards') else None,
+                            'fetched_at': datetime.utcnow(),
+                            'fetched_by_account': account_id,
+                            'is_processed': False
+                        }
+                        
+                        try:
+                            raw_messages_collection.update_one(
+                                {'message_id': msg.id, 'channel_username': channel_username},
+                                {'$set': doc},
+                                upsert=True
+                            )
+                            stored_count += 1
+                        except DuplicateKeyError:
+                            # Message already exists (likely from different channel with same message_id)
+                            # This happens because MongoDB has unique index on message_id alone
+                            # TODO: Fix MongoDB index to be compound (message_id, channel_username)
+                            skipped_duplicates += 1
+                            continue
+                
+                if skipped_duplicates > 0:
+                    logger.info(f"   💾 Stored {stored_count} messages, skipped {skipped_duplicates} duplicates for @{channel_username}")
+                else:
+                    logger.info(f"   💾 Stored {stored_count} messages to MongoDB for @{channel_username}")
+                return stored_count
+                
+            except (ConnectionFailure, ServerSelectionTimeoutError) as e:
+                logger.warning(
+                    f"   ⚠️ MongoDB connection lost (attempt {attempt + 1}/{max_retries}): {e}"
+                )
+                
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay * (attempt + 1))  # Exponential backoff
+                    continue
+                else:
+                    logger.error(
+                        f"   ❌ Failed to store messages after {max_retries} attempts. Saving to fallback."
+                    )
+                    self._fallback_store_messages(messages, channel_username, account_id)
+                    return 0
+            
+            except Exception as e:
+                logger.error(f"   ❌ Unexpected error storing messages to MongoDB: {e}", exc_info=True)
+                self._fallback_store_messages(messages, channel_username, account_id)
+                return 0
+        
+        return stored_count
+    
+    def _fallback_store_messages(
+        self,
+        messages: List,
+        channel_username: str,
+        account_id: int
+    ) -> None:
+        """
+        Fallback: Store messages to local JSON file when MongoDB is down.
+        Background job can process these later.
+        
+        Args:
+            messages: List of Telegram message objects
+            channel_username: Channel username
+            account_id: Account ID
+        """
+        import json
+        from pathlib import Path
+        
+        fallback_dir = Path("./failed_messages")
+        fallback_dir.mkdir(exist_ok=True)
+        
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        filename = fallback_dir / f"{channel_username}_{timestamp}_acc{account_id}.json"
+        
+        messages_data = [
+            {
+                'message_id': msg.id,
+                'channel_username': channel_username,
+                'text': msg.text or '',
+                'date': msg.date.isoformat() if msg.date else None,
+                'sender_id': msg.sender_id if hasattr(msg, 'sender_id') else None,
+                'views': getattr(msg, 'views', 0),
+                'forwards': getattr(msg, 'forwards', 0),
+                'fetched_by_account': account_id
+            }
+            for msg in messages if msg and msg.text
+        ]
+        
+        try:
+            with open(filename, 'w', encoding='utf-8') as f:
+                json.dump(messages_data, f, indent=2, ensure_ascii=False)
+            
+            logger.info(f"   💾 FALLBACK: Saved {len(messages_data)} messages to {filename}")
+        except Exception as e:
+            logger.error(f"   ❌ Failed to save fallback file: {e}", exc_info=True)
     
     async def _update_account_health(
         self,
@@ -730,35 +965,57 @@ class TelegramScraperService:
     
     async def get_channels_to_scrape(self) -> List[Dict]:
         """
-        Get list of active channels from MongoDB that need scraping.
+        Get list of active, joined channels from PostgreSQL telegram_groups table.
         
         Returns:
-            List of channel documents with username and joined_by_account_id
+            List of channel dictionaries compatible with existing scrape logic.
+            Each dict contains: username, joined_by_phone, joined_by_account_id (for compatibility),
+            last_message_id, total_messages_scraped
         """
         if not self._initialized:
             await self.initialize()
         
-        mongo_db = self.mongo_client[settings.MONGODB_DATABASE]
-        channels_collection = mongo_db['channels']
-        
-        # Get only JOINED and ACTIVE channels
-        # We can't scrape groups we haven't joined!
-        channels = list(channels_collection.find(
-            {
-                'is_active': True,
-                'is_joined': True  # ← ONLY joined groups! ✅
-            },
-            {
-                '_id': 1,
-                'username': 1,
-                'joined_by_account_id': 1,
-                'last_message_id': 1,
-                'total_messages_scraped': 1
-            }
-        ))
-        
-        logger.info(f"Found {len(channels)} joined channels to scrape")
-        return channels
+        db = SyncSessionLocal()
+        try:
+            # Query PostgreSQL for active, joined channels with assigned accounts
+            channels_orm = db.execute(
+                select(TelegramGroup)
+                .where(
+                    TelegramGroup.is_active == True,
+                    TelegramGroup.is_joined == True,
+                    TelegramGroup.telegram_account_id.isnot(None)  # Must have account assigned
+                )
+            ).scalars().all()
+            
+            # Convert ORM objects to dicts for backward compatibility
+            channels = []
+            for ch in channels_orm:
+                # Map phone back to account_id (1-5) for logging compatibility
+                account_id = self._get_account_id_from_phone(ch.joined_by_phone)
+                if not account_id:
+                    logger.warning(
+                        f"⚠️  Channel @{ch.username} has invalid phone {ch.joined_by_phone}, skipping"
+                    )
+                    continue
+                
+                channels.append({
+                    'id': str(ch.id),  # UUID string
+                    'username': ch.username,
+                    'joined_by_phone': ch.joined_by_phone,  # Used for getting Telegram client
+                    'joined_by_account_id': account_id,  # Integer 1-5 (for compatibility with stats)
+                    'last_message_id': int(ch.last_message_id) if ch.last_message_id else 0,
+                    'total_messages_scraped': ch.total_messages_scraped or 0,
+                    'last_scraped_at': ch.last_scraped_at  # For first-scrape detection
+                })
+            
+            logger.info(f"Found {len(channels)} channels to scrape from PostgreSQL (telegram_groups)")
+            return channels
+            
+        except Exception as e:
+            logger.error(f"❌ Error querying channels from PostgreSQL: {e}", exc_info=True)
+            return []
+        finally:
+            db.close()
     
     async def scrape_all_channels(self) -> Dict:
         """
@@ -915,16 +1172,37 @@ class TelegramScraperService:
         
         username = channel_username.lstrip('@')
         mongo_db = self.mongo_client[settings.MONGODB_DATABASE]
-        channels_collection = mongo_db['channels']
         
-        # Get channel document
-        channel = channels_collection.find_one({'username': username})
-        
-        if not channel:
-            raise ValueError(f"Channel @{username} not found in database")
-        
-        if not channel.get('is_active', True):
-            raise ValueError(f"Channel @{username} is not active")
+        # Get channel from PostgreSQL
+        db = SyncSessionLocal()
+        try:
+            pg_channel = db.execute(
+                select(TelegramGroup).where(TelegramGroup.username == username)
+            ).scalar_one_or_none()
+            
+            if not pg_channel:
+                raise ValueError(f"Channel @{username} not found in database")
+            
+            if not pg_channel.is_active:
+                raise ValueError(f"Channel @{username} is not active")
+            
+            if not pg_channel.telegram_account_id:
+                raise ValueError(f"Channel @{username} has no assigned Telegram account")
+            
+            # Convert to dict for compatibility with scrape_channel()
+            account_id = self._get_account_id_from_phone(pg_channel.joined_by_phone)
+            channel = {
+                'id': str(pg_channel.id),
+                'username': pg_channel.username,
+                'joined_by_phone': pg_channel.joined_by_phone,
+                'joined_by_account_id': account_id,
+                'last_message_id': int(pg_channel.last_message_id) if pg_channel.last_message_id else 0,
+                'total_messages_scraped': pg_channel.total_messages_scraped or 0,
+                'last_scraped_at': pg_channel.last_scraped_at
+            }
+            
+        finally:
+            db.close()
         
         # Scrape the channel
         result = await self.scrape_channel(channel, mongo_db)
