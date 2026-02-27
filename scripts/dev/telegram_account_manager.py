@@ -18,6 +18,9 @@ from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
+# Add project root to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 # Database imports
 from app.db.session import SyncSessionLocal
 from app.models.telegram_account import TelegramAccount, HealthStatus
@@ -178,7 +181,7 @@ def update_account_status(phone, is_active, health_status):
         
         if account:
             account.is_active = is_active
-            account.health_status = HealthStatus[health_status]
+            account.health_status = HealthStatus(health_status.lower())
             db.commit()
             return True
         return False
