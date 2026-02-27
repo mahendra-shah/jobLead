@@ -15,6 +15,9 @@ class Job(Base):
 
     title = Column(String(500), nullable=False, index=True)
     company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=True)  # Made nullable for ML processing
+    # Denormalized company name for fast display without loading the
+    # companies relationship (avoids an extra SELECT on every render).
+    company_name = Column(String(500), nullable=True, index=True)
     description = Column(Text)
     
     # Job details

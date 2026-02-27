@@ -43,12 +43,11 @@ async def get_recommended_jobs(
     **Auth**: Student (JWT required)
     
     **Scoring Algorithm** (0-100):
-    - Skill Match: 40%
+    - Skill Match: 45%
     - Location Match: 20%
     - Experience Match: 15%
     - Job Type Match: 10%
-    - Company Preference: 10%
-    - Freshness: 5%
+    - Freshness: 10%
     
     **Query Parameters**:
     - `limit`: Max recommendations to return (1-100, default: 20)
@@ -192,69 +191,36 @@ async def get_similar_jobs(
     }
 
 
-@router.get("/students/me/recommendation-stats")
+@router.get("/recommendation-stats")
 async def get_recommendation_stats(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Get recommendation statistics for current student
-    
+    Get recommendation statistics for current student.
+
+    Uses lightweight DB count queries and the already-warmed
+    recommendation cache where available.  Never triggers a full
+    re-score of 500 jobs.
+
     **Auth**: Student (JWT required)
-    
+
     Returns:
-    - Total jobs available
-    - High match jobs (score >= 80)
-    - Medium match jobs (score 60-79)
-    - Low match jobs (score 50-59)
-    - Jobs matching skills
-    - Jobs matching location
+    - total_jobs_available: active high-quality jobs in last 7 days
+    - match_distribution: high/medium/low score bands (from cache)
+    - criteria_matches: skill-match count, fresher-friendly count
+    - top_recommendations: first 5 items from the warmed cache
     """
-    # Get student profile
     result = await db.execute(
-        select(Student).where(Student.email == current_user.email)
+        select(Student).where(Student.user_id == current_user.id)
     )
     student = result.scalar_one_or_none()
-    
+
     if not student:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Student profile not found"
         )
-    
-    # Get all recommendations with low min_score to calculate stats
+
     recommendation_service = JobRecommendationService(db, get_cache_manager())
-    all_recommendations = await recommendation_service.get_recommendations(
-        student=student,
-        limit=1000,  # Get all
-        offset=0,
-        min_score=0.0,  # Get all jobs
-        exclude_saved=False,
-        exclude_viewed=False
-    )
-    
-    # Calculate statistics
-    total_jobs = len(all_recommendations)
-    high_match = sum(1 for r in all_recommendations if r["recommendation_score"] >= 80)
-    medium_match = sum(1 for r in all_recommendations if 60 <= r["recommendation_score"] < 80)
-    low_match = sum(1 for r in all_recommendations if 50 <= r["recommendation_score"] < 60)
-    
-    # Count jobs matching specific criteria
-    skill_matches = sum(1 for r in all_recommendations if r["score_breakdown"]["skill_score"] >= 20)
-    location_matches = sum(1 for r in all_recommendations if r["score_breakdown"]["location_score"] >= 10)
-    fresher_friendly = sum(1 for r in all_recommendations if r["score_breakdown"]["experience_score"] >= 10)
-    
-    return {
-        "total_jobs_available": total_jobs,
-        "match_distribution": {
-            "high_match": high_match,  # 80+
-            "medium_match": medium_match,  # 60-79
-            "low_match": low_match  # 50-59
-        },
-        "criteria_matches": {
-            "skill_matches": skill_matches,
-            "location_matches": location_matches,
-            "fresher_friendly": fresher_friendly
-        },
-        "top_recommendations": all_recommendations[:5] if all_recommendations else []
-    }
+    return await recommendation_service.get_recommendation_counts(student)

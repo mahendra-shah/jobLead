@@ -329,6 +329,9 @@ class MLProcessorService:
                     job = Job(
                         title=extraction.job_title or extraction.company_name or "Job Opening",
                         company_id=extraction.company_id,
+                        # Denormalized so recommendations never need to load
+                        # the companies relationship on display.
+                        company_name=company.name if company else extraction.company_name,
                         description=extraction.description[:5000] if extraction.description else text[:5000],
                         location=extraction.location,
                         
