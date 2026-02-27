@@ -15,9 +15,9 @@ from app.db.session import SyncSessionLocal
 # Account configuration from .env
 accounts = [
     {
-        'phone': '+918826304387',
-        'api_id': '22268483',
-        'api_hash': '91d20fcc8dda60181199e28343d6b6cb',
+        'phone': '+91000000000',
+        'api_id': '4847743',
+        'api_hash': 'kjdghffsdfgy89sdfgsdf',
         'notes': 'my account'
     },
     # Add more accounts here if you have them
