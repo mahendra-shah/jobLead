@@ -10,6 +10,7 @@ Date: 2026-02-10
 
 import logging
 from datetime import datetime
+import pytz
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -230,7 +231,7 @@ def setup_jobs():
     
     scheduler.add_job(
         run_telegram_scraper,
-        CronTrigger(hour=hour_str, minute=0),  # Run at specified hours IST
+        CronTrigger(hour=hour_str, minute=0, timezone='Asia/Kolkata'),  # Run at specified hours IST
         id='telegram_scraper_4hourly',
         name='Telegram Scraper (Every 4 hours IST)',
         replace_existing=True
@@ -240,7 +241,7 @@ def setup_jobs():
     # Job 2: Daily Morning Update at 9:00 AM IST
     scheduler.add_job(
         send_daily_slack_summary,
-        CronTrigger(hour=9, minute=0),  # 9:00 AM IST
+        CronTrigger(hour=9, minute=0, timezone='Asia/Kolkata'),  # 9:00 AM IST
         id='daily_morning_update',
         name='Daily Morning Update (9:00 AM IST)',
         replace_existing=True
@@ -251,7 +252,7 @@ def setup_jobs():
     for hour in scraping_hours:
         scheduler.add_job(
             run_ml_processor,
-            CronTrigger(hour=hour, minute=20),  # 20 minutes after scraper
+            CronTrigger(hour=hour, minute=20, timezone='Asia/Kolkata'),  # 20 minutes after scraper IST
             id=f'ml_processor_after_scrape_{hour}h',
             name=f'ML Processor (AfterScrape {hour:02d}:20 IST)',
             replace_existing=True
@@ -283,13 +284,15 @@ def start_scheduler():
         logger.info("🚀 Scheduler started successfully")
         
         # Log next run times
+        ist = pytz.timezone('Asia/Kolkata')
         jobs = scheduler.get_jobs()
         logger.info(f"\n📅 Scheduled Jobs ({len(jobs)} total):")
         for job in jobs:
             next_run = job.next_run_time
+            next_run_ist = next_run.astimezone(ist) if next_run else None
             logger.info(f"   • {job.name}")
             logger.info(f"     ID: {job.id}")
-            logger.info(f"     Next run: {next_run}")
+            logger.info(f"     Next run: {next_run_ist.strftime('%Y-%m-%d %H:%M:%S IST') if next_run_ist else 'N/A'}")
             logger.info(f"     Trigger: {job.trigger}")
     else:
         logger.warning("⚠️  Scheduler already running")
@@ -318,11 +321,15 @@ def get_scheduler_status() -> dict:
     jobs = scheduler.get_jobs()
     
     jobs_info = []
+    ist = pytz.timezone('Asia/Kolkata')
     for job in jobs:
+        next_run_utc = job.next_run_time
+        next_run_ist = next_run_utc.astimezone(ist) if next_run_utc else None
         jobs_info.append({
             'id': job.id,
             'name': job.name,
-            'next_run_time': job.next_run_time.isoformat() if job.next_run_time else None,
+            'next_run_time_ist': next_run_ist.strftime('%Y-%m-%d %H:%M:%S IST') if next_run_ist else None,
+            'next_run_time_utc': next_run_utc.isoformat() if next_run_utc else None,
             'trigger': str(job.trigger),
             'pending': job.pending
         })

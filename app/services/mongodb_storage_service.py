@@ -1,7 +1,7 @@
 """MongoDB storage service for raw Telegram messages."""
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 from uuid import UUID
 
@@ -132,8 +132,8 @@ class MongoDBStorageService:
         
         try:
             # Add metadata
-            message_data['created_at'] = datetime.utcnow()
-            message_data['updated_at'] = datetime.utcnow()
+            message_data['created_at'] = datetime.now(timezone.utc)
+            message_data['updated_at'] = datetime.now(timezone.utc)
             
             # Insert document
             await self.collection.insert_one(message_data)
@@ -200,7 +200,7 @@ class MongoDBStorageService:
             update_data = {
                 "processed": True,
                 "is_job": is_job,
-                "updated_at": datetime.utcnow()
+                "updated_at": datetime.now(timezone.utc)
             }
             
             if job_id:
@@ -263,7 +263,7 @@ class MongoDBStorageService:
                 "processed": True,
                 "is_job": False,
                 "rejection_reason": reason,
-                "updated_at": datetime.utcnow()
+                "updated_at": datetime.now(timezone.utc)
             }
             
             if confidence is not None:
@@ -305,7 +305,7 @@ class MongoDBStorageService:
                 "is_job": True,
                 "is_duplicate": True,
                 "duplicate_of_job_id": duplicate_job_id,
-                "updated_at": datetime.utcnow()
+                "updated_at": datetime.now(timezone.utc)
             }
             
             result = await self.collection.update_one(
@@ -358,7 +358,7 @@ class MongoDBStorageService:
             await self.initialize()
         
         try:
-            cutoff_date = datetime.utcnow() - timedelta(days=days)
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
             
             # Total messages
             total = await self.collection.count_documents({
@@ -447,7 +447,7 @@ class MongoDBStorageService:
             await self.initialize()
         
         try:
-            cutoff_date = datetime.utcnow() - timedelta(days=days)
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
             
             result = await self.collection.delete_many({
                 "timestamp": {"$lt": cutoff_date.isoformat()},

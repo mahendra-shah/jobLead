@@ -529,7 +529,7 @@ class TelegramScraperService:
                 
                 if pg_group and account_uuid:
                     # Always update scrape timestamp, even with 0 messages
-                    pg_group.last_scraped_at = datetime.utcnow()
+                    pg_group.last_scraped_at = datetime.now(timezone.utc)
                     pg_group.last_scraped_by_account = account_uuid
                     
                     # Update message info only if we got messages
@@ -619,7 +619,7 @@ class TelegramScraperService:
                 if pg_group:
                     pg_group.is_joined = False
                     pg_group.is_active = False
-                    pg_group.deactivated_at = datetime.utcnow()
+                    pg_group.deactivated_at = datetime.now(timezone.utc)
                     pg_group.deactivation_reason = f"{error_type}: {str(e)}"
                     pg_session.commit()
                     logger.info(f"   🚫 Marked @{username} as inactive in PostgreSQL (kicked or private)")
@@ -655,7 +655,7 @@ class TelegramScraperService:
                 
                 if pg_group:
                     pg_group.is_active = False
-                    pg_group.deactivated_at = datetime.utcnow()
+                    pg_group.deactivated_at = datetime.now(timezone.utc)
                     pg_group.deactivation_reason = f"Channel deleted or invalid: {str(e)}"
                     pg_session.commit()
                     logger.info(f"   🗑️ Marked @{username} as inactive (channel invalid/deleted)")
@@ -762,7 +762,7 @@ class TelegramScraperService:
                             'sender_id': msg.sender_id if hasattr(msg, 'sender_id') else None,
                             'views': msg.views if hasattr(msg, 'views') else None,
                             'forwards': msg.forwards if hasattr(msg, 'forwards') else None,
-                            'fetched_at': datetime.utcnow(),
+                            'fetched_at': datetime.now(timezone.utc),
                             'fetched_by_account': account_id,
                             'is_processed': False
                         }
@@ -830,7 +830,7 @@ class TelegramScraperService:
         fallback_dir = Path("./failed_messages")
         fallback_dir.mkdir(exist_ok=True)
         
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         filename = fallback_dir / f"{channel_username}_{timestamp}_acc{account_id}.json"
         
         messages_data = [
@@ -1035,7 +1035,7 @@ class TelegramScraperService:
                 - started_at: Timestamp when scraping started
                 - completed_at: Timestamp when scraping completed
         """
-        started_at = datetime.utcnow()
+        started_at = datetime.now(timezone.utc)
         
         try:
             # Initialize if not already done
@@ -1055,7 +1055,7 @@ class TelegramScraperService:
                     'account_stats': {},
                     'results': [],
                     'started_at': started_at,
-                    'completed_at': datetime.utcnow()
+                    'completed_at': datetime.now(timezone.utc)
                 }
             
             # Reset account stats
@@ -1092,7 +1092,7 @@ class TelegramScraperService:
             total_messages = sum(r['messages_fetched'] for r in results)
             successful = sum(1 for r in results if r['success'])
             failed = len(results) - successful
-            completed_at = datetime.utcnow()
+            completed_at = datetime.now(timezone.utc)
             duration_ms = int((completed_at - started_at).total_seconds() * 1000)
             
             summary = {

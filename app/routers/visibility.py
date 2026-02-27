@@ -10,17 +10,19 @@ Provides detailed insights into:
 NO CloudWatch costs - pure API-based monitoring.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from pymongo import MongoClient
 from pydantic import BaseModel
 import structlog
 
 from app.api.deps import get_db
 from app.models.telegram_account import TelegramAccount, HealthStatus
 from app.models.telegram_group import TelegramGroup
+from app.models.job import Job
 from app.services.telegram_scraper_service import get_scraper_service
 from app.config import settings
 
@@ -163,17 +165,10 @@ async def get_channels_scraping_stats(
     for ch in channels:
         hours_since = None
         if ch.last_scraped_at:
-            hours_since = (datetime.utcnow() - ch.last_scraped_at).total_seconds() / 3600
+            hours_since = (datetime.now(timezone.utc) - ch.last_scraped_at).total_seconds() / 3600
         
-        # Get account phone if joined_by_account_id exists
-        account_phone = None
-        if ch.joined_by_account_id:
-            account_result = await db.execute(
-                select(TelegramAccount).where(TelegramAccount.id == ch.joined_by_account_id)
-            )
-            account = account_result.scalar_one_or_none()
-            if account:
-                account_phone = account.phone
+        # joined_by_phone is stored directly on the channel
+        account_phone = ch.joined_by_phone
         
         results.append(ChannelStatsResponse(
             username=ch.username,
@@ -208,7 +203,7 @@ async def get_error_analysis(
     Returns:
         Error analysis with categorization
     """
-    since = datetime.utcnow() - timedelta(hours=hours)
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
     
     # Get errors from PostgreSQL
     stmt = select(TelegramAccount).where(TelegramAccount.last_error_at >= since)
@@ -320,17 +315,21 @@ async def get_visibility_dashboard(db: AsyncSession = Depends(get_db)):
     hours_since_scrape = None
     if latest_channel and latest_channel.last_scraped_at:
         last_scrape_time = latest_channel.last_scraped_at.isoformat()
-        hours_since_scrape = (datetime.utcnow() - latest_channel.last_scraped_at).total_seconds() / 3600
+        hours_since_scrape = (datetime.now(timezone.utc) - latest_channel.last_scraped_at).total_seconds() / 3600
     
-    # Get MongoDB stats if available
+    # Get MongoDB stats — direct connection, no scraper init required
     total_messages = 0
     unprocessed_messages = 0
+    messages_fetched_today = 0
     try:
-        scraper = get_scraper_service()
-        if scraper._initialized:
-            mongo_db = scraper.mongo_client[settings.MONGODB_DATABASE]
-            total_messages = mongo_db.raw_messages.count_documents({})
-            unprocessed_messages = mongo_db.raw_messages.count_documents({'is_processed': False})
+        mongo_client = MongoClient(settings.MONGODB_URI, serverSelectionTimeoutMS=5000)
+        mongo_db = mongo_client[settings.MONGODB_DATABASE]
+        raw = mongo_db.raw_messages
+        total_messages = raw.count_documents({})
+        unprocessed_messages = raw.count_documents({'is_processed': False})
+        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        messages_fetched_today = raw.count_documents({'fetched_at': {'$gte': today_start}})
+        mongo_client.close()
     except Exception as e:
         logger.warning("failed_to_get_mongodb_stats", error=str(e))
     
@@ -338,30 +337,39 @@ async def get_visibility_dashboard(db: AsyncSession = Depends(get_db)):
         'total_active_channels': total_channels,
         'total_messages_collected': total_messages,
         'unprocessed_messages': unprocessed_messages,
+        'messages_fetched_today': messages_fetched_today,
         'last_scrape_at': last_scrape_time,
         'hours_since_last_scrape': round(hours_since_scrape, 1) if hours_since_scrape else None
     }
     
     # Performance metrics (last 24 hours) from PostgreSQL
-    yesterday = datetime.utcnow() - timedelta(days=1)
-    
+    yesterday = datetime.now(timezone.utc) - timedelta(days=1)
+    # jobs.created_at is TIMESTAMP WITHOUT TIME ZONE (naive UTC) — use naive datetime
+    today_start_pg = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+
     # Count channels scraped in last 24h
     stmt = select(func.count()).select_from(TelegramGroup).where(
         TelegramGroup.last_scraped_at >= yesterday
     )
     result = await db.execute(stmt)
     channels_scraped_24h = result.scalar()
-    
+
+    # Jobs classified today
+    stmt = select(func.count()).select_from(Job).where(Job.created_at >= today_start_pg)
+    result = await db.execute(stmt)
+    jobs_today = result.scalar()
+
     scraping_performance = {
         'channels_scraped_24h': channels_scraped_24h,
-        'messages_last_24h': 0,  # Would need MongoDB for this
+        'messages_fetched_today': messages_fetched_today,
+        'jobs_classified_today': jobs_today,
         'scraper_status': 'operational' if accounts_summary['healthy'] > 0 else 'degraded'
     }
-    
+
     logger.info("visibility_dashboard_generated", **accounts_summary)
     
     return VisibilityDashboardResponse(
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         accounts_summary=accounts_summary,
         recent_errors=recent_errors,
         channel_stats_summary=channel_stats_summary,
@@ -388,5 +396,5 @@ async def get_system_status():
         'status': 'operational',
         'scraper_initialized': scraper._initialized,
         'connected_clients': len(scraper.clients),
-        'timestamp': datetime.utcnow().isoformat()
+        'timestamp': datetime.now(timezone.utc).isoformat()
     }

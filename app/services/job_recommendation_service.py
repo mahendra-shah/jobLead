@@ -14,7 +14,7 @@ Expected performance: 600-1200ms (uncached), 5-10ms (cached)
 """
 
 from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, not_, exists
 from sqlalchemy.orm import selectinload
@@ -153,7 +153,7 @@ class JobRecommendationService:
         - Composite index on (is_active, created_at, quality_score)
         """
         # Query optimization: limit to 500 recent high-quality jobs
-        seven_days_ago = datetime.utcnow() - timedelta(days=7)
+        seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
         
         # Build base query with optimizations
         query = (
@@ -603,7 +603,7 @@ class JobRecommendationService:
         if not job.created_at:
             return 2.5  # Neutral if date not specified
         
-        days_old = (datetime.utcnow() - job.created_at).days
+        days_old = (datetime.now(timezone.utc) - job.created_at).days
         
         if days_old <= 1:
             match_reasons.append("🔥 Posted today!")

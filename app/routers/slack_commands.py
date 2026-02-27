@@ -14,7 +14,7 @@ Commands:
 from fastapi import APIRouter, Request, Response, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
 import structlog
 import hashlib
@@ -88,7 +88,7 @@ async def get_visibility_data(db: AsyncSession) -> Dict[str, Any]:
     last_scrape = result.scalar()
     hours_since = None
     if last_scrape:
-        hours_since = (datetime.utcnow() - last_scrape).total_seconds() / 3600
+        hours_since = (datetime.now(timezone.utc) - last_scrape).total_seconds() / 3600
     
     # MongoDB stats
     total_messages = 0
@@ -119,7 +119,7 @@ async def get_visibility_data(db: AsyncSession) -> Dict[str, Any]:
 
 async def get_jobs_today_data(db: AsyncSession) -> Dict[str, Any]:
     """Get today's job statistics."""
-    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     
     # Jobs created today
     result = await db.execute(
@@ -172,7 +172,7 @@ async def get_account_health_data(db: AsyncSession) -> list:
 
 async def get_scraping_stats_data(db: AsyncSession) -> Dict[str, Any]:
     """Get scraping statistics."""
-    yesterday = datetime.utcnow() - timedelta(days=1)
+    yesterday = datetime.now(timezone.utc) - timedelta(days=1)
     
     # Channels scraped in last 24h
     result = await db.execute(
@@ -188,7 +188,7 @@ async def get_scraping_stats_data(db: AsyncSession) -> Dict[str, Any]:
         messages_today = 0
         if scraper._initialized:
             mongo_db = scraper.mongo_client[settings.MONGODB_DATABASE]
-            today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+            today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
             messages_today = mongo_db.raw_messages.count_documents({
                 "fetched_at": {"$gte": today_start}
             })
@@ -302,7 +302,7 @@ async def slack_command_visibility(
                 "elements": [
                     {
                         "type": "mrkdwn",
-                        "text": f"🕒 {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+                        "text": f"🕒 {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}"
                     }
                 ]
             }
@@ -375,7 +375,7 @@ async def slack_command_jobs(
                 "elements": [
                     {
                         "type": "mrkdwn",
-                        "text": f"🕒 {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+                        "text": f"🕒 {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}"
                     }
                 ]
             }
@@ -439,7 +439,7 @@ async def slack_command_accounts(
                 "elements": [
                     {
                         "type": "mrkdwn",
-                        "text": f"🕒 {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+                        "text": f"🕒 {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}"
                     }
                 ]
             }
@@ -498,7 +498,7 @@ async def slack_command_scraping(
                 "elements": [
                     {
                         "type": "mrkdwn",
-                        "text": f"🕒 {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+                        "text": f"🕒 {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}"
                     }
                 ]
             }
