@@ -435,6 +435,7 @@ class RecommendedJobResponse(BaseModel):
     is_saved: bool
     view_count: int
     similar_jobs_count: int
+    score_breakdown: Dict[str, float] = {}
 
 
 class RecommendedJobsResponse(BaseModel):
