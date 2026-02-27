@@ -4,7 +4,7 @@ Matches jobs to students based on preferences with visibility tracking
 """
 
 from typing import List, Dict, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 import logging
 
@@ -116,7 +116,7 @@ class RecommendationService:
         - Still has visibility slots available
         """
         try:
-            cutoff_date = datetime.utcnow() - timedelta(days=30)
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=30)
             
             # Query for eligible jobs
             result = await self.db.execute(
@@ -305,7 +305,7 @@ class RecommendationService:
             reasons.append("Verified job posting")
         
         # Recent posting
-        if job.created_at and (datetime.utcnow() - job.created_at).days <= 3:
+        if job.created_at and (datetime.now(timezone.utc) - job.created_at).days <= 3:
             reasons.append("Recently posted")
         
         return reasons

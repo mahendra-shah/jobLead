@@ -13,9 +13,9 @@ from app.db.base import Base
 
 class HealthStatus(str, enum.Enum):
     """Account health status enum."""
-    HEALTHY = "HEALTHY"
-    DEGRADED = "DEGRADED"
-    BANNED = "BANNED"
+    HEALTHY = "healthy"
+    DEGRADED = "degraded"
+    BANNED = "banned"
 
 
 class TelegramAccount(Base):
@@ -53,7 +53,7 @@ class TelegramAccount(Base):
     
     def can_join_today(self, max_joins_per_day: int = 2) -> bool:
         """Check if account can join more groups today"""
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone
         
         if not self.is_active or self.is_banned:
             return False
@@ -80,11 +80,11 @@ class TelegramAccount(Base):
         Args:
             error_message: Error message to record
         """
-        from datetime import datetime
+        from datetime import datetime, timezone
         
         self.consecutive_errors += 1
         self.last_error_message = error_message
-        self.last_error_at = datetime.utcnow()
+        self.last_error_at = datetime.now(timezone.utc)
         
         # Update health status based on error count
         if self.consecutive_errors >= 3:
@@ -98,10 +98,10 @@ class TelegramAccount(Base):
     
     def mark_success(self) -> None:
         """Mark successful operation and reset error counters."""
-        from datetime import datetime
+        from datetime import datetime, timezone
         
         self.consecutive_errors = 0
-        self.last_successful_fetch_at = datetime.utcnow()
+        self.last_successful_fetch_at = datetime.now(timezone.utc)
         
         # Only reset to healthy if not banned
         if not self.is_banned and self.is_active:

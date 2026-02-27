@@ -18,7 +18,7 @@ Date: 2026-02-10
 import logging
 import os
 from typing import Optional, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Query, Path, Depends
 from fastapi.responses import JSONResponse
@@ -282,7 +282,7 @@ async def trigger_scheduled_job(
         return {
             'success': True,
             'job_id': job_id,
-            'triggered_at': datetime.utcnow(),
+            'triggered_at': datetime.now(timezone.utc),
             'result': result
         }
     
@@ -439,7 +439,7 @@ async def scraper_health_check(db: Session = Depends(get_db)):
                 
                 if latest_channel and latest_channel.get('last_scraped_at'):
                     last_scrape_time = latest_channel['last_scraped_at']
-                    hours_ago = (datetime.utcnow() - last_scrape_time).total_seconds() / 3600
+                    hours_ago = (datetime.now(timezone.utc) - last_scrape_time).total_seconds() / 3600
                     
                     last_scrape_check = {
                         "last_scrape_at": last_scrape_time.isoformat(),

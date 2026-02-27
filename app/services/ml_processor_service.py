@@ -4,7 +4,7 @@ Processes unprocessed messages from MongoDB, classifies them, and stores jobs to
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Optional
 from pymongo import MongoClient
 from sqlalchemy.orm import Session
@@ -148,7 +148,7 @@ class MLProcessorService:
                         {
                             "$set": {
                                 "is_processed": True,  # Changed from processed to is_processed
-                                "processed_at": datetime.utcnow(),
+                                "processed_at": datetime.now(timezone.utc),
                                 "ml_classification": {
                                     "is_job": result['is_job'],
                                     "confidence": result['confidence'],
@@ -168,7 +168,7 @@ class MLProcessorService:
                         {
                             "$set": {
                                 "is_processed": True,  # Changed from processed to is_processed
-                                "processed_at": datetime.utcnow(),
+                                "processed_at": datetime.now(timezone.utc),
                                 "processing_error": str(e)
                             }
                         }
@@ -494,8 +494,8 @@ class MLProcessorService:
                     channel.avg_job_quality_score = sum(quality_scores) / len(quality_scores)
             
             # Update last job posted timestamp
-            from datetime import datetime
-            channel.last_job_posted_at = datetime.now()
+            from datetime import datetime, timezone
+            channel.last_job_posted_at = datetime.now(timezone.utc)
             
             # Recalculate health score
             new_score = channel.calculate_health_score()

@@ -4,7 +4,7 @@ Admin endpoints for managing job scraping preferences
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 
 from app.db.session import get_db
@@ -91,7 +91,7 @@ async def update_preferences(
     
     # Update metadata
     preferences.updated_by = current_user.id
-    preferences.updated_at = datetime.utcnow()
+    preferences.updated_at = datetime.now(timezone.utc)
     
     # Commit changes
     await db.commit()
@@ -146,7 +146,7 @@ async def get_processing_stats(
         storage_type=storage_type,
         storage_size=storage_size,
         preferences_active=preferences is not None,
-        last_updated=datetime.utcnow()
+        last_updated=datetime.now(timezone.utc)
     )
 
 
@@ -187,7 +187,7 @@ async def activate_preferences(
     
     preferences.is_active = True
     preferences.updated_by = current_user.id
-    preferences.updated_at = datetime.utcnow()
+    preferences.updated_at = datetime.now(timezone.utc)
     
     await db.commit()
     await db.refresh(preferences)

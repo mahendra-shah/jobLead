@@ -1,5 +1,5 @@
 """Admin API endpoints for Telegram scraping management."""
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func, and_, desc
@@ -131,7 +131,7 @@ async def get_telegram_accounts(
     accounts = result.scalars().all()
     
     # Add usage stats
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
     accounts_with_stats = []
     
     for account in accounts:
@@ -336,7 +336,7 @@ async def update_telegram_group(
     if group_data.is_active is not None:
         group.is_active = group_data.is_active
         if not group_data.is_active:
-            group.deactivated_at = datetime.utcnow()
+            group.deactivated_at = datetime.now(timezone.utc)
         else:
             group.deactivated_at = None
     
@@ -366,7 +366,7 @@ async def get_group_health_history(
         raise HTTPException(status_code=404, detail="Group not found")
     
     # Query scraping logs to get historical data
-    since_date = datetime.utcnow() - timedelta(days=days)
+    since_date = datetime.now(timezone.utc) - timedelta(days=days)
     
     result = await db.execute(
         select(ScrapingLog)
@@ -409,7 +409,7 @@ async def get_dashboard_stats(
     current_user: User = Depends(get_current_active_superuser),
 ):
     """Get overall system statistics and metrics."""
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
     
     # Total jobs
     result = await db.execute(select(func.count()).select_from(Job))
@@ -491,7 +491,7 @@ async def get_dashboard_stats(
     last_job_extraction = result.scalar()
     
     # Last 24h metrics
-    since_24h = datetime.utcnow() - timedelta(hours=24)
+    since_24h = datetime.now(timezone.utc) - timedelta(hours=24)
     
     result = await db.execute(
         select(func.count())
@@ -613,9 +613,9 @@ async def get_scraping_stats(
     current_user: User = Depends(get_current_active_superuser),
 ):
     """Get detailed Telegram scraping statistics."""
-    today = datetime.utcnow().date()
-    since_7_days = datetime.utcnow() - timedelta(days=7)
-    since_30_days = datetime.utcnow() - timedelta(days=30)
+    today = datetime.now(timezone.utc).date()
+    since_7_days = datetime.now(timezone.utc) - timedelta(days=7)
+    since_30_days = datetime.now(timezone.utc) - timedelta(days=30)
     
     # Account stats
     result = await db.execute(select(func.count()).select_from(TelegramAccount))
@@ -740,9 +740,9 @@ async def get_job_stats(
     current_user: User = Depends(get_current_active_superuser),
 ):
     """Get detailed job statistics with experience and salary breakdown."""
-    today = datetime.utcnow().date()
-    since_7_days = datetime.utcnow() - timedelta(days=7)
-    since_30_days = datetime.utcnow() - timedelta(days=30)
+    today = datetime.now(timezone.utc).date()
+    since_7_days = datetime.now(timezone.utc) - timedelta(days=7)
+    since_30_days = datetime.now(timezone.utc) - timedelta(days=30)
     
     # Overall job stats
     result = await db.execute(select(func.count()).select_from(Job))
@@ -1055,7 +1055,7 @@ async def update_preferences(
     
     # Update metadata
     preferences.updated_by = current_user.id
-    preferences.updated_at = datetime.utcnow()
+    preferences.updated_at = datetime.now(timezone.utc)
     
     # Commit changes
     await db.commit()
@@ -1110,5 +1110,5 @@ async def get_processing_stats(
         storage_type=storage_type,
         storage_size=storage_size,
         preferences_active=preferences is not None,
-        last_updated=datetime.utcnow()
+        last_updated=datetime.now(timezone.utc)
     )
