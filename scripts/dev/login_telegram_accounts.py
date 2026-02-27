@@ -5,7 +5,14 @@ Run once for each account.
 """
 import asyncio
 from telethon import TelegramClient
+import os
 import sys
+
+# Ensure project root is on sys.path so `app` imports work when running from scripts/dev
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, os.pardir, os.pardir))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 from app.db.session import SyncSessionLocal
 from app.models.telegram_account import TelegramAccount
 
