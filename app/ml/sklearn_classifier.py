@@ -276,7 +276,7 @@ class SklearnClassifier(BaseClassifier):
             return {"success": False, "error": str(e)}
     
     def save_model(self, path: str) -> None:
-        """Save trained model to disk"""
+        """Save trained model to disk using joblib (consistent with load_model)."""
         try:
             model_data = {
                 'vectorizer': self.vectorizer,
@@ -284,9 +284,9 @@ class SklearnClassifier(BaseClassifier):
                 'feature_names': feature_extractor.get_feature_names(),
                 'threshold': self.threshold,
             }
-            
-            with open(path, 'wb') as f:
-                pickle.dump(model_data, f)
+
+            # Use joblib for scikit-learn models — safer and faster than pickle
+            joblib.dump(model_data, path)
             
             metadata = {
                 'model_version': self.model_version,

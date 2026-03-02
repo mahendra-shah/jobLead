@@ -91,7 +91,60 @@ class JobQualityScorer:
         return {
             "version": "default",
             "experience_criteria": {"max_years": 2, "scoring": {}},
-            "preferred_skills": {"tech": [], "scoring": {}},
+            "preferred_skills": {
+                "tech": [
+                    "python", "java", "javascript", "typescript", "react", "node", "angular",
+                    "vue", "django", "flask", "fastapi", "spring", "express", "sql", "postgresql",
+                    "mysql", "mongodb", "redis", "aws", "azure", "gcp", "docker", "kubernetes",
+                    "machine learning", "ai", "data science", "ml", "deep learning", "devops",
+                    "ci/cd", "git", "linux", "android", "ios", "flutter", "react native",
+                    "go", "golang", "rust", "c++", "c#", "kotlin", "swift", "dart",
+                    "terraform", "ansible", "kafka", "graphql", "grpc", "elasticsearch",
+                    "spark", "airflow", "dbt", "nestjs", "nextjs", "playwright", "selenium",
+                    "jest", "pytest", "jenkins", "github actions", "tableau", "power bi"
+                ],
+                "data": [
+                    "python", "sql", "tableau", "power bi", "spark", "hadoop", "pandas",
+                    "numpy", "tensorflow", "pytorch", "scikit", "keras", "r", "dbt",
+                    "airflow", "looker", "bigquery", "snowflake", "excel", "statistics"
+                ],
+                "design": [
+                    "figma", "sketch", "adobe xd", "photoshop", "illustrator", "indesign",
+                    "canva", "after effects", "premiere", "zeplin", "invision", "prototyping",
+                    "wireframing", "ui", "ux", "user research", "design system"
+                ],
+                "marketing": [
+                    "seo", "sem", "google analytics", "meta ads", "facebook ads",
+                    "email marketing", "content writing", "copywriting", "social media",
+                    "wordpress", "hubspot", "mailchimp", "google ads", "canva",
+                    "content marketing", "growth hacking", "performance marketing"
+                ],
+                "non_tech": [
+                    "excel", "ms office", "tally", "tally erp", "powerpoint", "word",
+                    "google sheets", "salesforce", "zoho crm", "crm", "erp", "sap",
+                    "quickbooks", "communication", "negotiation", "presentation",
+                    "client management", "team management", "leadership"
+                ],
+                "scoring": {
+                    "tech_match": 100,
+                    "data_match": 100,
+                    "design_match": 100,
+                    "marketing_match": 100,
+                    "non_tech_match": 80,
+                    "partial": 50,
+                    "no_skills": 50
+                }
+            },
+            "salary_criteria": {
+                "min_expected_inr": 15000,
+                "max_expected_inr": 100000,
+                "score_modifier": {
+                    "unspecified": -5,
+                    "below_min": -20,
+                    "within_range": 0,
+                    "above_max": 10
+                }
+            },
             "required_fields": {"must_have": {"fields": ["title"], "weight": 1.0}},
             "scoring_weights": {
                 "experience_match": 0.28,
@@ -287,30 +340,35 @@ class JobQualityScorer:
         design_skills = self.skill_criteria.get('design', [])
         marketing_skills = self.skill_criteria.get('marketing', [])
         data_skills = self.skill_criteria.get('data', [])
-        
+        non_tech_skills = self.skill_criteria.get('non_tech', [])
+
         # Count matches
         tech_matches = sum(1 for s in skills_lower if s in tech_skills)
         design_matches = sum(1 for s in skills_lower if s in design_skills)
         marketing_matches = sum(1 for s in skills_lower if s in marketing_skills)
         data_matches = sum(1 for s in skills_lower if s in data_skills)
-        
+        non_tech_matches = sum(1 for s in skills_lower if s in non_tech_skills)
+
         scoring = self.skill_criteria.get('scoring', {})
-        
+
         if tech_matches > 0:
             reasons.append(f"✓ Tech skills match: {tech_matches} skills")
             return scoring.get('tech_match', 100.0), reasons
+        elif data_matches > 0:
+            reasons.append(f"✓ Data skills match: {data_matches} skills")
+            return scoring.get('data_match', 100.0), reasons
         elif design_matches > 0:
             reasons.append(f"✓ Design skills match: {design_matches} skills")
             return scoring.get('design_match', 100.0), reasons
         elif marketing_matches > 0:
             reasons.append(f"✓ Marketing skills match: {marketing_matches} skills")
             return scoring.get('marketing_match', 100.0), reasons
-        elif data_matches > 0:
-            reasons.append(f"✓ Data skills match: {data_matches} skills")
-            return scoring.get('data_match', 100.0), reasons
+        elif non_tech_matches > 0:
+            reasons.append(f"✓ Non-tech skills match: {non_tech_matches} skills")
+            return scoring.get('non_tech_match', 80.0), reasons
         else:
-            reasons.append(f"△ Generic skills: {', '.join(skills[:3])}")
-            return scoring.get('no_match', 50.0), reasons
+            reasons.append(f"△ Skills not in known categories: {', '.join(skills[:3])}")
+            return scoring.get('partial', 50.0), reasons
     
     def _score_location(self, location_data: Dict) -> tuple[float, List[str]]:
         """
