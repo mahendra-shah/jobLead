@@ -76,6 +76,7 @@ class VisibilityDashboardResponse(BaseModel):
     messages: Dict
     jobs: Dict
     system: Dict
+    sheets: Optional[Dict] = None
 
 
 @router.get("/accounts/health", response_model=List[AccountHealthResponse])
@@ -529,6 +530,27 @@ async def get_visibility_dashboard(db: AsyncSession = Depends(get_db)):
         "connected_clients": len(scraper.clients),
     }
 
+    # ------------------------------------------------------------------ #
+    # Google Sheets section  (read last export status from Redis)
+    # ------------------------------------------------------------------ #
+    sheets_section: Optional[Dict] = None
+    try:
+        import json
+        import redis as _redis
+        _r = _redis.from_url(settings.REDIS_URL, decode_responses=True, socket_timeout=3)
+        raw = _r.get("sheets:last_export")
+        _r.close()
+        if raw:
+            sheets_section = json.loads(raw)
+        else:
+            sheets_section = {
+                "status": "never_run",
+                "note": "No export recorded yet. Will run after the next ML cycle.",
+            }
+    except Exception as e:
+        logger.warning("failed_to_read_sheets_status", error=str(e))
+        sheets_section = {"status": "unavailable", "error": str(e)}
+
     logger.info(
         "visibility_dashboard_generated",
         total_accounts=accounts_section["total"],
@@ -542,6 +564,7 @@ async def get_visibility_dashboard(db: AsyncSession = Depends(get_db)):
         messages=messages_section,
         jobs=jobs_section,
         system=system_section,
+        sheets=sheets_section,
     )
 
 

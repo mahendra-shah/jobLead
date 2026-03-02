@@ -12,7 +12,6 @@ from sqlalchemy import select, and_
 from sqlalchemy.orm import Session
 
 from app.models.job import Job
-from app.models.company import Company
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -186,136 +185,110 @@ class GoogleSheetsService:
     def export_daily_jobs(self, db: Session, date: Optional[datetime] = None) -> Dict:
         """
         Export jobs processed on the given date to Google Sheets.
-        
+
+        Safe to call multiple times per day — clears existing data rows
+        and rewrites all jobs fresh each time (idempotent, no duplicates).
+
         Args:
             db: Database session
-            date: Date to export (defaults to yesterday)
-            
+            date: Date to export (defaults to today)
+
         Returns:
             Summary dict with export stats
         """
         if date is None:
-            # Default to yesterday (jobs processed yesterday)
-            date = datetime.now() - timedelta(days=1)
-        
-        # Set time range (full day)
+            date = datetime.now()
+
         start_time = date.replace(hour=0, minute=0, second=0, microsecond=0)
         end_time = start_time + timedelta(days=1)
-        
+
         logger.info(f"📊 Exporting jobs from {start_time} to {end_time}")
-        
-        # Query jobs created in this time range
+
         query = (
             select(Job)
-            .outerjoin(Company, Job.company_id == Company.id)
             .where(
                 and_(
                     Job.created_at >= start_time,
-                    Job.created_at < end_time
+                    Job.created_at < end_time,
                 )
             )
             .order_by(Job.created_at.desc())
         )
-        
+
         result = db.execute(query)
         jobs = result.scalars().all()
-        
+
         if not jobs:
             logger.warning(f"No jobs found for {date.strftime('%Y-%m-%d')}")
             return {
                 'status': 'no_jobs',
                 'date': date.strftime('%Y-%m-%d'),
-                'jobs_exported': 0
+                'jobs_exported': 0,
             }
-        
+
         logger.info(f"Found {len(jobs)} jobs to export")
-        
-        # Create tab
+
         tab_name = self.create_daily_tab(date)
-        
-        # Prepare data rows
+
+        # Clear all data rows (keep header in row 1) — prevents duplicates on repeated runs
+        try:
+            self.sheets.values().clear(
+                spreadsheetId=self.sheet_id,
+                range=f"{tab_name}!A2:T10000",
+            ).execute()
+            logger.debug(f"Cleared data rows for tab '{tab_name}'")
+        except Exception as e:
+            logger.warning(f"Could not clear existing rows (non-fatal): {e}")
+
         rows = []
         for job in jobs:
-            # Get company name
-            company_name = "Unknown"
-            if job.company_id:
-                company = db.execute(
-                    select(Company).where(Company.id == job.company_id)
-                ).scalar_one_or_none()
-                if company:
-                    company_name = company.name
-            
-            # Get channel metadata (NEW - using source_channel_name)
-            channel_name = job.source_channel_name or ''  # Get from backfilled column
+            # Use denormalized company_name — no extra DB query needed
+            company_name = job.company_name or 'Unknown'
+            channel_name = job.source_channel_name or ''
             channel_url = f"https://t.me/{channel_name}" if channel_name else ''
-            channel_id = job.source_telegram_channel_id or ''  # Fixed - Now shows actual Telegram channel ID
-            sender_id = str(job.sender_id) if job.sender_id else ''  # NEW - Telegram sender user ID
-            
-            # Get account used (NEW) - Show the MongoDB account ID
+            channel_id = job.source_telegram_channel_id or ''
+            sender_id = str(job.sender_id) if job.sender_id else ''
             account_used = f"Account {job.fetched_by_account}" if job.fetched_by_account else ''
-            
+
             row = [
-                str(job.id),  # ID
-                job.source_message_id or '',  # Message ID
-                job.created_at.strftime('%Y-%m-%d'),  # Date
-                # job.created_at.strftime('%H:%M:%S'),  # Time - Commented per user request
-                company_name,  # Company
-                job.title or '',  # Job Title
-                job.location or '',  # Location
-                # job.experience_min if job.experience_min is not None else '',  # Experience Min - Commented
-                # job.experience_max if job.experience_max is not None else '',  # Experience Max - Commented
-                'Yes' if job.is_fresher else 'No' if job.is_fresher is not None else '',  # Is Fresher
-                # f"₹{job.salary_min:,.0f}" if job.salary_min else '',  # Salary Min - Commented
-                # f"₹{job.salary_max:,.0f}" if job.salary_max else '',  # Salary Max - Commented
-                job.work_type or '',  # Work Type (remote/on-site/hybrid)
-                job.job_type or '',  # Job Type
-                ', '.join(job.skills_required) if job.skills_required else '',  # Skills
-                channel_name,  # Channel Name (NEW)
-                channel_url,  # Channel URL (NEW)
-                channel_id,  # Channel ID (Fixed - Now shows actual Telegram channel ID)
-                sender_id,  # Sender ID (NEW)
-                account_used,  # Account Used (NEW)
-                job.source or '',  # Source Channel (OLD - keeping for backward compat)
-                job.source_url or '',  # Apply Link
-                (job.raw_text or '')[:1000]  # Full Message Text (truncated to 1000 chars)
+                str(job.id),
+                job.source_message_id or '',
+                job.created_at.strftime('%Y-%m-%d'),
+                company_name,
+                job.title or '',
+                job.location or '',
+                'Yes' if job.is_fresher else ('No' if job.is_fresher is not None else ''),
+                job.work_type or '',
+                job.job_type or '',
+                ', '.join(job.skills_required) if job.skills_required else '',
+                channel_name,
+                channel_url,
+                channel_id,
+                sender_id,
+                account_used,
+                job.source or '',
+                job.source_url or '',
+                (job.raw_text or '')[:1000],
             ]
             rows.append(row)
-        
-        # Write data to sheet
+
         if rows:
-            # Find next empty row
-            try:
-                existing_data = self.sheets.values().get(
-                    spreadsheetId=self.sheet_id,
-                    range=f"{tab_name}!A:A"
-                ).execute()
-                
-                next_row = len(existing_data.get('values', [])) + 1
-            except Exception:
-                next_row = 2  # Start after header
-            
-            body = {
-                'values': rows
-            }
-            
-            end_col = chr(ord('A') + len(rows[0]) - 1)  # Calculate last column letter
-            range_name = f"{tab_name}!A{next_row}:{end_col}{next_row + len(rows) - 1}"
-            
+            end_col = chr(ord('A') + len(rows[0]) - 1)
+            range_name = f"{tab_name}!A2:{end_col}{1 + len(rows)}"
             self.sheets.values().update(
                 spreadsheetId=self.sheet_id,
                 range=range_name,
                 valueInputOption='RAW',
-                body=body
+                body={'values': rows},
             ).execute()
-            
             logger.info(f"✅ Exported {len(rows)} jobs to '{tab_name}'")
-        
+
         return {
             'status': 'success',
             'date': date.strftime('%Y-%m-%d'),
             'tab_name': tab_name,
             'jobs_exported': len(jobs),
-            'sheet_url': f"https://docs.google.com/spreadsheets/d/{self.sheet_id}"
+            'sheet_url': f"https://docs.google.com/spreadsheets/d/{self.sheet_id}",
         }
     
     def export_today_jobs(self, db: Session) -> Dict:
