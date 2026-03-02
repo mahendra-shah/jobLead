@@ -3,10 +3,13 @@ Enhanced Job Extraction Module
 Handles multiple jobs per message, company extraction, improved pattern matching
 """
 
+import logging
 import re
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.models.company import Company
 from app.ml.base_classifier import ExtractionResult
@@ -63,13 +66,50 @@ class EnhancedJobExtractor:
     
     # India cities whitelist
     INDIA_CITIES = {
+        # Tier-1 metros
         'bangalore', 'bengaluru', 'mumbai', 'delhi', 'ncr', 'hyderabad', 'chennai',
-        'kolkata', 'pune', 'ahmedabad', 'jaipur', 'lucknow', 'kanpur', 'nagpur',
-        'indore', 'bhopal', 'noida', 'gurgaon', 'gurugram', 'chandigarh', 'kochi',
-        'trivandrum', 'mysore', 'bhubaneswar', 'jamshedpur', 'ranchi', 'coimbatore',
-        'vadodara', 'visakhapatnam', 'patna', 'ludhiana', 'agra', 'nashik',
-        'faridabad', 'meerut', 'rajkot', 'varanasi', 'srinagar', 'aurangabad',
-        'dhanbad', 'amritsar', 'allahabad', 'howrah', 'jabalpur', 'gwalior', 'india'
+        'kolkata', 'pune', 'ahmedabad',
+        # Common abbreviations / short forms
+        'blr', 'hyd', 'mum', 'del', 'chn', 'pun', 'bang', 'bombay', 'madras',
+        'calcutta', 'new delhi', 'navi mumbai', 'thane',
+        # Tier-2 cities (alphabetical)
+        'agra', 'ajmer', 'aligarh', 'allahabad', 'prayagraj', 'ambala',
+        'amritsar', 'anand', 'anantapur', 'asansol', 'aurangabad',
+        'bareilly', 'belgaum', 'belagavi', 'bellary', 'berhampur', 'bhavnagar',
+        'bhilai', 'bhiwandi', 'bhopal', 'bhubaneswar', 'bikaner',
+        'chandigarh', 'coimbatore', 'cuttack',
+        'dehradun', 'dhanbad', 'dharwad', 'durgapur',
+        'erode',
+        'faridabad', 'firozabad',
+        'gandhinagar', 'goa', 'panaji', 'gorakhpur', 'gulbarga', 'kalaburagi',
+        'guntur', 'gurgaon', 'gurugram', 'guwahati', 'gwalior',
+        'howrah', 'hubli', 'hubballi',
+        'imphal', 'indore',
+        'jabalpur', 'jaipur', 'jalandhar', 'jammu', 'jamnagar', 'jamshedpur',
+        'jodhpur',
+        'kanpur', 'kochi', 'cochin', 'kolhapur', 'kota', 'kozhikode', 'calicut',
+        'kurnool',
+        'latur', 'lucknow', 'ludhiana',
+        'madurai', 'mangalore', 'mangaluru', 'mathura', 'meerut', 'moradabad',
+        'mysore', 'mysuru',
+        'nagpur', 'nashik', 'nellore', 'noida',
+        'patna', 'pondicherry', 'puducherry',
+        'raipur', 'rajkot', 'ranchi', 'rohtak',
+        'salem', 'sangli', 'shimla', 'siliguri', 'solapur', 'srinagar', 'surat',
+        'thiruvananthapuram', 'trivandrum', 'thrissur', 'tiruchirappalli', 'trichy',
+        'tirunelveli', 'tirupati', 'tirupur',
+        'udaipur', 'ujjain',
+        'vadodara', 'baroda', 'varanasi', 'benaras', 'vijayawada', 'visakhapatnam',
+        'vizag', 'vellore',
+        'warangal',
+        # Tier-3 / satellite towns commonly seen in job posts
+        'greater noida', 'sec', 'secunderabad', 'whitefield', 'electronic city',
+        'hsr layout', 'koramangala', 'indiranagar', 'powai', 'andheri', 'bandra',
+        'malad', 'goregaon', 'vikhroli', 'worli', 'lower parel',
+        'salt lake', 'new town', 'rajarhat',
+        'cyber city', 'cyber hub', 'dlf cyber',
+        # Generic India markers
+        'india', 'pan india', 'anywhere in india', 'across india'
     }
     
     # International location keywords (from data analysis)
@@ -99,6 +139,18 @@ class EnhancedJobExtractor:
     
     def __init__(self):
         self.company_cache = {}  # In-memory cache for session
+        self._nlp = None  # Lazy-loaded spaCy model
+
+    def _get_nlp(self):
+        """Lazy-load spaCy en_core_web_sm model (12 MB, CPU-only)"""
+        if self._nlp is None:
+            try:
+                import spacy
+                self._nlp = spacy.load('en_core_web_sm')
+            except Exception as e:
+                logger.warning(f"spaCy model not available, NER fallback disabled: {e}")
+                self._nlp = False  # Mark as unavailable so we don't retry
+        return self._nlp if self._nlp is not False else None
     
     def extract_jobs_from_message(self, text: str, links: List[str] = None) -> List[EnhancedJobExtraction]:
         """
@@ -179,7 +231,7 @@ class EnhancedJobExtractor:
             not location_data.get('is_remote', False) and 
             not location_data.get('is_hybrid', False)):
             # Log rejection for monitoring
-            print(f"❌ Rejected international onsite job: {text[:100]}...")
+            logger.warning(f"Rejected international onsite job: {text[:80]}...")
             extraction.confidence = 0.0  # Mark as rejected
             return extraction  # Return with 0 confidence to skip storage
         
@@ -308,24 +360,52 @@ class EnhancedJobExtractor:
                 if self._is_valid_company_name(first_line):
                     return self._clean_company_name(first_line)
         
+        # spaCy ORG fallback — only when all 6 patterns above returned nothing
+        nlp = self._get_nlp()
+        if nlp:
+            try:
+                doc = nlp(text[:500])  # Only first 500 chars for speed
+                for ent in doc.ents:
+                    if ent.label_ == 'ORG':
+                        candidate = ent.text.strip()
+                        if self._is_valid_company_name(candidate):
+                            return self._clean_company_name(candidate)
+            except Exception as e:
+                logger.debug(f"spaCy ORG extraction failed: {e}")
+
         return None
-    
+
     def _clean_company_name(self, company: str) -> str:
-        """Clean and normalize company name."""
-        # Remove common prefixes/suffixes
-        company = re.sub(r'^(?:at|for|by)\s+', '', company, flags=re.IGNORECASE)
-        company = re.sub(r'\s+(?:hiring|pvt|ltd|limited|inc|corp|llc)\.?$', '', company, flags=re.IGNORECASE)
-        
+        """
+        Clean and normalize company name.
+
+        Strips leading job IDs (e.g. "JR2008156 Emerson" → "Emerson"),
+        common prefix words, trailing suffixes, and normalizes whitespace.
+        """
+        # Strip job/requisition ID prefixes: "JR2008156", "R29801", "REQ123456"
+        company = re.sub(r'^[A-Z]{0,3}\d{4,}\s+', '', company).strip()
+
+        # Strip leading noise words / ML classifier labels that bleed in
+        # e.g. "norm Quickhyre AI" → "Quickhyre AI", "paid Nvidia" → "Nvidia"
+        company = re.sub(
+            r'^(?:at|for|by|with|of|our|the|norm|paid|free|new)\s+',
+            '', company, flags=re.IGNORECASE
+        )
+        company = re.sub(
+            r'\s+(?:hiring|pvt|ltd|limited|inc|corp|llc)\.?$', '',
+            company, flags=re.IGNORECASE
+        )
+
         # Normalize whitespace
         company = re.sub(r'\s+', ' ', company).strip()
-        
+
         # Remove trailing punctuation
         company = company.strip('.,!?:;-|')
-        
-        # Capitalize properly (handle cases like "abc technologies" -> "ABC Technologies")
+
+        # Capitalize properly ("abc technologies" → "Abc Technologies")
         if company.islower():
             company = company.title()
-        
+
         return company[:100]  # Max 100 chars
     
     def _is_valid_company_name(self, company: str) -> bool:
@@ -340,7 +420,12 @@ class EnhancedJobExtractor:
         """
         if not company or len(company) < 2 or len(company) > 50:
             return False
-        
+
+        # Reject if company starts with an emoji character
+        # e.g. "👉 WhatsApp Channel", "🚀Big news"
+        if ord(company[0]) > 0x2600:
+            return False
+
         # Reject common job-related false positives
         false_positives = {
             'role', 'position', 'location', 'experience', 'salary', 'apply', 'join',
@@ -349,73 +434,237 @@ class EnhancedJobExtractor:
             'job', 'career', 'opportunity', 'candidate', 'fresher', 'immediate',
             'urgent', 'looking', 'wanted', 'required', 'seeking', 'need', 'must',
             'company', 'organization', 'employer', 'client', 'team', 'send', 'contact',
-            'whatsapp', 'email', 'phone', 'call', 'apply now', 'click here'
+            'whatsapp', 'email', 'phone', 'call', 'apply now', 'click here',
+            'company name', 'company :', 'note', 'disclaimer', 'about us',
+            # Single-word generic tech/category terms that are NOT company names:
+            'devops', 'ai', 'it', 'ev', 'asset', 'our', 'the', 'us', 'we',
+            'laravel', 'silicon', 'blockchain', 'react', 'angular', 'flutter',
         }
-        
+
         company_lower = company.lower().strip()
         if company_lower in false_positives:
             return False
-        
-        # Reject if starts with false positive keyword
-        if any(company_lower.startswith(fp) for fp in ['apply', 'send', 'call', 'contact', 'whatsapp']):
+
+        # Reject if starts with a label word (covers "Company Name: IBM" case)
+        label_prefixes = (
+            'apply', 'send', 'call', 'contact', 'whatsapp', 'company',
+            'location', 'note', 'organization', 'hiring', 'salary',
+        )
+        if any(company_lower.startswith(fp) for fp in label_prefixes):
+            return False
+
+        # Reject generic program / category descriptions:
+        # "Summer Internship Programme", "UI/UX Design", "Mobile Development"
+        _generic_suffixes = (
+            'internship', 'internship program', 'internship programme',
+            'design', 'development', 'program', 'programme', 'channel',
+            'technology', 'technologies', 'training program', 'engineering',
+        )
+        _generic_exact = {
+            'ui/ux design', 'mobile development', 'full stack', 'backend developer',
+            'frontend developer', 'summer training', 'graduate internship',
+            'summer internship', 'devops engineering', 'quality assurance',
+            'ai/analytics internship', 'quality assurance / te',
+        }
+        if company_lower in _generic_exact:
+            return False
+        if any(company_lower.endswith(suf) for suf in _generic_suffixes):
+            return False
+
+        # Reject if company string contains " is hiring" (hiring verb appended to role/category)
+        # e.g. "Full Stack is hiring", "HCLTech Started Hiring"
+        if re.search(r'\b(?:is\s+hiring|started\s+hiring)\b', company, re.IGNORECASE):
             return False
         
         # Reject if it's all special characters or numbers
         if not re.search(r'[A-Za-z]{2,}', company):
             return False
+
+        # Reject Telegram user IDs and base64-style tokens:
+        # these are long alphanumeric strings with 2+ embedded digits
+        # e.g. "EfOBG0UWC6omsi0MS7nV", "C02cp8XaJG12BiwXdq0Y"
+        first_word = company.split()[0] if company.split() else company
+        if len(first_word) >= 10 and len(re.findall(r'\d', first_word)) >= 2:
+            return False
         
+        # Reject common email service providers used as contact address
+        # e.g. "send CV to gmail" → company captured as "Gmail"
+        _email_services = {
+            'gmail', 'yahoo', 'outlook', 'hotmail', 'rediffmail',
+            'protonmail', 'ymail', 'icloud', 'aol', 'zoho',
+        }
+        if company_lower in _email_services:
+            return False
+
+        # Reject multi-word strings whose last word is a job-role keyword
+        # e.g. "Software Engineer 1", "GenAI Developer", "Trainee Engineer"
+        _job_role_endings = {
+            'engineer', 'developer', 'analyst', 'intern', 'trainee',
+            'tester', 'accountant', 'recruiter', 'coordinator', 'designer',
+            'associate', 'executive', 'consultant', 'specialist',
+            'architect', 'administrator', 'manager',
+        }
+        words = [w.lower().strip('.,!?:;-()') for w in company.split() if w.strip('.,!?:;-()')]
+        if len(words) >= 2:
+            # Reject if last word is a job role keyword
+            if words[-1] in _job_role_endings:
+                return False
+            # Reject if second-to-last word is a role keyword and last word
+            # is parenthesised tech stack, e.g. "Backend Developer (Python)"
+            if len(words) >= 3 and words[-2] in _job_role_endings and words[-1].startswith('('):
+                return False
+            # Reject if last word is a pure digit (e.g. "Software Engineer 1")
+            if words[-1].isdigit():
+                return False
+            # Reject role+stack combos: "Backend Developer", "Python Developer", "React Engineer"
+            _role_prefixes = {
+                'backend', 'frontend', 'fullstack', 'full-stack', 'python',
+                'java', 'react', 'angular', 'node', 'php', 'devops', 'cloud',
+            }
+            if words[0] in _role_prefixes and len(words) >= 2 and words[1] in _job_role_endings:
+                return False
+
         # Reject if it has suspicious patterns (URLs, emails, phone numbers)
         if re.search(r'@|\.com|\.in|http|www|\d{10}|\+\d+', company):
             return False
-        
+
         return True
     
+    def _clean_job_title(self, title: str) -> Optional[str]:
+        """
+        Post-process an extracted job title string.
+
+        Returns None (reject) when the string is:
+        - A URL path slug  (e.g. "s-freshers-apply-now/", "t-me/pythondevelop")
+        - A numbered list item  (e.g. "4. HR Interview")
+        - A bare announcement word  (e.g. "Announced", "Questions & Answers")
+
+        Otherwise strips leading noise words ("For", "Through", "Announced",
+        "Via", "At", "By") and returns the cleaned title, or None if the
+        remaining string is too short to be a real title.
+        """
+        if not title:
+            return None
+
+        # Reject URL slug patterns:
+        # - starts with a single lowercase letter + hyphen: "s-freshers-apply-now"
+        # - contains hyphenated-lowercase-words in first 25 chars
+        # - ends with a forward slash
+        if re.match(r'^[a-z]-', title):
+            return None
+        if title.endswith('/'):
+            return None
+        if re.match(r'^[a-z][a-z0-9]+-[a-z]', title[:25]):
+            return None
+
+        # Reject titles that contain URLs or Telegram channel links
+        # e.g. "Python :- t.me/pythondevelop", "BI :- http://t.me/powerbi"
+        if re.search(r'https?://|t\.me/|\.com/|\.in/', title, re.IGNORECASE):
+            return None
+
+        # Reject titles starting with a digit (numbered list items)
+        # e.g. "4. HR Interview", "20. Learn Data Analytics"
+        if re.match(r'^\d', title):
+            return None
+
+        # Reject titles starting with special characters / emoji
+        # e.g. "*mthree 9", "🚀 Hiring"
+        if re.match(r'^[\*\#\-\|~`]', title) or ord(title[0]) > 0x2600:
+            return None
+
+        # Reject fragment titles that are portions of a longer capturing pattern:
+        # - "s <word>" — truncated "roles" captured as "s Backend Developer"
+        #   NOTE: second word may be uppercase, so don't restrict to [a-z]
+        # - "is hiring <role>" fragment captured without role
+        # - "with <word>" — prepositional fragment (case-insensitive)
+        if re.match(r'^s\s', title):
+            return None
+        if re.match(r'^is\s', title, re.IGNORECASE):
+            return None
+        if re.match(r'^with\s', title, re.IGNORECASE):
+            return None
+
+        # Reject standalone noise words that are not real job titles
+        _standalone_noise = {
+            'freshers', 'challenge', 'announced', 'bright', 'enthusiastic',
+            'energetic', 'passionate', 'interns', 'candidates',
+        }
+        if title.lower().strip() in _standalone_noise:
+            return None
+
+        # Strip leading noise words that are not part of the role name
+        noise_prefix = re.compile(
+            r'^(?:For|Through|Via|At|By|Announced|Apply|About|Dear|Hiring)\s+',
+            re.IGNORECASE
+        )
+        title = noise_prefix.sub('', title).strip()
+
+        # Final length guard — must be a meaningful string
+        if len(title) <= 4:
+            return None
+
+        return title
+
     def _extract_job_title(self, text: str, company_name: Optional[str] = None) -> Optional[str]:
-        """Extract job title with context awareness"""
+        """Extract job title with context awareness (tech + non-tech)"""
+        # Title role suffixes — tech AND non-tech
+        _role_suffix = (
+            r'(?:Engineer|Developer|Manager|Analyst|Designer|Architect|Lead|Intern|Specialist'
+            r'|Consultant|Executive|Coordinator|Writer|Associate|Assistant|Trainee|Officer'
+            r'|Recruiter|Telecaller|Representative|Advisor|Strategist|Planner|Producer'
+            r'|Editor|Accountant|Auditor|Tester|Support|Administrator|Operator)'
+        )
         patterns = [
-            # "Role: Software Engineer"
-            r'(?:Role|Position|Opening|Title)\s*:?\s*([A-Z][A-Za-z\s\(\)]+(?:Engineer|Developer|Manager|Analyst|Designer|Architect|Lead|Intern|Specialist|Consultant|Executive|Coordinator))',
-            
+            # "Role: Software Engineer" / "Position: Sales Executive"
+            rf'(?:Role|Position|Opening|Title|Designation)\s*:?\s*([A-Z][A-Za-z\s\(\)/&-]{{2,60}}{_role_suffix})',
             # "hiring for Backend Developer"
-            r'hiring\s+for\s+([A-Z][A-Za-z\s\(\)]+)',
-            
+            r'hiring\s+(?:a\s+|an\s+|for\s+)?([A-Za-z][A-Za-z\s\(\)/&-]{2,60})',
+            # "Requirement: Content Writer"
+            r'(?:Requirement|Vacancy|Vacancies|We\s+need|Looking\s+for)\s*:?\s*([A-Za-z][A-Za-z\s\(\)/&-]{2,60})',
             # "Position: Senior SDE"
-            r'Position\s*:?\s*([A-Z][A-Za-z\s\(\)]+)',
-            
+            r'Position\s*:?\s*([A-Z][A-Za-z\s\(\)/&-]{2,60})',
             # Common job titles at start of line
-            r'^([A-Z][A-Za-z\s\(\)]+(?:Engineer|Developer|Manager|Analyst|Designer|Architect|Lead|Intern|Specialist))',
+            rf'^([A-Z][A-Za-z\s\(\)/&-]{{2,60}}{_role_suffix})',
         ]
-        
+
         for pattern in patterns:
             match = re.search(pattern, text, re.MULTILINE | re.IGNORECASE)
             if match:
-                title = match.group(1).strip()
-                # Clean up
-                title = re.sub(r'\s+', ' ', title)
-                title = title.strip('.,!?:')
-                
-                # Don't return if it's the company name
-                if company_name and title.lower() == company_name.lower():
+                raw = match.group(1).strip()
+                raw = re.sub(r'\s+', ' ', raw).strip('.,!?:')
+                if company_name and raw.lower() == company_name.lower():
                     continue
-                
-                if len(title) > 5 and len(title) < 100:
-                    return title
-        
-        # Fallback: Look for job keywords in first 100 chars
-        job_keywords = ['Engineer', 'Developer', 'Manager', 'Analyst', 'Designer', 'Architect', 'Intern']
+                cleaned = self._clean_job_title(raw)
+                if cleaned and 4 < len(cleaned) < 100:
+                    return cleaned
+
+        # Fallback: scan first line for any known role keyword
+        job_keywords = [
+            # Tech
+            'Engineer', 'Developer', 'Architect', 'DevOps', 'SDE', 'SWE', 'QA',
+            # Data
+            'Analyst', 'Scientist', 'Data',
+            # Design
+            'Designer', 'UX', 'UI',
+            # Non-tech
+            'Manager', 'Executive', 'Coordinator', 'Assistant', 'Associate',
+            'Intern', 'Trainee', 'Officer', 'Recruiter', 'HR', 'Sales',
+            'Account', 'Finance', 'Operations', 'Support', 'Marketing',
+            'Content', 'Writer', 'Editor', 'Telecaller', 'BPO', 'Accountant',
+        ]
         first_line = text.split('\n')[0]
         for keyword in job_keywords:
             if keyword.lower() in first_line.lower():
                 words = first_line.split()
                 for i, word in enumerate(words):
                     if keyword.lower() in word.lower():
-                        # Get 2-3 words around the keyword
-                        start = max(0, i-2)
-                        end = min(len(words), i+2)
-                        title = ' '.join(words[start:end])
-                        if len(title) > 5:
-                            return title[:100]
-        
+                        start = max(0, i - 2)
+                        end = min(len(words), i + 2)
+                        raw = ' '.join(words[start:end]).strip('.,!?:')
+                        cleaned = self._clean_job_title(raw)
+                        if cleaned and len(cleaned) > 4:
+                            return cleaned[:100]
+
         return None
     
     def _extract_location(self, text: str) -> Optional[str]:
@@ -495,14 +744,31 @@ class EnhancedJobExtractor:
         for city in self.INDIA_CITIES:
             if city in text_lower:
                 result['cities'].append(city)
-        
+
+        # spaCy GPE fallback for city detection when no hardcoded city matched
+        if not result['cities']:
+            nlp = self._get_nlp()
+            if nlp:
+                try:
+                    doc = nlp(text[:500])
+                    for ent in doc.ents:
+                        if ent.label_ == 'GPE':
+                            city_candidate = ent.text.strip().lower()
+                            if city_candidate in self.INDIA_CITIES:
+                                result['cities'].append(city_candidate)
+                except Exception as e:
+                    logger.debug(f"spaCy GPE extraction failed: {e}")
+
         # Determine geographic scope
         has_india_location = len(result['cities']) > 0 or 'india' in text_lower
         has_international = any(kw in text_lower for kw in self.INTERNATIONAL_KEYWORDS)
-        
+
         if has_international and not has_india_location:
             result['geographic_scope'] = 'international'
         elif has_india_location:
+            result['geographic_scope'] = 'india'
+        elif result['is_remote'] or result['is_hybrid']:
+            # Remote/WFH without any location clue → assume India (most Telegram job posts are India-focused)
             result['geographic_scope'] = 'india'
         else:
             result['geographic_scope'] = 'unspecified'
@@ -669,9 +935,11 @@ class EnhancedJobExtractor:
         """
         # Check for fresher keywords first
         fresher_patterns = [
-            r'\b(fresher|freshers?|entry\s+level|0\s+years?)\b',
+            r'\b(fresher|freshers?|entry[\s-]level|0\s*years?|no\s+experience|without\s+experience'
+            r'|freshers?\s+(?:welcome|preferred|only|can|may|eligible)'
+            r'|0[-\s]1\s*years?|0[-\s]2\s*years?)\b',
         ]
-        
+
         is_fresher = False
         for pattern in fresher_patterns:
             if re.search(pattern, text, re.IGNORECASE):
@@ -706,7 +974,7 @@ class EnhancedJobExtractor:
                     return (int(nums[0]), int(nums[1]), raw, is_fresher)
                 elif len(nums) == 1:
                     exp = int(nums[0])
-                    return (exp, exp + 2, raw, is_fresher)  # Assume +2 year range
+                    return (exp, exp + 1, raw, is_fresher)  # Conservative: +1 year range
         
         # If fresher mentioned but no number
         if is_fresher:
@@ -723,9 +991,12 @@ class EnhancedJobExtractor:
         """
         # Check for fresher keywords first
         fresher_patterns = [
-            r'\b(fresher|freshers?|entry\s+level|0\s+years?)\b',
+            r'\b(fresher|freshers?|entry[\s-]level|0\s*years?|no\s+experience|without\s+experience'
+            r'|freshers?\s+(?:welcome|preferred|only|can|may|eligible)'
+            r'|(?:welcome|open)\s+to\s+fresher'
+            r'|0[-\s]1\s*years?|0[-\s]2\s*years?)\b',
         ]
-        
+
         for pattern in fresher_patterns:
             if re.search(pattern, text, re.IGNORECASE):
                 return "Fresher"
@@ -744,13 +1015,18 @@ class EnhancedJobExtractor:
             # "Minimum 2 years"
             (r'(?:Minimum|Min|Atleast)\s*(\d+)\s*(?:years?|yrs?)', lambda m: f"{m.group(1)}+ years"),
             
-            # "2 years experience"
-            (r'(\d+)\s*(?:years?|yrs?)\s*(?:experience|exp)?', lambda m: f"{m.group(1)} years"),
+            # "2 years experience" — guard: only accept 1-15 years to avoid false matches
+            # (e.g. "2033" in a year number, "33 employees" containing "3 employees")
+            (r'([1-9]|1[0-5])\s*(?:years?|yrs?)\s*(?:experience|exp)?', lambda m: f"{m.group(1)} years"),
         ]
-        
+
         for pattern, formatter in patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
+                # Sanity-check: reject any result with extracted number over 15
+                digits = re.findall(r'\d+', formatter(match))
+                if digits and max(int(d) for d in digits) > 15:
+                    continue
                 return formatter(match)
         
         return None
@@ -791,8 +1067,8 @@ class EnhancedJobExtractor:
             min_exp = int(plus_match.group(1))
             return {
                 'min': min_exp,
-                'max': min_exp + 3,  # Estimate max as min+3
-                'is_fresher': False
+                'max': min_exp + 1,  # Conservative estimate: "2+" means 2-3 yrs
+                'is_fresher': (min_exp == 0)
             }
         
         # Single value: "2 years"
@@ -939,26 +1215,49 @@ class EnhancedJobExtractor:
         return None
     
     def _extract_skills(self, text: str) -> List[str]:
-        """Extract technical skills"""
-        # Common tech skills
+        """Extract skills and tools (tech + non-tech)"""
         skill_keywords = [
-            'Python', 'Java', 'JavaScript', 'TypeScript', 'React', 'Node', 'Angular', 'Vue',
-            'Django', 'Flask', 'FastAPI', 'Spring', 'Express',
-            'SQL', 'PostgreSQL', 'MySQL', 'MongoDB', 'Redis',
-            'AWS', 'Azure', 'GCP', 'Docker', 'Kubernetes',
-            'Machine Learning', 'AI', 'Data Science', 'ML', 'Deep Learning',
-            'DevOps', 'CI/CD', 'Git', 'Linux',
-            'Android', 'iOS', 'Flutter', 'React Native',
+            # --- Programming languages ---
+            'Python', 'Java', 'JavaScript', 'TypeScript', 'Go', 'Golang',
+            'Rust', 'C++', 'C#', '.NET', 'PHP', 'Ruby', 'Kotlin', 'Swift', 'Dart', 'Scala', 'R',
+            # --- Web / Mobile ---
+            'React', 'React Native', 'Angular', 'Vue', 'Next.js', 'NestJS',
+            'Node', 'Express', 'Django', 'Flask', 'FastAPI', 'Spring Boot', 'Spring',
+            'Flutter', 'Android', 'iOS',
+            # --- Data / ML ---
+            'SQL', 'PostgreSQL', 'MySQL', 'MongoDB', 'Redis', 'Elasticsearch',
+            'Machine Learning', 'Deep Learning', 'AI', 'NLP', 'Computer Vision',
+            'TensorFlow', 'PyTorch', 'Keras', 'Scikit-learn', 'Pandas', 'NumPy',
+            'Spark', 'Hadoop', 'Airflow', 'dbt', 'BigQuery', 'Snowflake',
+            'Power BI', 'Tableau', 'Looker',
+            # --- Cloud / DevOps ---
+            'AWS', 'Azure', 'GCP', 'Docker', 'Kubernetes', 'Terraform', 'Ansible',
+            'Jenkins', 'GitHub Actions', 'CI/CD', 'Git', 'Linux',
+            'Kafka', 'RabbitMQ', 'GraphQL', 'gRPC', 'REST API',
+            # --- Design ---
+            'Figma', 'Sketch', 'Adobe XD', 'Photoshop', 'Illustrator', 'InDesign',
+            'Canva', 'After Effects', 'Premiere',
+            # --- Marketing ---
+            'SEO', 'SEM', 'Google Ads', 'Facebook Ads', 'Meta Ads',
+            'Google Analytics', 'HubSpot', 'Mailchimp', 'WordPress',
+            'Email Marketing', 'Content Writing', 'Copywriting',
+            # --- Non-tech / office tools ---
+            'Excel', 'MS Office', 'PowerPoint', 'Word', 'Google Sheets',
+            'Tally', 'Tally ERP', 'SAP', 'Salesforce', 'Zoho CRM', 'CRM',
+            'QuickBooks', 'Notion', 'Jira', 'Confluence', 'Slack',
         ]
-        
+
         found_skills = []
         text_lower = text.lower()
-        
+
         for skill in skill_keywords:
-            if skill.lower() in text_lower:
+            # Use word-boundary matching to prevent "R" matching in "year",
+            # "AI" matching in "email", "Go" matching in "Google", etc.
+            pattern = r'\b' + re.escape(skill.lower()) + r'\b'
+            if re.search(pattern, text_lower):
                 found_skills.append(skill)
-        
-        return list(set(found_skills))[:10]  # Max 10 skills
+
+        return list(dict.fromkeys(found_skills))[:15]  # preserve order, max 15
     
     def _calculate_extraction_confidence(self, extraction: EnhancedJobExtraction) -> float:
         """Calculate confidence score based on extracted fields"""

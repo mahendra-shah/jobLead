@@ -274,6 +274,25 @@ class MLProcessorService:
                         logger.warning(f"      ⚠️  Job rejected by international filtering")
                         result['quality_filtered'] += 1
                         continue
+
+                    # Hard experience gate: reject jobs requiring >2 years unless fresher-friendly
+                    if (
+                        extraction.experience_min is not None
+                        and extraction.experience_min > 2
+                        and not extraction.is_fresher_friendly
+                    ):
+                        logger.warning(
+                            f"      ⚠️  Job rejected: experience_min={extraction.experience_min} yrs "
+                            f"(gate: max 2 yrs, fresher={extraction.is_fresher_friendly})"
+                        )
+                        result['quality_filtered'] += 1
+                        continue
+
+                    # Reject jobs with no extractable title (avoids 'Job Opening' garbage)
+                    if not extraction.job_title and not extraction.company_name:
+                        logger.warning(f"      ⚠️  Job rejected: no title or company extractable")
+                        result['quality_filtered'] += 1
+                        continue
                     
                     # Get or create company
                     company = None
@@ -327,7 +346,7 @@ class MLProcessorService:
                     
                     # Create Job entry with all enhanced fields
                     job = Job(
-                        title=extraction.job_title or extraction.company_name or "Job Opening",
+                        title=extraction.job_title or extraction.company_name,
                         company_id=extraction.company_id,
                         # Denormalized so recommendations never need to load
                         # the companies relationship on display.
@@ -380,14 +399,33 @@ class MLProcessorService:
                         application_count=0
                     )
                     
-                    # NEW: Score job quality before storing
+                    # Derive work_type from location intelligence
+                    _loc = extraction.location_data or {}
+                    if _loc.get('is_remote'):
+                        _work_type = 'remote'
+                    elif _loc.get('is_hybrid'):
+                        _work_type = 'hybrid'
+                    elif _loc.get('is_onsite_only'):
+                        _work_type = 'onsite'
+                    else:
+                        _work_type = None
+
+                    # Score job quality before storing
                     job_data = {
                         "title": job.title,
                         "description": job.description,
                         "skills": job.skills_required or [],
+                        "skills_required": job.skills_required or [],
                         "experience": job.experience_required,
+                        "experience_min": job.experience_min,
+                        "experience_max": job.experience_max,
+                        "is_fresher": job.is_fresher,
+                        "work_type": _work_type,
+                        "salary_min": job.salary_min,
+                        "salary_max": job.salary_max,
                         "salary": job.salary_range.get("raw") if job.salary_range else None,
                         "location": job.location,
+                        "source_url": job.source_url,
                         "apply_link": job.source_url,
                         "company": company.name if company else None
                     }
