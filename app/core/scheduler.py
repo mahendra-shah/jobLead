@@ -144,9 +144,15 @@ async def run_ml_processor() -> dict:
         logger.info(f"   Jobs created: {stats.get('jobs_created', 0)}")
         logger.info(f"   Failed: {stats.get('failed', 0)}")
         logger.info(f"   Duration: {stats.get('duration_seconds', 0):.2f}s")
-        
+
+        # Export today's jobs to Google Sheets after every ML run
+        try:
+            await run_sheets_export()
+        except Exception as sheets_err:
+            logger.error(f"⚠️  Sheets export failed (non-fatal): {sheets_err}", exc_info=True)
+
         return stats
-    
+
     except Exception as e:
         logger.error(f"❌ ML processor failed: {e}", exc_info=True)
         raise
@@ -215,6 +221,56 @@ async def run_telegram_group_joiner():
     except Exception as e:
         logger.error(f"❌ Group joiner failed: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
+
+
+async def run_sheets_export() -> dict:
+    """
+    Export today's jobs to Google Sheets.
+    Called automatically after every ML processing run.
+    Creates a new tab per calendar day; idempotent (safe to run many times/day).
+    """
+    from app.config import settings
+    from app.services.google_sheets_service import GoogleSheetsService
+    from app.db.session import SyncSessionLocal
+
+    if not settings.SHEET_ID:
+        logger.info("📊 Sheets export skipped: SHEET_ID not configured")
+        return {"status": "skipped"}
+
+    logger.info("📊 Exporting today's jobs to Google Sheets...")
+    try:
+        sheets_service = GoogleSheetsService()
+        db = SyncSessionLocal()
+        try:
+            result = sheets_service.export_daily_jobs(db, datetime.now())
+            logger.info(
+                f"✅ Sheets export: {result.get('jobs_exported', 0)} jobs → "
+                f"tab '{result.get('tab_name', '?')}'"
+            )
+        finally:
+            db.close()
+
+        # Persist export status to Redis so the visibility dashboard can report it
+        try:
+            import json
+            import redis as _redis
+            _r = _redis.from_url(settings.REDIS_URL, decode_responses=True, socket_timeout=5)
+            _r.setex(
+                "sheets:last_export",
+                90000,  # TTL: 25 h (survives into the next day until the first new export)
+                json.dumps({
+                    **result,
+                    "exported_at": datetime.now().isoformat(),
+                }),
+            )
+            _r.close()
+        except Exception as redis_err:
+            logger.warning(f"⚠️ Could not persist sheets status to Redis: {redis_err}")
+
+        return result
+    except Exception as e:
+        logger.error(f"❌ Google Sheets export failed: {e}", exc_info=True)
+        return {"status": "error", "error": str(e)}
 
 
 def setup_jobs():
