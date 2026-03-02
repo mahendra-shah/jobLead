@@ -559,11 +559,14 @@ class TelegramScraperService:
                     pg_session.close()
             
             stats['success'] = True
-            
+
+            # Reset account health to HEALTHY after a successful scrape
+            await self._update_account_health(phone, success=True)
+
             # Update account stats
             self.account_stats[account_id]['channels_scraped'] += 1
             self.account_stats[account_id]['messages_found'] += stats.get('messages_fetched', 0)
-            
+
             # Rate limiting between channels - random delay for human-like behavior
             delay = random.uniform(self.RATE_LIMIT_DELAY_MIN, self.RATE_LIMIT_DELAY_MAX)
             await asyncio.sleep(delay)
