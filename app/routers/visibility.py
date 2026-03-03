@@ -13,7 +13,11 @@ NO CloudWatch costs - pure API-based monitoring.
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func, desc, text
+import asyncio
+import json
+import pytz
+import redis as _redis_mod
+from sqlalchemy import select, func, desc, text, Integer, cast
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from pymongo import MongoClient
@@ -339,10 +343,41 @@ async def get_error_analysis(
     }
 
 
+def _mongodb_stats_sync(uri: str, db_name: str, today_start_utc: datetime) -> dict:
+    """Sync helper — runs in a thread executor, never blocks the async event loop."""
+    try:
+        client = MongoClient(uri, serverSelectionTimeoutMS=5000)
+        col = client[db_name]["raw_messages"]
+        total      = col.count_documents({})
+        unprocessed = col.count_documents({"is_processed": False})
+        fetched_today = col.count_documents({"fetched_at": {"$gte": today_start_utc}})
+        client.close()
+        return {"total": total, "unprocessed": unprocessed, "fetched_today": fetched_today}
+    except Exception as exc:
+        logger.warning("failed_to_get_mongodb_stats", error=str(exc))
+        return {"total": 0, "unprocessed": 0, "fetched_today": 0}
+
+
+def _sheets_redis_sync(redis_url: str) -> dict:
+    """Read last sheets-export status from Redis in a thread executor."""
+    try:
+        _r = _redis_mod.from_url(redis_url, decode_responses=True, socket_timeout=3)
+        raw = _r.get("sheets:last_export")
+        _r.close()
+        if raw:
+            return json.loads(raw)
+        return {"status": "never_run", "note": "No export recorded yet. Will run after the next ML cycle."}
+    except Exception as exc:
+        return {"status": "unavailable", "error": str(exc)}
+
+
 @router.get("/dashboard", response_model=VisibilityDashboardResponse)
 async def get_visibility_dashboard(db: AsyncSession = Depends(get_db)):
     """
     **Main Dashboard API** - Complete system visibility in one call.
+
+    Uses IST midnight as the "today" boundary so counts match the Indian
+    calendar day shown to users.  Response is cached in Redis for 30 s.
 
     Response is grouped into logical domains:
     - ``accounts``: health counts and recent errors
@@ -350,25 +385,78 @@ async def get_visibility_dashboard(db: AsyncSession = Depends(get_db)):
     - ``messages``: MongoDB raw message counts
     - ``jobs``: PostgreSQL job classification counts
     - ``system``: scheduler and scraper status
-
-    Returns:
-        Complete dashboard data
     """
     logger.info("visibility_dashboard_requested")
 
-    # ------------------------------------------------------------------ #
-    # Accounts section
-    # ------------------------------------------------------------------ #
-    result = await db.execute(select(TelegramAccount))
-    accounts = result.scalars().all()
+    # ── 30-second Redis cache ─────────────────────────────────────────────
+    _CACHE_KEY = "visibility:dashboard:v1"
+    try:
+        _rc = _redis_mod.from_url(settings.REDIS_URL, decode_responses=True, socket_timeout=1)
+        _cached = _rc.get(_CACHE_KEY)
+        _rc.close()
+        if _cached:
+            logger.info("visibility_dashboard_cache_hit")
+            return VisibilityDashboardResponse(**json.loads(_cached))
+    except Exception:
+        pass  # cache miss or Redis down — continue normally
 
-    recent_errors_stmt = (
-        select(TelegramAccount)
-        .where(TelegramAccount.last_error_at.isnot(None))
-        .order_by(desc(TelegramAccount.last_error_at))
-        .limit(20)
+    # ── IST-based "today" boundary ────────────────────────────────────────
+    # IST midnight = UTC 18:30 of the *previous* calendar day.
+    # Using IST means jobs created at 23:00 IST are counted as "today"
+    # (= 17:30 UTC), which naive UTC midnight would miss.
+    IST = pytz.timezone("Asia/Kolkata")
+    now_ist = datetime.now(IST)
+    ist_midnight = now_ist.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start_utc = ist_midnight.astimezone(timezone.utc)          # tz-aware UTC
+    today_start_pg  = today_start_utc.replace(tzinfo=None)           # naive UTC for PG TIMESTAMP
+    yesterday_utc   = today_start_utc - timedelta(days=1)
+
+    # ── Fire all Postgres queries in parallel ────────────────────────────
+    (
+        r_all_accounts,
+        r_channels_agg,
+        r_latest_ch,
+        r_jobs_today,
+        r_recent_errors,
+    ) = await asyncio.gather(
+        db.execute(select(TelegramAccount)),
+        # Single aggregation query replacing 5 separate COUNT queries
+        db.execute(
+            select(
+                func.count().label("total_active"),
+                func.sum(cast(TelegramGroup.is_joined == True,  Integer)).label("joined"),   # noqa: E712
+                func.sum(cast(TelegramGroup.telegram_account_id.is_(None), Integer)).label("unassigned"),
+                func.sum(cast(TelegramGroup.joined_at >= today_start_utc, Integer)).label("joined_today"),
+                func.sum(cast(TelegramGroup.last_scraped_at >= yesterday_utc, Integer)).label("scraped_last_24h"),
+            ).select_from(TelegramGroup).where(TelegramGroup.is_active == True)  # noqa: E712
+        ),
+        db.execute(
+            select(TelegramGroup)
+            .where(TelegramGroup.last_scraped_at.isnot(None))
+            .order_by(desc(TelegramGroup.last_scraped_at))
+            .limit(1)
+        ),
+        db.execute(
+            select(func.count()).select_from(Job).where(Job.created_at >= today_start_pg)
+        ),
+        db.execute(
+            select(TelegramAccount)
+            .where(TelegramAccount.last_error_at.isnot(None))
+            .order_by(desc(TelegramAccount.last_error_at))
+            .limit(20)
+        ),
     )
-    err_result = await db.execute(recent_errors_stmt)
+
+    # ── MongoDB + Redis sheets status — both in thread executors ─────────
+    loop = asyncio.get_event_loop()
+    mongo_stats, sheets_section = await asyncio.gather(
+        loop.run_in_executor(None, _mongodb_stats_sync,
+                             settings.MONGODB_URI, settings.MONGODB_DATABASE, today_start_utc),
+        loop.run_in_executor(None, _sheets_redis_sync, settings.REDIS_URL),
+    )
+
+    # ── Assemble accounts section ─────────────────────────────────────────
+    accounts = r_all_accounts.scalars().all()
     recent_errors = [
         {
             "phone": a.phone,
@@ -376,152 +464,54 @@ async def get_visibility_dashboard(db: AsyncSession = Depends(get_db)):
             "timestamp": a.last_error_at.isoformat() if a.last_error_at else None,
             "health_status": a.health_status.value,
         }
-        for a in err_result.scalars().all()
+        for a in r_recent_errors.scalars().all()
     ]
-
     accounts_section: Dict = {
         "total": len(accounts),
         "active": sum(1 for a in accounts if a.is_active),
-        "healthy": sum(
-            1 for a in accounts if a.health_status == HealthStatus.HEALTHY
-        ),
-        "degraded": sum(
-            1 for a in accounts if a.health_status == HealthStatus.DEGRADED
-        ),
-        "banned": sum(
-            1 for a in accounts if a.health_status == HealthStatus.BANNED
-        ),
+        "healthy": sum(1 for a in accounts if a.health_status == HealthStatus.HEALTHY),
+        "degraded": sum(1 for a in accounts if a.health_status == HealthStatus.DEGRADED),
+        "banned": sum(1 for a in accounts if a.health_status == HealthStatus.BANNED),
         "recent_errors": recent_errors,
     }
 
-    # ------------------------------------------------------------------ #
-    # Channels section
-    # ------------------------------------------------------------------ #
-    r_total = await db.execute(
-        select(func.count())
-        .select_from(TelegramGroup)
-        .where(TelegramGroup.is_active == True)  # noqa: E712
-    )
-    r_joined = await db.execute(
-        select(func.count())
-        .select_from(TelegramGroup)
-        .where(
-            TelegramGroup.is_active == True,   # noqa: E712
-            TelegramGroup.is_joined == True,   # noqa: E712
-        )
-    )
-    r_unassigned = await db.execute(
-        select(func.count())
-        .select_from(TelegramGroup)
-        .where(
-            TelegramGroup.is_active == True,                       # noqa: E712
-            TelegramGroup.telegram_account_id.is_(None),
-        )
-    )
-
-    # Channels joined today (joined_at >= midnight UTC)
-    today_start_utc = datetime.now(timezone.utc).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
-    r_joined_today = await db.execute(
-        select(func.count())
-        .select_from(TelegramGroup)
-        .where(
-            TelegramGroup.joined_at >= today_start_utc,
-            TelegramGroup.is_joined == True,  # noqa: E712
-        )
-    )
-
-    # Most-recently scraped channel
-    latest_ch_result = await db.execute(
-        select(TelegramGroup)
-        .where(TelegramGroup.last_scraped_at.isnot(None))
-        .order_by(desc(TelegramGroup.last_scraped_at))
-        .limit(1)
-    )
-    latest_channel = latest_ch_result.scalars().first()
-    last_scrape_at = None
+    # ── Assemble channels section ─────────────────────────────────────────
+    ch = r_channels_agg.first()
+    latest_ch = r_latest_ch.scalars().first()
+    last_scrape_at     = None
     hours_since_scrape = None
-    if latest_channel and latest_channel.last_scraped_at:
-        last_scrape_at = latest_channel.last_scraped_at.isoformat()
+    if latest_ch and latest_ch.last_scraped_at:
+        last_scrape_at = latest_ch.last_scraped_at.isoformat()
         hours_since_scrape = round(
-            (datetime.now(timezone.utc) - latest_channel.last_scraped_at)
-            .total_seconds()
-            / 3600,
-            1,
+            (datetime.now(timezone.utc) - latest_ch.last_scraped_at).total_seconds() / 3600, 1
         )
-
-    # Channels scraped in last 24 h
-    yesterday = datetime.now(timezone.utc) - timedelta(days=1)
-    r_scraped_24h = await db.execute(
-        select(func.count())
-        .select_from(TelegramGroup)
-        .where(TelegramGroup.last_scraped_at >= yesterday)
-    )
-
     channels_section: Dict = {
-        "total_active": r_total.scalar(),
-        "joined": r_joined.scalar(),
-        "unassigned": r_unassigned.scalar(),
-        "joined_today": r_joined_today.scalar(),
-        "scraped_last_24h": r_scraped_24h.scalar(),
-        "last_scrape_at": last_scrape_at,
+        "total_active":       ch.total_active      if ch else 0,
+        "joined":             ch.joined            if ch else 0,
+        "unassigned":         ch.unassigned        if ch else 0,
+        "joined_today":       ch.joined_today      if ch else 0,
+        "scraped_last_24h":   ch.scraped_last_24h  if ch else 0,
+        "last_scrape_at":     last_scrape_at,
         "hours_since_last_scrape": hours_since_scrape,
     }
 
-    # ------------------------------------------------------------------ #
-    # Messages section  (MongoDB — direct connection, no scraper init)
-    # ------------------------------------------------------------------ #
-    total_messages = 0
-    unprocessed_messages = 0
-    messages_fetched_today = 0
-    try:
-        mongo_client = MongoClient(
-            settings.MONGODB_URI, serverSelectionTimeoutMS=5000
-        )
-        mongo_db = mongo_client[settings.MONGODB_DATABASE]
-        raw = mongo_db.raw_messages
-        total_messages = raw.count_documents({})
-        unprocessed_messages = raw.count_documents({"is_processed": False})
-        messages_fetched_today = raw.count_documents(
-            {"fetched_at": {"$gte": today_start_utc}}
-        )
-        mongo_client.close()
-    except Exception as e:
-        logger.warning("failed_to_get_mongodb_stats", error=str(e))
-
+    # ── Assemble messages section ─────────────────────────────────────────
     messages_section: Dict = {
-        "total": total_messages,
-        "unprocessed": unprocessed_messages,
-        "fetched_today": messages_fetched_today,
+        "total":        mongo_stats["total"],
+        "unprocessed":  mongo_stats["unprocessed"],
+        "fetched_today": mongo_stats["fetched_today"],
     }
 
-    # ------------------------------------------------------------------ #
-    # Jobs section  (PostgreSQL)
-    # jobs.created_at is TIMESTAMP WITHOUT TIME ZONE (naive UTC) —
-    # compare against naive datetime to avoid type mismatch.
-    # ------------------------------------------------------------------ #
-    today_start_pg = datetime.utcnow().replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
-    r_jobs_today = await db.execute(
-        select(func.count())
-        .select_from(Job)
-        .where(Job.created_at >= today_start_pg)
-    )
+    # ── Assemble jobs section ─────────────────────────────────────────────
+    # classified_today uses IST midnight, so it reflects jobs created
+    # on the Indian calendar day — matches what the admin panel shows.
     jobs_section: Dict = {
         "classified_today": r_jobs_today.scalar(),
-        "messages_fetched_today": messages_fetched_today,
-        "scraper_status": (
-            "operational"
-            if accounts_section["healthy"] > 0
-            else "degraded"
-        ),
+        "messages_fetched_today": mongo_stats["fetched_today"],
+        "scraper_status": "operational" if accounts_section["healthy"] > 0 else "degraded",
     }
 
-    # ------------------------------------------------------------------ #
-    # System section
-    # ------------------------------------------------------------------ #
+    # ── System section ────────────────────────────────────────────────────
     scraper = get_scraper_service()
     sched_status = get_scheduler_status()
     system_section: Dict = {
@@ -530,34 +520,13 @@ async def get_visibility_dashboard(db: AsyncSession = Depends(get_db)):
         "connected_clients": len(scraper.clients),
     }
 
-    # ------------------------------------------------------------------ #
-    # Google Sheets section  (read last export status from Redis)
-    # ------------------------------------------------------------------ #
-    sheets_section: Optional[Dict] = None
-    try:
-        import json
-        import redis as _redis
-        _r = _redis.from_url(settings.REDIS_URL, decode_responses=True, socket_timeout=3)
-        raw = _r.get("sheets:last_export")
-        _r.close()
-        if raw:
-            sheets_section = json.loads(raw)
-        else:
-            sheets_section = {
-                "status": "never_run",
-                "note": "No export recorded yet. Will run after the next ML cycle.",
-            }
-    except Exception as e:
-        logger.warning("failed_to_read_sheets_status", error=str(e))
-        sheets_section = {"status": "unavailable", "error": str(e)}
-
     logger.info(
         "visibility_dashboard_generated",
         total_accounts=accounts_section["total"],
         healthy=accounts_section["healthy"],
     )
 
-    return VisibilityDashboardResponse(
+    response = VisibilityDashboardResponse(
         timestamp=datetime.now(timezone.utc),
         accounts=accounts_section,
         channels=channels_section,
@@ -566,6 +535,16 @@ async def get_visibility_dashboard(db: AsyncSession = Depends(get_db)):
         system=system_section,
         sheets=sheets_section,
     )
+
+    # ── Cache for 30 seconds ──────────────────────────────────────────────
+    try:
+        _rc2 = _redis_mod.from_url(settings.REDIS_URL, decode_responses=True, socket_timeout=1)
+        _rc2.setex(_CACHE_KEY, 30, response.model_dump_json())
+        _rc2.close()
+    except Exception:
+        pass
+
+    return response
 
 
 @router.get("/system/status")
