@@ -7,6 +7,7 @@ import logging
 from datetime import datetime, timezone
 from typing import List, Dict, Optional
 from pymongo import MongoClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import Settings
@@ -293,7 +294,26 @@ class MLProcessorService:
                         logger.warning(f"      ⚠️  Job rejected: no title or company extractable")
                         result['quality_filtered'] += 1
                         continue
-                    
+
+                    # ── Deduplication guard ──────────────────────────────────────────
+                    # Skip if a job for this (message_id, channel_id) already exists.
+                    # Prevents duplicate rows when messages are reset and reprocessed.
+                    _msg_id = str(message.get("message_id", ""))
+                    _ch_id  = str(message.get("channel_id", "")) if message.get("channel_id") else None
+                    if _msg_id:
+                        _dup_stmt = select(Job.id).where(Job.source_message_id == _msg_id)
+                        if _ch_id:
+                            _dup_stmt = _dup_stmt.where(
+                                Job.source_telegram_channel_id == _ch_id
+                            )
+                        if db.execute(_dup_stmt).first():
+                            logger.info(
+                                f"      ⏭️  Duplicate — job already exists for "
+                                f"message_id={_msg_id}, skipping"
+                            )
+                            continue
+                    # ── End deduplication guard ───────────────────────────────────────
+
                     # Get or create company
                     company = None
                     if extraction.company_name:
