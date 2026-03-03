@@ -8,7 +8,7 @@ import re as _re
 from datetime import datetime, timezone
 from typing import List, Dict, Optional
 from pymongo import MongoClient
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from app.config import Settings
@@ -172,6 +172,7 @@ class MLProcessorService:
             "stored_to_postgres": 0,
             "companies_created": 0,  # New companies added
             "quality_filtered": 0,  # Jobs rejected for low quality score
+            "spam_rejected": 0,    # Messages blocked by pre-filter (crypto/coaching/promo spam)
             "relevant_jobs": 0,  # Jobs meeting relevance criteria
             "errors": 0,
             "processing_time_ms": 0
@@ -198,6 +199,7 @@ class MLProcessorService:
                         stats['companies_created'] += result['companies_created']
                         stats['quality_filtered'] += result['quality_filtered']
                         stats['relevant_jobs'] += result['relevant_jobs']
+                        stats['spam_rejected'] += result.get('spam_rejected', 0)
                         
                         if result['stored_to_postgres']:
                             stats['stored_to_postgres'] += result['jobs_created']
@@ -205,6 +207,7 @@ class MLProcessorService:
                             stats['low_confidence'] += 1
                     else:
                         stats['non_jobs'] += 1
+                        stats['spam_rejected'] += result.get('spam_rejected', 0)
                     
                     # Mark as processed in MongoDB
                     self.messages_collection.update_one(
@@ -261,6 +264,7 @@ class MLProcessorService:
         logger.info(f"   Individual jobs created: {stats['individual_jobs_created']}")
         logger.info(f"   Relevant jobs: {stats['relevant_jobs']}")
         logger.info(f"   Quality filtered: {stats['quality_filtered']}")
+        logger.info(f"   Spam pre-filtered: {stats['spam_rejected']}")
         logger.info(f"   Companies auto-created: {stats['companies_created']}")
         logger.info(f"   Non-jobs: {stats['non_jobs']}")
         logger.info(f"   Low confidence jobs: {stats['low_confidence']}")
@@ -295,7 +299,7 @@ class MLProcessorService:
                 "reason": f"pre-filter:{spam_label}",
                 "low_confidence": False, "stored_to_postgres": False,
                 "jobs_created": 0, "companies_created": 0,
-                "quality_filtered": 1, "relevant_jobs": 0,
+                "quality_filtered": 0, "spam_rejected": 1, "relevant_jobs": 0,
                 "job_ids": [], "channel_id": None,
             }
 
@@ -620,15 +624,18 @@ class MLProcessorService:
             if channel.total_jobs_posted > 0:
                 channel.relevance_ratio = channel.relevant_jobs_count / channel.total_jobs_posted
             
-            # Calculate average job quality score from all jobs
-            jobs = db.query(Job).filter(
-                Job.source_telegram_channel_id == str(channel.username).replace('@', '')
-            ).all()
-            
-            if jobs:
-                quality_scores = [j.quality_score for j in jobs if j.quality_score is not None]
-                if quality_scores:
-                    channel.avg_job_quality_score = sum(quality_scores) / len(quality_scores)
+            # Calculate average job quality score — scalar aggregation, not full table load.
+            # (Old approach loaded every job ORM object to compute the average in Python,
+            # which becomes O(n) per processed message as the jobs table grows.)
+            avg_quality = db.query(
+                func.avg(Job.quality_score)
+            ).filter(
+                Job.source_telegram_channel_id == str(channel.username).replace('@', ''),
+                Job.quality_score.isnot(None)
+            ).scalar()
+
+            if avg_quality is not None:
+                channel.avg_job_quality_score = float(avg_quality)
             
             # Update last job posted timestamp
             from datetime import datetime, timezone
