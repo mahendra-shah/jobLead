@@ -1,6 +1,7 @@
 """Google Sheets service for exporting daily jobs."""
 
 import logging
+import pytz
 from datetime import datetime, timedelta
 from typing import Dict, Optional
 from pathlib import Path
@@ -38,13 +39,46 @@ class GoogleSheetsService:
         self.service = build('sheets', 'v4', credentials=self.credentials)
         self.sheets = self.service.spreadsheets()
     
+    def create_daily_tab_by_date_str(self, date_str: str) -> str:
+        """
+        Create (or reuse) a tab named '<date_str>_v2'.
+
+        Args:
+            date_str: IST calendar date string, e.g. '2026-03-03'
+
+        Returns:
+            Tab name (e.g. '2026-03-03_v2')
+        """
+        tab_name = f"{date_str}_v2"
+
+        sheet_metadata = self.sheets.get(spreadsheetId=self.sheet_id).execute()
+        existing_sheets = {s['properties']['title'] for s in sheet_metadata['sheets']}
+
+        if tab_name in existing_sheets:
+            logger.info(f"Tab '{tab_name}' already exists")
+            self._add_header_row(tab_name)
+            return tab_name
+
+        self.sheets.batchUpdate(
+            spreadsheetId=self.sheet_id,
+            body={'requests': [{'addSheet': {'properties': {
+                'title': tab_name,
+                'gridProperties': {'rowCount': 2000, 'columnCount': 20}
+            }}}]}
+        ).execute()
+        logger.info(f"✅ Created new tab: {tab_name}")
+        self._add_header_row(tab_name)
+        return tab_name
+
     def create_daily_tab(self, date: datetime) -> str:
         """
         Create a new tab for the given date.
-        
+        Kept for backward compatibility — internally delegates to
+        create_daily_tab_by_date_str with a naive local date string.
+
         Args:
             date: Date for the tab name
-            
+
         Returns:
             Tab name created (e.g., "2026-01-21_v2")
         """
@@ -196,13 +230,25 @@ class GoogleSheetsService:
         Returns:
             Summary dict with export stats
         """
+        # ── IST-based date boundary ──────────────────────────────────────
+        # Tab name and query window are based on the IST calendar day so
+        # jobs classified at 23:00 IST don't fall into "yesterday".
+        IST = pytz.timezone("Asia/Kolkata")
         if date is None:
-            date = datetime.now()
+            now_ist = datetime.now(IST)
+        elif date.tzinfo is None:
+            now_ist = IST.localize(date)
+        else:
+            now_ist = date.astimezone(IST)
 
-        start_time = date.replace(hour=0, minute=0, second=0, microsecond=0)
-        end_time = start_time + timedelta(days=1)
+        ist_midnight = now_ist.replace(hour=0, minute=0, second=0, microsecond=0)
+        # Naive UTC for Postgres TIMESTAMP WITHOUT TIME ZONE
+        start_time = ist_midnight.astimezone(pytz.utc).replace(tzinfo=None)
+        end_time   = start_time + timedelta(days=1)
+        # IST date string used for the tab name and log messages
+        ist_date_str = ist_midnight.strftime('%Y-%m-%d')
 
-        logger.info(f"📊 Exporting jobs from {start_time} to {end_time}")
+        logger.info(f"📊 Exporting jobs {start_time} → {end_time} UTC (IST date: {ist_date_str})")
 
         query = (
             select(Job)
@@ -219,16 +265,17 @@ class GoogleSheetsService:
         jobs = result.scalars().all()
 
         if not jobs:
-            logger.warning(f"No jobs found for {date.strftime('%Y-%m-%d')}")
+            logger.warning(f"No jobs found for {ist_date_str}")
             return {
                 'status': 'no_jobs',
-                'date': date.strftime('%Y-%m-%d'),
+                'date': ist_date_str,
                 'jobs_exported': 0,
             }
 
         logger.info(f"Found {len(jobs)} jobs to export")
 
-        tab_name = self.create_daily_tab(date)
+        # Use IST date string so the tab is named after the Indian calendar day
+        tab_name = self.create_daily_tab_by_date_str(ist_date_str)
 
         # Clear all data rows (keep header in row 1) — prevents duplicates on repeated runs
         try:
@@ -285,7 +332,7 @@ class GoogleSheetsService:
 
         return {
             'status': 'success',
-            'date': date.strftime('%Y-%m-%d'),
+            'date': ist_date_str,
             'tab_name': tab_name,
             'jobs_exported': len(jobs),
             'sheet_url': f"https://docs.google.com/spreadsheets/d/{self.sheet_id}",
