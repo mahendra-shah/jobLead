@@ -948,12 +948,11 @@ async def trigger_scrape(
     import uuid
     from app.core.scheduler import trigger_job_now
     from datetime import datetime
-    import pytz
-    
+    from app.utils.timezone import now_ist as _now_ist
+
     # Check working hours if not forced
     if not request.force:
-        ist = pytz.timezone('Asia/Kolkata')
-        now_ist = datetime.now(ist)
+        now_ist = _now_ist()
         hour = now_ist.hour
         
         if hour < 10 or hour >= 20:

@@ -174,6 +174,13 @@ class Settings(BaseSettings):
     SCRAPING_HOURS: Annotated[List[int], BeforeValidator(parse_list_of_ints)] = [4, 8, 12, 16, 20, 0]
     SCRAPING_TIMEZONE: str = "Asia/Kolkata"  # IST timezone
 
+    # ── Fresher experience threshold ─────────────────────────────────────────
+    # Jobs with experience_min <= this value (or no experience mentioned) are
+    # classified as fresher-friendly. Raise this value to accept more-experienced
+    # candidates, or lower it to be stricter.
+    # Can also be overridden via env var: MAX_FRESHER_EXPERIENCE_YEARS=1
+    MAX_FRESHER_EXPERIENCE_YEARS: int = 2
+
     @field_validator("ALLOWED_RESUME_EXTENSIONS", mode="before")
     @classmethod
     def parse_extensions(cls, v):
