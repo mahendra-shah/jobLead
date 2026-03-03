@@ -340,7 +340,7 @@ def start_scheduler():
         logger.info("🚀 Scheduler started successfully")
         
         # Log next run times
-        ist = pytz.timezone('Asia/Kolkata')
+        from app.utils.timezone import IST as ist
         jobs = scheduler.get_jobs()
         logger.info(f"\n📅 Scheduled Jobs ({len(jobs)} total):")
         for job in jobs:
@@ -377,7 +377,7 @@ def get_scheduler_status() -> dict:
     jobs = scheduler.get_jobs()
     
     jobs_info = []
-    ist = pytz.timezone('Asia/Kolkata')
+    from app.utils.timezone import IST as ist
     for job in jobs:
         next_run_utc = job.next_run_time
         next_run_ist = next_run_utc.astimezone(ist) if next_run_utc else None

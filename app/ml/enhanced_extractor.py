@@ -70,8 +70,13 @@ class EnhancedJobExtractor:
         'bangalore', 'bengaluru', 'mumbai', 'delhi', 'ncr', 'hyderabad', 'chennai',
         'kolkata', 'pune', 'ahmedabad',
         # Common abbreviations / short forms
-        'blr', 'hyd', 'mum', 'del', 'chn', 'pun', 'bang', 'bombay', 'madras',
-        'calcutta', 'new delhi', 'navi mumbai', 'thane',
+        # NOTE: only include abbrevs that are distinct enough to avoid substring
+        # false-positives.  Very short ones like 'del' (→ Philadelphia), 'pun'
+        # (→ punishment), 'sec' (→ section), 'bang' (→ bangladesh/bandana) are
+        # omitted — their cities are covered by full-name entries above.
+        'blr', 'hyd', 'chn',  # BLR / HYD / CHN are safe 3-char codes
+        'bombay', 'madras', 'calcutta',  # Historical names, unique enough
+        'new delhi', 'navi mumbai', 'thane',
         # Tier-2 cities (alphabetical)
         'agra', 'ajmer', 'aligarh', 'allahabad', 'prayagraj', 'ambala',
         'amritsar', 'anand', 'anantapur', 'asansol', 'aurangabad',
@@ -108,23 +113,133 @@ class EnhancedJobExtractor:
         'malad', 'goregaon', 'vikhroli', 'worli', 'lower parel',
         'salt lake', 'new town', 'rajarhat',
         'cyber city', 'cyber hub', 'dlf cyber',
-        # Generic India markers
-        'india', 'pan india', 'anywhere in india', 'across india'
+        # More tier-2 / tier-3 cities to improve coverage
+        'bilaspur', 'korba', 'raigarh', 'ambikapur',  # Chhattisgarh
+        'bokaro', 'deoghar', 'dhanbad', 'dumka', 'giridih', 'hazaribagh',  # Jharkhand
+        'dibrugarh', 'jorhat', 'silchar', 'tezpur',  # Assam
+        'imphal', 'aizawl', 'kohima', 'agartala', 'itanagar',  # NE states
+        'shillong', 'gangtok',
+        'port blair',  # Andaman
+        'daman', 'silvassa',
+        'kavaratti',  # Lakshadweep
+        'hampi', 'bidar', 'raichur', 'chitradurga', 'tumkur', 'shimoga', 'shivamogga',
+        'davangere', 'hassan', 'mandya', 'kodagu', 'chikmagalur',  # Karnataka
+        'palakkad', 'malappuram', 'kannur', 'kasaragod', 'kollam', 'alappuzha',  # Kerala
+        'nagercoil', 'kumbakonam', 'dindigul', 'thanjavur', 'thoothukudi',  # Tamil Nadu
+        'ongole', 'kadapa', 'chittoor', 'eluru', 'rajahmundry', 'kakinada',  # AP
+        'karimnagar', 'nizamabad', 'khammam', 'mahbubnagar', 'adilabad',  # Telangana
+        'akola', 'amravati', 'nanded', 'parbhani', 'latur', 'osmanabad',  # Maharashtra
+        'bharuch', 'anand', 'navsari', 'morbi', 'surendranagar',  # Gujarat
+        'palanpur', 'mehsana', 'gandhidham',
+        'bathinda', 'patiala', 'firozpur', 'hoshiarpur', 'gurdaspur',  # Punjab
+        'karnal', 'hisar', 'panipat', 'sirsa', 'rewari', 'bhiwani',  # Haryana
+        'mandi', 'solan', 'una', 'hamirpur', 'kullu',  # HP
+        'haridwar', 'rishikesh', 'haldwani', 'roorkee', 'rudrapur',  # Uttarakhand
+        'muzaffarnagar', 'saharanpur', 'rampur', 'shahjahanpur',  # UP
+        'ghaziabad', 'bulandshahr',
+        'muzaffarpur', 'bhagalpur', 'gaya', 'purnea', 'darbhanga',  # Bihar
+        'cuttack', 'berhampur', 'sambalpur', 'rourkela',  # Odisha
+        'alwar', 'bharatpur', 'sikar', 'nagaur', 'banswara',  # Rajasthan
+        'satna', 'rewa', 'chhindwara', 'morena', 'shivpuri', 'sagar', 'hoshangabad',  # MP
+        # NOTE: 'india', 'pan india' etc. are intentionally NOT here.
+        # They are handled by has_india_word = re.search(r'\bindia\b', text_lower)
+        # with a word boundary to avoid falsely matching "indiana" or "indiamart".
+    }
+
+    # All Indian states and union territories (full names only — no 2-letter
+    # abbreviations because they create substring false positives, e.g. 'uk'
+    # would match 'United Kingdom', 'up' would match 'startup').
+    # Matching is done via a pre-compiled word-boundary regex (_india_states_re)
+    # rather than plain 'in' substring search.
+    INDIA_STATES = {
+        # 28 States
+        'andhra pradesh',
+        'arunachal pradesh',
+        'assam',
+        'bihar',
+        'chhattisgarh', 'chattisgarh',
+        'goa',
+        'gujarat',
+        'haryana',
+        'himachal pradesh',
+        'jharkhand',
+        'karnataka',
+        'kerala',
+        'madhya pradesh',
+        'maharashtra',
+        'manipur',
+        'meghalaya',
+        'mizoram',
+        'nagaland',
+        'odisha', 'orissa',
+        'punjab',
+        'rajasthan',
+        'sikkim',
+        'tamil nadu', 'tamilnadu',
+        'telangana',
+        'tripura',
+        'uttar pradesh',
+        'uttarakhand', 'uttaranchal',
+        'west bengal',
+        # 8 Union Territories
+        'andaman and nicobar', 'andaman',
+        'chandigarh',
+        'dadra and nagar haveli', 'dadra',
+        'daman and diu',
+        'delhi',
+        'jammu and kashmir',
+        'ladakh',
+        'lakshadweep',
+        'puducherry', 'pondicherry',
     }
     
     # International location keywords (from data analysis)
+    # Any post whose text contains one of these (and no India location) is
+    # classified as geographic_scope='international' and rejected.
     INTERNATIONAL_KEYWORDS = {
+        # USA
         'usa', 'united states', 'america', 'us only', 'california', 'new york',
-        'texas', 'washington', 'costa mesa', 'silicon valley',
-        'uk', 'united kingdom', 'london', 'manchester', 'england',
-        'canada', 'toronto', 'vancouver', 'montreal',
-        'australia', 'sydney', 'melbourne',
-        'singapore',
-        'dubai', 'uae', 'abu dhabi',
+        'texas', 'washington', 'costa mesa', 'silicon valley', 'baltimore',
+        'maryland', 'illinois', 'chicago', 'seattle', 'boston', 'atlanta',
+        'san francisco', 'los angeles', 'denver', 'miami', 'austin', 'dallas',
+        'phoenix', 'portland', 'detroit', 'minneapolis', 'san diego', 'nashville',
+        'charlotte', 'raleigh', 'columbus', 'indianapolis', 'louisville',
+        'new jersey', 'new mexico', 'virginia', 'ohio', 'michigan', 'georgia',
+        'florida', 'arizona', 'colorado', 'nevada', 'las vegas', 'anchorage',
+        # UK
+        'uk', 'united kingdom', 'london', 'manchester', 'england', 'scotland',
+        'wales', 'birmingham', 'leeds', 'edinburgh', 'bristol', 'oxford',
+        'cambridge', 'liverpool', 'sheffield', 'nottingham', 'cardiff', 'belfast',
+        # Canada
+        'canada', 'toronto', 'vancouver', 'montreal', 'calgary', 'ottawa',
+        'edmonton', 'winnipeg', 'quebec',
+        # Australia / NZ
+        'australia', 'sydney', 'melbourne', 'brisbane', 'auckland', 'perth',
+        'adelaide', 'canberra', 'new zealand',
+        # Africa
+        'south africa', 'cape town', 'johannesburg', 'nigeria', 'kenya',
+        'nairobi', 'ghana', 'tanzania', 'uganda', 'ethiopia', 'addis ababa',
+        'egypt', 'cairo', 'morocco', 'algeria', 'tunisia', 'rwanda',
+        # Middle East (non-India)
+        'dubai', 'uae', 'abu dhabi', 'qatar', 'doha', 'saudi arabia', 'riyadh',
+        'bahrain', 'kuwait', 'oman', 'jordan', 'amman', 'lebanon', 'beirut',
+        # Asia-Pacific (non-India)
+        'singapore', 'malaysia', 'kuala lumpur', 'philippines', 'manila',
+        'indonesia', 'jakarta', 'vietnam', 'thailand', 'bangkok',
+        'japan', 'tokyo', 'china', 'beijing', 'shanghai', 'hong kong',
+        'south korea', 'seoul', 'taiwan', 'pakistan', 'bangladesh', 'sri lanka',
+        'myanmar', 'cambodia', 'nepal', 'bhutan',
+        # Europe
         'europe', 'european', 'germany', 'berlin', 'france', 'paris',
         'netherlands', 'amsterdam', 'ireland', 'dublin', 'switzerland',
-        'japan', 'china', 'israel',
-        'overseas', 'international', 'gulf', 'abroad'
+        'zurich', 'sweden', 'stockholm', 'norway', 'denmark', 'finland',
+        'spain', 'madrid', 'barcelona', 'italy', 'milan', 'rome',
+        'poland', 'warsaw', 'portugal', 'lisbon', 'belgium', 'brussels',
+        'israel', 'tel aviv', 'austria', 'vienna', 'czech republic', 'prague',
+        'hungary', 'budapest', 'romania', 'bucharest', 'ukraine', 'kyiv',
+        'greece', 'athens',
+        # Generic
+        'overseas', 'international', 'gulf', 'abroad',
     }
     
     # Onsite-only indicators (from data analysis)
@@ -140,6 +255,15 @@ class EnhancedJobExtractor:
     def __init__(self):
         self.company_cache = {}  # In-memory cache for session
         self._nlp = None  # Lazy-loaded spaCy model
+        # Pre-compiled word-boundary regex for all India state names.
+        # Built once per instance; much faster than rebuilding each call.
+        _state_alternation = '|'.join(
+            re.escape(s) for s in sorted(self.INDIA_STATES, key=len, reverse=True)
+        )
+        self._india_states_re = re.compile(
+            r'\b(?:' + _state_alternation + r')\b',
+            re.IGNORECASE,
+        )
 
     def _get_nlp(self):
         """Lazy-load spaCy en_core_web_sm model (12 MB, CPU-only)"""
@@ -224,14 +348,14 @@ class EnhancedJobExtractor:
         extraction.location = location_data.get('raw_location')
         extraction.location_data = location_data
         
-        # CRITICAL: Filter international onsite jobs immediately
-        # Reject if: international location + onsite only + not remote/hybrid
-        if (location_data.get('geographic_scope') == 'international' and 
-            location_data.get('is_onsite_only', False) and 
-            not location_data.get('is_remote', False) and 
-            not location_data.get('is_hybrid', False)):
-            # Log rejection for monitoring
-            logger.warning(f"Rejected international onsite job: {text[:80]}...")
+        # CRITICAL: Filter international jobs — this is an India placement dashboard.
+        # Reject any job whose geographic_scope is confirmed 'international'.
+        # We do NOT require is_onsite_only because even international remote roles
+        # are posted on foreign company JDs and are not relevant for India freshers.
+        # Exception: if the post also mentions Indian cities it may be a global
+        # company with India openings — those already get geographic_scope='india'.
+        if location_data.get('geographic_scope') == 'international':
+            logger.warning(f"Rejected international job: {text[:80]}...")
             extraction.confidence = 0.0  # Mark as rejected
             return extraction  # Return with 0 confidence to skip storage
         
@@ -262,7 +386,25 @@ class EnhancedJobExtractor:
             exp_info = self._extract_experience(text)
             if exp_info:
                 extraction.experience_min, extraction.experience_max, extraction.experience_raw, extraction.is_fresher_friendly = exp_info
-        
+
+        # ── Centralised is_fresher_friendly override ──────────────────────────
+        # Apply consistent rule AFTER all parsing so keyword detection + numeric
+        # detection both feed into the same final decision:
+        #   • No experience mentioned (None)        → open role → fresher-friendly
+        #   • experience_min <= threshold           → within fresher range
+        #   • experience_min >  threshold           → senior role → not fresher
+        # Threshold is driven by settings.MAX_FRESHER_EXPERIENCE_YEARS so the
+        # whole system changes when that config knob is turned.
+        from app.config import settings as _cfg
+        _threshold = _cfg.MAX_FRESHER_EXPERIENCE_YEARS
+        if extraction.experience_min is None:
+            extraction.is_fresher_friendly = True   # no exp stated = open to freshers
+        elif extraction.experience_min <= _threshold:
+            extraction.is_fresher_friendly = True
+        else:
+            extraction.is_fresher_friendly = False  # strictly above threshold
+        # ── End is_fresher_friendly override ─────────────────────────────────
+
         # Contact info
         extraction.contact_emails = self._extract_emails(text)
         extraction.apply_email = extraction.contact_emails[0] if extraction.contact_emails else None
@@ -707,15 +849,25 @@ class EnhancedJobExtractor:
             r'\b(Remote|Work\s+from\s+home|WFH)\b',
         ]
         
+        # Words that are NOT real location names — sentence fragments captured by
+        # the location regex.  If the extracted string matches any of these, discard it.
+        _GARBAGE_LOCATION_WORDS = {
+            'this', 'that', 'our', 'the', 'a', 'an', 'in', 'at', 'for',
+            'to work', 'work', 'deposit', 'orders', 'partners', 'partner',
+            'business', 'services', 'solutions', 'team', 'us', 'we',
+        }
+
         for pattern in patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 location = match.group(1).strip()
                 location = re.sub(r'\s+', ' ', location)
                 location = location.strip('.,!?:')
-                if len(location) > 2 and len(location) < 100:
-                    result['raw_location'] = location
-                    break
+                # Reject sentence fragments — too short, too long, or a known noise word
+                if len(location) > 2 and len(location) < 60:
+                    if location.lower() not in _GARBAGE_LOCATION_WORDS:
+                        result['raw_location'] = location
+                        break
         
         # Analyze work mode
         # First check for negative patterns (no remote, not remote, etc.)
@@ -759,19 +911,80 @@ class EnhancedJobExtractor:
                 except Exception as e:
                     logger.debug(f"spaCy GPE extraction failed: {e}")
 
-        # Determine geographic scope
-        has_india_location = len(result['cities']) > 0 or 'india' in text_lower
-        has_international = any(kw in text_lower for kw in self.INTERNATIONAL_KEYWORDS)
+        # ── Structured bot format: **Location:** City 📍 ──────────────────────
+        # Many international job-posting bots use a predictable Markdown format:
+        #   📢 **Job Title**\n**Company:** X\n**Location:** Phoenix 📍
+        # Extract the city from this pattern and check it against INDIA_CITIES.
+        # If the city is not Indian, mark geographic_scope as 'international'.
+        bot_location_match = re.search(
+            r'\*\*Location\s*:?\*\*\s*:?\s*([A-Za-z][A-Za-z\s,]+?)\s*(?:📍|\n|$)',
+            text,
+            re.IGNORECASE,
+        )
+        if bot_location_match:
+            bot_city = bot_location_match.group(1).strip().rstrip(',').lower()
+            # Only use this signal if the extracted city is a real word (not empty)
+            if bot_city and len(bot_city) > 2:
+                is_india_bot_city = (
+                    bot_city in self.INDIA_CITIES
+                    or bool(re.search(r'\bindia\b', bot_city))
+                    or any(ic in bot_city for ic in self.INDIA_CITIES)
+                    or any(state in bot_city for state in self.INDIA_STATES)
+                )
+                # Non-India if the city is in INTERNATIONAL_KEYWORDS -OR- if a raw
+                # location was extracted but not in the India allowlists.
+                is_intl_bot_city = (
+                    any(kw in bot_city for kw in self.INTERNATIONAL_KEYWORDS)
+                    or (not is_india_bot_city)
+                )
+                if is_intl_bot_city and not is_india_bot_city:
+                    result['geographic_scope'] = 'international'
+                    logger.debug(
+                        f"Bot-format location '{bot_city}' → international"
+                    )
+                    return result  # Short-circuit — no need to continue
+        # ── End structured bot format check ────────────────────────────────────
 
-        if has_international and not has_india_location:
-            result['geographic_scope'] = 'international'
-        elif has_india_location:
+        # Determine geographic scope — ALLOWLIST approach
+        # ---------------------------------------------------------------
+        # Rule 1. If any known Indian city OR the word "india" OR any
+        #         Indian state name appears in the text → India job.
+        # Rule 2. If remote/WFH and no explicit international signal → India.
+        # Rule 3. If a specific location was extracted but it is NOT Indian → foreign.
+        # Rule 4. Absolutely no location signal → unspecified (pass through; most
+        #         Telegram job channels are India-focused, so silence = India).
+        # ---------------------------------------------------------------
+        has_india_city = len(result['cities']) > 0
+        has_india_word = bool(re.search(r'\bindia\b', text_lower))
+        has_india_state = bool(self._india_states_re.search(text_lower))
+        has_india_location = has_india_city or has_india_word or has_india_state
+
+        # Secondary check for remote posts: ensure they aren't explicitly
+        # international (e.g. "100% remote, Dubai, UAE")
+        has_intl_signal = any(kw in text_lower for kw in self.INTERNATIONAL_KEYWORDS)
+
+        # Whether the location regex found ANY location string
+        has_raw_location = bool(result.get('raw_location'))
+
+        if has_india_location:
             result['geographic_scope'] = 'india'
         elif result['is_remote'] or result['is_hybrid']:
-            # Remote/WFH without any location clue → assume India (most Telegram job posts are India-focused)
-            result['geographic_scope'] = 'india'
+            if has_intl_signal:
+                # Remote but explicitly mentions a non-India country/city
+                result['geographic_scope'] = 'international'
+            else:
+                # Remote/WFH, no international signal → assume India-targeted
+                result['geographic_scope'] = 'india'
+        elif has_raw_location or has_intl_signal:
+            # Either: a specific non-Indian location was extracted via the
+            # Location-label regex, OR a known international keyword was found
+            # in plain text (e.g. "Job in London", "Toronto office | CAD 90k").
+            # Both signals mean the post is not India-targeted.
+            result['geographic_scope'] = 'international'
         else:
+            # No location signal at all → cannot determine; pass through
             result['geographic_scope'] = 'unspecified'
+
         
         # Override onsite_only if remote/hybrid is mentioned
         if result['is_remote'] or result['is_hybrid']:

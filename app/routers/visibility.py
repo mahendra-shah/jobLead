@@ -15,8 +15,9 @@ from typing import Dict, List, Optional
 from fastapi import APIRouter, Depends, Query
 import asyncio
 import json
-import pytz
+import pytz  # kept for tz-aware MongoDB datetime construction
 import redis as _redis_mod
+from app.utils.timezone import IST, ist_today_utc_window
 from sqlalchemy import select, func, desc, text, Integer, cast
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -400,15 +401,11 @@ async def get_visibility_dashboard(db: AsyncSession = Depends(get_db)):
     except Exception:
         pass  # cache miss or Redis down — continue normally
 
-    # ── IST-based "today" boundary ────────────────────────────────────────
-    # IST midnight = UTC 18:30 of the *previous* calendar day.
-    # Using IST means jobs created at 23:00 IST are counted as "today"
-    # (= 17:30 UTC), which naive UTC midnight would miss.
-    IST = pytz.timezone("Asia/Kolkata")
-    now_ist = datetime.now(IST)
-    ist_midnight = now_ist.replace(hour=0, minute=0, second=0, microsecond=0)
-    today_start_utc = ist_midnight.astimezone(timezone.utc)          # tz-aware UTC
-    today_start_pg  = today_start_utc.replace(tzinfo=None)           # naive UTC for PG TIMESTAMP
+    # ── IST-based “today” boundary (via central utility) ─────────────────────
+    # today_start_pg  = naive UTC for Postgres TIMESTAMP WITHOUT TIME ZONE
+    # today_start_utc = tz-aware UTC for MongoDB datetime comparisons
+    today_start_pg, _end_pg, _ist_date = ist_today_utc_window()
+    today_start_utc = today_start_pg.replace(tzinfo=timezone.utc)
     yesterday_utc   = today_start_utc - timedelta(days=1)
 
     # ── Fire all Postgres queries in parallel ────────────────────────────

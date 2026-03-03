@@ -1,8 +1,8 @@
 """Google Sheets service for exporting daily jobs."""
 
 import logging
-import pytz
 from datetime import datetime, timedelta
+from app.utils.timezone import IST, ist_today_utc_window
 from typing import Dict, Optional
 from pathlib import Path
 
@@ -139,6 +139,7 @@ class GoogleSheetsService:
             # 'Experience Min',  # Commented per user request
             # 'Experience Max',  # Commented per user request
             'Is Fresher',
+            'Experience Required',       # NEW — raw string, e.g. '1-2 years' or 'Fresher'
             # 'Salary Min',  # Commented per user request
             # 'Salary Max',  # Commented per user request
             'Work Type',
@@ -160,7 +161,7 @@ class GoogleSheetsService:
         
         self.sheets.values().update(
             spreadsheetId=self.sheet_id,
-            range=f"{tab_name}!A1:R1",  # 18 columns (A-R) - Removed Time, Exp Min/Max, Salary Min/Max, Added Sender ID
+            range=f"{tab_name}!A1:S1",  # 19 columns (A-S) - added Experience Required
             valueInputOption='RAW',
             body=body
         ).execute()
@@ -211,11 +212,22 @@ class GoogleSheetsService:
             }
         ]
         
+        # Freeze the first (header) row so it stays visible when scrolling
+        requests.append({
+            'updateSheetProperties': {
+                'properties': {
+                    'sheetId': sheet_id,
+                    'gridProperties': {'frozenRowCount': 1},
+                },
+                'fields': 'gridProperties.frozenRowCount',
+            }
+        })
+
         self.sheets.batchUpdate(
             spreadsheetId=self.sheet_id,
             body={'requests': requests}
         ).execute()
-    
+
     def export_daily_jobs(self, db: Session, date: Optional[datetime] = None) -> Dict:
         """
         Export jobs processed on the given date to Google Sheets.
@@ -230,23 +242,10 @@ class GoogleSheetsService:
         Returns:
             Summary dict with export stats
         """
-        # ── IST-based date boundary ──────────────────────────────────────
-        # Tab name and query window are based on the IST calendar day so
-        # jobs classified at 23:00 IST don't fall into "yesterday".
-        IST = pytz.timezone("Asia/Kolkata")
-        if date is None:
-            now_ist = datetime.now(IST)
-        elif date.tzinfo is None:
-            now_ist = IST.localize(date)
-        else:
-            now_ist = date.astimezone(IST)
-
-        ist_midnight = now_ist.replace(hour=0, minute=0, second=0, microsecond=0)
-        # Naive UTC for Postgres TIMESTAMP WITHOUT TIME ZONE
-        start_time = ist_midnight.astimezone(pytz.utc).replace(tzinfo=None)
-        end_time   = start_time + timedelta(days=1)
-        # IST date string used for the tab name and log messages
-        ist_date_str = ist_midnight.strftime('%Y-%m-%d')
+        # ── IST-based date boundary (via central utility) ────────────────────
+        # ist_today_utc_window() accepts an optional reference datetime so callers
+        # can pass a specific IST date (e.g. yesterday) for historical exports.
+        start_time, end_time, ist_date_str = ist_today_utc_window(date)
 
         logger.info(f"📊 Exporting jobs {start_time} → {end_time} UTC (IST date: {ist_date_str})")
 
@@ -305,6 +304,7 @@ class GoogleSheetsService:
                 job.title or '',
                 job.location or '',
                 'Yes' if job.is_fresher else ('No' if job.is_fresher is not None else ''),
+                job.experience_required or '',
                 job.work_type or '',
                 job.job_type or '',
                 ', '.join(job.skills_required) if job.skills_required else '',
