@@ -18,6 +18,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
 
 from app.config import settings
+from app.utils.timezone import now_ist
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +41,11 @@ def scheduler_listener(event):
         event: APScheduler event object
     """
     if event.exception:
+        # exc_info=True does NOT work in APScheduler listeners (no active exception
+        # context at this point).  The real traceback is in event.traceback.
         logger.error(
-            f"❌ Job '{event.job_id}' failed with exception: {event.exception}",
-            exc_info=True
+            f"❌ Job '{event.job_id}' failed: {event.exception}\n"
+            f"{event.traceback}"
         )
     else:
         logger.info(f"✅ Job '{event.job_id}' executed successfully")
@@ -138,18 +141,31 @@ async def run_ml_processor() -> dict:
             min_confidence=0.6  # 60% confidence threshold
         )
         
-        # Log results
+        # Log results — key names match what process_unprocessed_messages actually returns
+        total_msg    = stats.get('total_messages', 0)
+        jobs_created = stats.get('individual_jobs_created', 0)
+        spam_rej     = stats.get('spam_rejected', 0)
+        quality_fil  = stats.get('quality_filtered', 0)
+        errors       = stats.get('errors', 0)
+        duration_s   = stats.get('processing_time_ms', 0) / 1000
         logger.info(f"\n✅ ML processing completed:")
-        logger.info(f"   Messages processed: {stats.get('processed', 0)}")
-        logger.info(f"   Jobs created: {stats.get('jobs_created', 0)}")
-        logger.info(f"   Failed: {stats.get('failed', 0)}")
-        logger.info(f"   Duration: {stats.get('duration_seconds', 0):.2f}s")
+        logger.info(f"   Messages processed: {total_msg}")
+        logger.info(f"   Jobs created:       {jobs_created}")
+        logger.info(f"   Spam rejected:      {spam_rej}")
+        logger.info(f"   Quality filtered:   {quality_fil}")
+        logger.info(f"   Errors:             {errors}")
+        logger.info(f"   Duration:           {duration_s:.2f}s")
 
-        # Export today's jobs to Google Sheets after every ML run
-        try:
-            await run_sheets_export()
-        except Exception as sheets_err:
-            logger.error(f"⚠️  Sheets export failed (non-fatal): {sheets_err}", exc_info=True)
+        # Export today's jobs to Google Sheets — but only if something was actually
+        # processed to avoid wasting Sheets API quota on the safety-net cron run
+        # that fires after the inline ML trigger already handled everything.
+        if total_msg > 0:
+            try:
+                await run_sheets_export()
+            except Exception as sheets_err:
+                logger.error(f"⚠️  Sheets export failed (non-fatal): {sheets_err}", exc_info=True)
+        else:
+            logger.info("   (no new messages — skipping Sheets export)")
 
         return stats
 
@@ -242,7 +258,7 @@ async def run_sheets_export() -> dict:
         sheets_service = GoogleSheetsService()
         db = SyncSessionLocal()
         try:
-            result = sheets_service.export_daily_jobs(db, datetime.now())
+            result = sheets_service.export_daily_jobs(db, now_ist())
             logger.info(
                 f"✅ Sheets export: {result.get('jobs_exported', 0)} jobs → "
                 f"tab '{result.get('tab_name', '?')}'"
@@ -260,7 +276,7 @@ async def run_sheets_export() -> dict:
                 90000,  # TTL: 25 h (survives into the next day until the first new export)
                 json.dumps({
                     **result,
-                    "exported_at": datetime.now().isoformat(),
+                    "exported_at": now_ist().isoformat(),
                 }),
             )
             _r.close()
