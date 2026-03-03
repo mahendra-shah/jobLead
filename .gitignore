@@ -328,3 +328,15 @@ __pycache__/
 
 # Resume uploads
 uploads/resumes/*
+
+# Telegram session strings (contain auth tokens)
+.telegram_session_string
+*.session
+
+# Data dumps and temp outputs
+app/data/*.json
+failed_messages/
+verification_results_*.json
+job_location_analysis_*.json
+rescore_final.txt
+rescore_output.txt

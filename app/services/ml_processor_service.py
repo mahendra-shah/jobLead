@@ -4,6 +4,7 @@ Processes unprocessed messages from MongoDB, classifies them, and stores jobs to
 """
 
 import logging
+import re as _re
 from datetime import datetime, timezone
 from typing import List, Dict, Optional
 from pymongo import MongoClient
@@ -24,6 +25,68 @@ from app.services.job_quality_scorer import get_quality_scorer
 settings = Settings()
 
 logger = logging.getLogger(__name__)
+
+# ── Pre-filter: non-job content patterns ──────────────────────────────────────────
+# These patterns catch spam / service-ads that fool the ML classifier because
+# they use job-like language. Compiled once at import time.
+#
+# To ADD a new pattern: append a tuple ("label", compiled_regex) to the list.
+# To REMOVE a pattern: comment it out or delete the tuple.
+# ─────────────────────────────────────────────────────────────────
+_NON_JOB_PATTERNS = [
+    # Crypto / USDT payment scams
+    (
+        "crypto_scam",
+        _re.compile(
+            r'\b(?:USDT|bitcoin|BTC|ETH|ethereum|crypto\s+earn|earn\s+USDT'  # noqa: ISC001
+            r'|\d+\s*USDT\s*=|buy\s+USDT|sell\s+USDT'  # noqa: ISC001
+            r'|IMPS.*UPI.*(?:rupee|INR|RS)'  # noqa: ISC001
+            r')\b',
+            _re.IGNORECASE,
+        ),
+    ),
+    # Job coaching / interview support services
+    (
+        "interview_coaching",
+        _re.compile(
+            r'\b(?:job\s+support|interview\s+support|interview\s+preparation\s+service'
+            r'|mock\s+interview|interview\s+coaching|interview\s+assist'
+            r'|we\s+provide\s+structured\s+interview'
+            r'|training\s+support\s+for\s+IT\s+professionals'
+            r')\b',
+            _re.IGNORECASE,
+        ),
+    ),
+    # Social-media / YouTube channel promotions disguised as WFH jobs
+    (
+        "social_media_promo",
+        _re.compile(
+            r'(?:youtube|instagram|telegram)\s+chann?el.*task'
+            r'|promote.*chann?el'
+            r'|online.*youtube.*task'
+            r'|earn.*(?:like|subscribe|view|share)',
+            _re.IGNORECASE,
+        ),
+    ),
+    # Forwarded supplier / trading / referral spam
+    (
+        "supplier_spam",
+        _re.compile(
+            r'24\s*\*\s*365.*(?:all.weather|supplier|work)'
+            r'|reliable.*supplier.*(?:earn|income)'
+            r'|IMPS|UPI.*bank\s+card',
+            _re.IGNORECASE,
+        ),
+    ),
+]
+
+
+def _is_non_job_spam(text: str) -> Optional[str]:
+    """Return the matched label string if text matches a non-job spam pattern, else None."""
+    for label, pattern in _NON_JOB_PATTERNS:
+        if pattern.search(text):
+            return label
+    return None
 
 
 class MLProcessorService:
@@ -221,7 +284,21 @@ class MLProcessorService:
         """
         text = message.get("text", "")
         links = message.get("links", [])
-        
+
+        # 0. Pre-filter: reject known non-job spam patterns before hitting the ML model.
+        #    This is faster and more reliable than relying on ML for these edge cases.
+        spam_label = _is_non_job_spam(text)
+        if spam_label:
+            logger.info(f"   🚫 Pre-filtered as non-job spam [{spam_label}]: {text[:60]!r}")
+            return {
+                "is_job": False, "confidence": 0.0,
+                "reason": f"pre-filter:{spam_label}",
+                "low_confidence": False, "stored_to_postgres": False,
+                "jobs_created": 0, "companies_created": 0,
+                "quality_filtered": 1, "relevant_jobs": 0,
+                "job_ids": [], "channel_id": None,
+            }
+
         # 1. Classify the message
         classification = self.classifier.classify(text)
         
@@ -276,15 +353,14 @@ class MLProcessorService:
                         result['quality_filtered'] += 1
                         continue
 
-                    # Hard experience gate: reject jobs requiring >2 years unless fresher-friendly
-                    if (
-                        extraction.experience_min is not None
-                        and extraction.experience_min > 2
-                        and not extraction.is_fresher_friendly
-                    ):
+                    # Hard experience gate — driven by settings.MAX_FRESHER_EXPERIENCE_YEARS
+                    # To raise/lower the threshold change that single config value.
+                    # is_fresher_friendly is already normalised by the extractor override,
+                    # so we just check the flag here.
+                    if not extraction.is_fresher_friendly:
                         logger.warning(
                             f"      ⚠️  Job rejected: experience_min={extraction.experience_min} yrs "
-                            f"(gate: max 2 yrs, fresher={extraction.is_fresher_friendly})"
+                            f"(gate: max {settings.MAX_FRESHER_EXPERIENCE_YEARS} yrs)"
                         )
                         result['quality_filtered'] += 1
                         continue
