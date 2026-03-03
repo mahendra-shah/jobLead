@@ -108,7 +108,7 @@ class EnhancedJobExtractor:
         'vizag', 'vellore',
         'warangal',
         # Tier-3 / satellite towns commonly seen in job posts
-        'greater noida', 'sec', 'secunderabad', 'whitefield', 'electronic city',
+        'greater noida', 'secunderabad', 'whitefield', 'electronic city',
         'hsr layout', 'koramangala', 'indiranagar', 'powai', 'andheri', 'bandra',
         'malad', 'goregaon', 'vikhroli', 'worli', 'lower parel',
         'salt lake', 'new town', 'rajarhat',
@@ -262,6 +262,16 @@ class EnhancedJobExtractor:
         )
         self._india_states_re = re.compile(
             r'\b(?:' + _state_alternation + r')\b',
+            re.IGNORECASE,
+        )
+        # Pre-compiled word-boundary regex for INTERNATIONAL_KEYWORDS.
+        # Critical: plain 'kw in text' substring matching for 'uk' would hit
+        # 'mukul', 'bulk', 'truck', etc.  Word boundaries prevent false positives.
+        _intl_alternation = '|'.join(
+            re.escape(kw) for kw in sorted(self.INTERNATIONAL_KEYWORDS, key=len, reverse=True)
+        )
+        self._intl_keywords_re = re.compile(
+            r'\b(?:' + _intl_alternation + r')\b',
             re.IGNORECASE,
         )
 
@@ -931,10 +941,10 @@ class EnhancedJobExtractor:
                     or any(ic in bot_city for ic in self.INDIA_CITIES)
                     or any(state in bot_city for state in self.INDIA_STATES)
                 )
-                # Non-India if the city is in INTERNATIONAL_KEYWORDS -OR- if a raw
-                # location was extracted but not in the India allowlists.
+                # Non-India if the city matches any international keyword (word-boundary).
+                # Using compiled regex prevents 'uk' from matching 'mukul', etc.
                 is_intl_bot_city = (
-                    any(kw in bot_city for kw in self.INTERNATIONAL_KEYWORDS)
+                    bool(self._intl_keywords_re.search(bot_city))
                     or (not is_india_bot_city)
                 )
                 if is_intl_bot_city and not is_india_bot_city:
@@ -959,9 +969,9 @@ class EnhancedJobExtractor:
         has_india_state = bool(self._india_states_re.search(text_lower))
         has_india_location = has_india_city or has_india_word or has_india_state
 
-        # Secondary check for remote posts: ensure they aren't explicitly
-        # international (e.g. "100% remote, Dubai, UAE")
-        has_intl_signal = any(kw in text_lower for kw in self.INTERNATIONAL_KEYWORDS)
+        # Secondary check: word-boundary regex prevents 'uk' matching 'mukul',
+        # 'sec' matching 'security', 'georgia' matching common surnames, etc.
+        has_intl_signal = bool(self._intl_keywords_re.search(text_lower))
 
         # Whether the location regex found ANY location string
         has_raw_location = bool(result.get('raw_location'))

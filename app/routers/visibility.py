@@ -238,7 +238,10 @@ async def get_channels_scraping_stats(
     for ch in channels:
         hours_since = None
         if ch.last_scraped_at:
-            delta = datetime.now(timezone.utc) - ch.last_scraped_at
+            # last_scraped_at is stored as TIMESTAMP WITHOUT TIME ZONE (naive).
+            # Attach UTC so we can subtract from the tz-aware datetime.now(utc).
+            scraped_utc = ch.last_scraped_at.replace(tzinfo=timezone.utc)
+            delta = datetime.now(timezone.utc) - scraped_utc
             hours_since = delta.total_seconds() / 3600
 
         # Phone of the account that last actively scraped this channel
@@ -479,8 +482,10 @@ async def get_visibility_dashboard(db: AsyncSession = Depends(get_db)):
     hours_since_scrape = None
     if latest_ch and latest_ch.last_scraped_at:
         last_scrape_at = latest_ch.last_scraped_at.isoformat()
+        # Postgres TIMESTAMP WITHOUT TIME ZONE → treat as UTC before subtracting
+        scraped_utc = latest_ch.last_scraped_at.replace(tzinfo=timezone.utc)
         hours_since_scrape = round(
-            (datetime.now(timezone.utc) - latest_ch.last_scraped_at).total_seconds() / 3600, 1
+            (datetime.now(timezone.utc) - scraped_utc).total_seconds() / 3600, 1
         )
     channels_section: Dict = {
         "total_active":       ch.total_active      if ch else 0,
