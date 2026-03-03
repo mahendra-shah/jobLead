@@ -411,40 +411,39 @@ async def get_visibility_dashboard(db: AsyncSession = Depends(get_db)):
     today_start_utc = today_start_pg.replace(tzinfo=timezone.utc)
     yesterday_utc   = today_start_utc - timedelta(days=1)
 
-    # ── Fire all Postgres queries in parallel ────────────────────────────
-    (
-        r_all_accounts,
-        r_channels_agg,
-        r_latest_ch,
-        r_jobs_today,
-        r_recent_errors,
-    ) = await asyncio.gather(
-        db.execute(select(TelegramAccount)),
-        # Single aggregation query replacing 5 separate COUNT queries
-        db.execute(
-            select(
-                func.count().label("total_active"),
-                func.sum(cast(TelegramGroup.is_joined == True,  Integer)).label("joined"),   # noqa: E712
-                func.sum(cast(TelegramGroup.telegram_account_id.is_(None), Integer)).label("unassigned"),
-                func.sum(cast(TelegramGroup.joined_at >= today_start_utc, Integer)).label("joined_today"),
-                func.sum(cast(TelegramGroup.last_scraped_at >= yesterday_utc, Integer)).label("scraped_last_24h"),
-            ).select_from(TelegramGroup).where(TelegramGroup.is_active == True)  # noqa: E712
-        ),
-        db.execute(
-            select(TelegramGroup)
-            .where(TelegramGroup.last_scraped_at.isnot(None))
-            .order_by(desc(TelegramGroup.last_scraped_at))
-            .limit(1)
-        ),
-        db.execute(
-            select(func.count()).select_from(Job).where(Job.created_at >= today_start_pg)
-        ),
-        db.execute(
-            select(TelegramAccount)
-            .where(TelegramAccount.last_error_at.isnot(None))
-            .order_by(desc(TelegramAccount.last_error_at))
-            .limit(20)
-        ),
+    # ── Fire Postgres queries sequentially on the shared AsyncSession ────────
+    # IMPORTANT: AsyncSession is NOT safe for concurrent use.
+    # asyncio.gather(db.execute(...), db.execute(...)) on the same session
+    # triggers "concurrent operations are not permitted" (sqlalche.me/e/20/isce).
+    # The endpoint is cached for 30 s, so sequential is perfectly fine.
+    r_all_accounts = await db.execute(select(TelegramAccount))
+
+    r_channels_agg = await db.execute(
+        select(
+            func.count().label("total_active"),
+            func.sum(cast(TelegramGroup.is_joined == True,  Integer)).label("joined"),   # noqa: E712
+            func.sum(cast(TelegramGroup.telegram_account_id.is_(None), Integer)).label("unassigned"),
+            func.sum(cast(TelegramGroup.joined_at >= today_start_utc, Integer)).label("joined_today"),
+            func.sum(cast(TelegramGroup.last_scraped_at >= yesterday_utc, Integer)).label("scraped_last_24h"),
+        ).select_from(TelegramGroup).where(TelegramGroup.is_active == True)  # noqa: E712
+    )
+
+    r_latest_ch = await db.execute(
+        select(TelegramGroup)
+        .where(TelegramGroup.last_scraped_at.isnot(None))
+        .order_by(desc(TelegramGroup.last_scraped_at))
+        .limit(1)
+    )
+
+    r_jobs_today = await db.execute(
+        select(func.count()).select_from(Job).where(Job.created_at >= today_start_pg)
+    )
+
+    r_recent_errors = await db.execute(
+        select(TelegramAccount)
+        .where(TelegramAccount.last_error_at.isnot(None))
+        .order_by(desc(TelegramAccount.last_error_at))
+        .limit(20)
     )
 
     # ── MongoDB + Redis sheets status — both in thread executors ─────────
