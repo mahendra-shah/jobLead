@@ -1,0 +1,345 @@
+users [icon: user] {
+  id string pk
+  email string
+  username string
+  password_hash string
+  role string
+  is_active boolean
+  is_verified boolean
+  createdAt timestamp
+  updatedAt timestamp
+}
+
+companies [icon: building] {
+  id string pk
+  name string
+  domain string
+  description string
+  logo_url string
+  website string
+  contact_info json
+  industry string
+  size string
+  location string
+  is_verified string
+  createdAt timestamp
+  updatedAt timestamp
+}
+
+channels [icon: message-circle] {
+  id string pk
+  name string
+  platform string
+  channel_id string
+  channel_url string
+  config json
+  search_keywords json
+  job_type_filter json
+  is_active boolean
+  last_scraped_at timestamp
+  last_error string
+  total_jobs_scraped string
+  createdAt timestamp
+  updatedAt timestamp
+}
+
+jobs [icon: briefcase] {
+  id string pk
+  title string
+  company_id string
+  description string
+  skills_required string[]
+  experience_required string
+  salary_range json
+  is_fresher boolean
+  work_type string
+  experience_min number
+  experience_max number
+  salary_min number
+  salary_max number
+  location string
+  job_type string
+  employment_type string
+  source string
+  source_url string
+  source_channel_id string
+  source_channel_name string
+  source_telegram_channel_id string
+  sender_id number
+  fetched_by_account number
+  telegram_group_id string
+  scraped_by_account_id string
+  raw_text string
+  embedding string
+  content_hash string
+  duplicate_of_id string
+  source_message_id string
+  ml_confidence string
+  quality_score number
+  relevance_score number
+  extraction_completeness_score number
+  meets_relevance_criteria boolean
+  quality_breakdown json
+  relevance_reasons json
+  students_shown_to json
+  max_students_to_show number
+  visibility_mode string
+  vacancy_count number
+  is_active boolean
+  is_verified boolean
+  expires_at string
+  view_count number
+  application_count number
+  createdAt timestamp
+  updatedAt timestamp
+}
+
+students [icon: user-graduate] {
+  id string pk
+  user_id string
+  full_name string
+  phone string
+  resume_url string
+  first_name string
+  last_name string
+  date_of_birth timestamp
+  gender string
+  current_address string
+  highest_qualification string
+  college_name string
+  college_id number
+  course string
+  branch string
+  passing_year number
+  percentage number
+  cgpa number
+  technical_skills string[]
+  soft_skills string[]
+  experience_type string
+  internship_details json
+  projects json
+  languages json
+  preference json
+  github_profile string
+  linkedin_profile string
+  portfolio_url string
+  coding_platforms json
+  email_notifications boolean
+  status string
+  createdAt timestamp
+  updatedAt timestamp
+}
+
+applications [icon: send] {
+  id string pk
+  student_id string
+  job_id string
+  match_score number
+  status string
+  cover_letter string
+  extra_data json
+  createdAt timestamp
+  updatedAt timestamp
+}
+
+saved_jobs [icon: bookmark] {
+  id string pk
+  user_id string
+  job_id string
+  folder string
+  notes string
+  saved_at timestamp
+  createdAt timestamp
+  updatedAt timestamp
+}
+
+job_views [icon: eye] {
+  id number pk
+  student_id string
+  job_id string
+  viewed_at timestamp
+  duration_seconds number
+  source string
+  user_agent string
+  ip_address string
+}
+
+student_notifications [icon: bell] {
+  id number pk
+  student_id string
+  type string
+  title string
+  message string
+  link string
+  job_id string
+  data json
+  read boolean
+  read_at timestamp
+  created_at timestamp
+  expires_at timestamp
+}
+
+job_recommendations [icon: star] {
+  id number pk
+  student_id string
+  job_id string
+  score number
+  match_reasons json
+  missing_skills json
+  generated_at timestamp
+  expires_at timestamp
+}
+
+telegram_accounts [icon: user-check] {
+  id string pk
+  phone string
+  api_id string
+  api_hash string
+  session_string string
+  is_active boolean
+  is_banned boolean
+  health_status string
+  last_successful_fetch_at timestamp
+  consecutive_errors number
+  last_error_message string
+  last_error_at timestamp
+  groups_joined_count number
+  last_used_at timestamp
+  last_join_at timestamp
+  createdAt timestamp
+  updatedAt timestamp
+  notes string
+}
+
+telegram_groups [icon: users] {
+  id string pk
+  username string
+  title string
+  url string
+  category string
+  members_count number
+  description string
+  is_joined boolean
+  joined_by_account_id string
+  joined_at timestamp
+  last_scraped_at timestamp
+  last_message_id string
+  last_message_date timestamp
+  messages_fetched_total number
+  health_score number
+  total_messages_scraped number
+  job_messages_found number
+  quality_jobs_found number
+  last_job_posted_at timestamp
+  health_score_breakdown string
+  relevant_jobs_count number
+  total_jobs_posted number
+  relevance_ratio number
+  avg_job_quality_score number
+  status_label string
+  last_score_update timestamp
+  score_history string
+  is_active boolean
+  deactivated_at timestamp
+  deactivation_reason string
+  createdAt timestamp
+  updatedAt timestamp
+  notes string
+}
+
+scraping_logs [icon: activity] {
+  id string pk
+  lambda_function string
+  execution_id string
+  started_at timestamp
+  completed_at timestamp
+  duration_seconds number
+  status string
+  accounts_used number
+  groups_processed number
+  messages_fetched number
+  jobs_extracted number
+  duplicates_found number
+  errors_count number
+  errors json
+  extra_metadata json
+  cost_estimate number
+  notes string
+}
+
+discovery_sources [icon: search] {
+  id string pk
+  name string
+  url string
+  source_type string
+  platform string
+  city string
+  region string
+  country_code string
+  metadata json
+  phase number
+  is_shortlisted boolean
+  discovered_at timestamp
+  createdAt timestamp
+  updatedAt timestamp
+  notes string
+}
+
+job_scraping_preferences [icon: settings] {
+  id string pk
+  allowed_job_types string[]
+  excluded_job_types string[]
+  min_experience_years number
+  max_experience_years number
+  accept_unspecified_experience boolean
+  allowed_education_levels string[]
+  preferred_locations string[]
+  allow_all_india boolean
+  allow_international boolean
+  allowed_work_modes string[]
+  priority_skills string[]
+  excluded_skills string[]
+  min_salary_lpa number
+  max_salary_lpa number
+  filter_by_salary boolean
+  excluded_companies string[]
+  preferred_companies string[]
+  required_keywords string[]
+  excluded_keywords string[]
+  min_ai_confidence_score number
+  max_messages_per_run number
+  skip_duplicate_threshold_hours number
+  is_active boolean
+  created_by string
+  updated_by string
+  createdAt timestamp
+  updatedAt timestamp
+  notes string
+}
+
+// ── User relationships ──────────────────────
+students.user_id > users.id
+saved_jobs.user_id > users.id
+job_scraping_preferences.created_by > users.id
+job_scraping_preferences.updated_by > users.id
+
+// ── Company / Channel relationships ─────────
+jobs.company_id > companies.id
+jobs.source_channel_id > channels.id
+jobs.duplicate_of_id > jobs.id
+
+// ── Job relationships ───────────────────────
+saved_jobs.job_id > jobs.id
+applications.job_id > jobs.id
+job_views.job_id > jobs.id
+student_notifications.job_id > jobs.id
+job_recommendations.job_id > jobs.id
+
+// ── Student relationships ───────────────────
+applications.student_id > students.id
+job_views.student_id > students.id
+student_notifications.student_id > students.id
+job_recommendations.student_id > students.id
+
+// ── Telegram relationships ──────────────────
+telegram_groups.joined_by_account_id > telegram_accounts.id

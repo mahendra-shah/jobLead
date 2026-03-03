@@ -1,0 +1,16 @@
+{
+  "meta": {
+    "description": "Pilot cities: 20 India + 20 outside India for discovery and job filtering",
+    "updated": "2026-03-02"
+  },
+  "india": [
+    "Bangalore", "Hyderabad", "Pune", "Mumbai", "Chennai", "Delhi", "Kolkata",
+    "Ahmedabad", "Jaipur", "Kochi", "Coimbatore", "Indore", "Chandigarh", "Nagpur",
+    "Bhubaneswar", "Vadodara", "Surat", "Lucknow", "Trivandrum", "Guwahati"
+  ],
+  "outside_india": [
+    "Singapore", "Dubai", "London", "New York", "San Francisco", "Berlin", "Toronto",
+    "Sydney", "Amsterdam", "Austin", "Remote", "Dublin", "Melbourne", "Hong Kong",
+    "Tokyo", "Munich", "Boston", "Seattle", "Vancouver", "Remote US"
+  ]
+}
