@@ -8,7 +8,7 @@ import re as _re
 from datetime import datetime, timezone
 from typing import List, Dict, Optional
 from pymongo import MongoClient
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.orm import Session
 
 from app.config import Settings
@@ -87,6 +87,22 @@ def _is_non_job_spam(text: str) -> Optional[str]:
         if pattern.search(text):
             return label
     return None
+
+
+def _has_obfuscated_email(text: str) -> bool:
+    """
+    Detect very simple obfuscated email patterns like:
+    - name [at] gmail [dot] com
+    - name at gmail dot com
+    This is only used to decide if a job has *some* way to apply.
+    """
+    patterns = [
+        r"[A-Za-z0-9._%+-]+\s*(?:\[at\]|\(at\)|at)\s*[A-Za-z0-9.-]+\s*(?:\[dot\]|\(dot\)|dot|\.)\s*[A-Za-z]{2,}",
+    ]
+    for p in patterns:
+        if _re.search(p, text, flags=_re.IGNORECASE):
+            return True
+    return False
 
 
 class MLProcessorService:
@@ -357,6 +373,19 @@ class MLProcessorService:
                         result['quality_filtered'] += 1
                         continue
 
+                    # Require at least one way to apply: link or email in text.
+                    # If there is no apply link and no email address, drop this job.
+                    has_apply_link = bool(extraction.apply_link)
+                    has_email_in_text = bool(
+                        _re.search(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", text)
+                    ) or _has_obfuscated_email(text)
+                    if not has_apply_link and not has_email_in_text:
+                        logger.warning(
+                            "      ⚠️  Job rejected: no apply link or email found in message"
+                        )
+                        result["quality_filtered"] += 1
+                        continue
+
                     # Hard experience gate — driven by settings.MAX_FRESHER_EXPERIENCE_YEARS
                     # To raise/lower the threshold change that single config value.
                     # is_fresher_friendly is already normalised by the extractor override,
@@ -376,20 +405,68 @@ class MLProcessorService:
                         continue
 
                     # ── Deduplication guard ──────────────────────────────────────────
-                    # Skip if a job for this (message_id, channel_id) already exists.
-                    # Prevents duplicate rows when messages are reset and reprocessed.
+                    # 1) Hard guard on message_id:
+                    #    If we've already stored any job for this Telegram message_id,
+                    #    skip creating another one (covers reprocessing and resets).
                     _msg_id = str(message.get("message_id", ""))
-                    _ch_id  = str(message.get("channel_id", "")) if message.get("channel_id") else None
                     if _msg_id:
-                        _dup_stmt = select(Job.id).where(Job.source_message_id == _msg_id)
-                        if _ch_id:
-                            _dup_stmt = _dup_stmt.where(
-                                Job.source_telegram_channel_id == _ch_id
-                            )
-                        if db.execute(_dup_stmt).first():
+                        existing_by_msg = db.execute(
+                            select(Job.id).where(Job.source_message_id == _msg_id)
+                        ).first()
+                        if existing_by_msg:
                             logger.info(
                                 f"      ⏭️  Duplicate — job already exists for "
                                 f"message_id={_msg_id}, skipping"
+                            )
+                            continue
+
+                    # 2) Heuristic guard on (title, company, apply_link):
+                    #    Handles cases where effectively the same job is posted again
+                    #    with a different message_id but identical core fields.
+                    # Normalise title and company a bit for dedup:
+                    # - strip spaces
+                    # - lowercase
+                    # - drop common suffixes like " (remote)" on title and " india", "pvt ltd" on company.
+                    raw_title = (extraction.job_title or extraction.company_name or "").strip()
+                    raw_company = (extraction.company_name or "").strip()
+
+                    base_title = raw_title.lower()
+                    # Remove common remote markers at the end
+                    for suffix in [" (remote)", " - remote", " – remote"]:
+                        if base_title.endswith(suffix):
+                            base_title = base_title[: -len(suffix)].strip()
+                            break
+
+                    base_company = raw_company.lower()
+                    for suffix in [" pvt ltd", " pvt. ltd", " private limited", " india"]:
+                        if base_company.endswith(suffix):
+                            base_company = base_company[: -len(suffix)].strip()
+                            break
+
+                    candidate_title = base_title
+                    candidate_company = base_company
+                    candidate_apply_link = extraction.apply_link or ""
+
+                    if candidate_title and candidate_company and candidate_apply_link:
+                        # Normalise apply link slightly: ignore query params/tracking
+                        # when matching against existing jobs, and treat http/https as same.
+                        base_apply_link = candidate_apply_link.split("?", 1)[0].rstrip("/")
+
+                        existing_by_fields = db.execute(
+                            select(Job.id).where(
+                                func.lower(Job.title) == candidate_title,
+                                func.lower(Job.company_name) == candidate_company,
+                                or_(
+                                    Job.source_url == candidate_apply_link,
+                                    Job.source_url.ilike(f"{base_apply_link}%"),
+                                ),
+                            )
+                        ).first()
+
+                        if existing_by_fields:
+                            logger.info(
+                                "      ⏭️  Duplicate — same title/company/apply_link "
+                                "already stored, skipping"
                             )
                             continue
                     # ── End deduplication guard ───────────────────────────────────────
