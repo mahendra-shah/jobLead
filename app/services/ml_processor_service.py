@@ -20,6 +20,7 @@ from app.ml.sklearn_classifier import SklearnClassifier
 from app.ml.spacy_extractor import SpacyExtractor
 from app.ml.enhanced_extractor import get_enhanced_extractor
 from app.services.job_quality_scorer import get_quality_scorer
+from app.services.deduplication_service import deduplication_service
 
 # Load settings
 settings = Settings()
@@ -240,10 +241,14 @@ class MLProcessorService:
                             }
                         }
                     )
+
+                    # Commit per message so one bad insert doesn't abort the full batch.
+                    db.commit()
                     
                 except Exception as e:
                     logger.error(f"❌ Error processing message {message.get('message_id')}: {e}")
                     stats['errors'] += 1
+                    db.rollback()
                     
                     # Still mark as processed to avoid reprocessing
                     self.messages_collection.update_one(
@@ -256,8 +261,6 @@ class MLProcessorService:
                             }
                         }
                     )
-            
-            db.commit()
             
         except Exception as e:
             logger.error(f"❌ Fatal error during processing: {e}")
@@ -576,6 +579,9 @@ class MLProcessorService:
                         application_count=0
                     )
                     
+                    # Generate content hash for deduplication
+                    job.content_hash = deduplication_service.compute_content_hash(text)
+                    
                     # Derive work_type from location intelligence
                     _loc = extraction.location_data or {}
                     if _loc.get('is_remote'):
@@ -586,6 +592,7 @@ class MLProcessorService:
                         _work_type = 'onsite'
                     else:
                         _work_type = None
+                    job.work_type = _work_type
 
                     # Score job quality before storing
                     job_data = {
@@ -645,6 +652,7 @@ class MLProcessorService:
                     
                 except Exception as e:
                     logger.error(f"      ❌ Error storing job {idx} to PostgreSQL: {e}")
+                    db.rollback()
                     # Continue processing other jobs in the message
                     continue
             
