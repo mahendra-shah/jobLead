@@ -1,6 +1,6 @@
 {
   "sources_scraped": 20,
-  "total_jobs": 275,
+  "total_jobs": 283,
   "jobs": [
     {
       "title": "Software Engineer 2 (Backend)",
@@ -11,6 +11,60 @@
     {
       "title": "Applied AI Engineer (Agentic Workflows) - India",
       "url": "https://builtinbengaluru.in/job/applied-ai-engineer-agentic-workflows-india/6248258",
+      "source_name": "Built In Bengaluru",
+      "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
+    },
+    {
+      "title": "Legal Executive",
+      "url": "https://builtinbengaluru.in/job/legal-executive/8673055",
+      "source_name": "Built In Bengaluru",
+      "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
+    },
+    {
+      "title": "Senior Lead Business Integration Analyst -R2R",
+      "url": "https://builtinbengaluru.in/job/senior-lead-business-integration-analyst-r2r/8277896",
+      "source_name": "Built In Bengaluru",
+      "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
+    },
+    {
+      "title": "Principle Specialist-  Business Analysis - Production Execution",
+      "url": "https://builtinbengaluru.in/job/principle-specialist-business-analysis-production-execution/8411513",
+      "source_name": "Built In Bengaluru",
+      "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
+    },
+    {
+      "title": "ServiceNow Operational Analyst",
+      "url": "https://builtinbengaluru.in/job/servicenow-operational-analyst/8436298",
+      "source_name": "Built In Bengaluru",
+      "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
+    },
+    {
+      "title": "QA Engineer (Manual Testing )",
+      "url": "https://builtinbengaluru.in/job/qa-engineer/8056659",
+      "source_name": "Built In Bengaluru",
+      "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
+    },
+    {
+      "title": "Technical Support Lead",
+      "url": "https://builtinbengaluru.in/job/customer-support-lead/8255066",
+      "source_name": "Built In Bengaluru",
+      "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
+    },
+    {
+      "title": "Quantitative Developer (Low-Latency, C++)",
+      "url": "https://builtinbengaluru.in/job/quantitative-developer-low-latency-c/8671913",
+      "source_name": "Built In Bengaluru",
+      "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
+    },
+    {
+      "title": "Software Developer, Algorithmic Trading (Low-Latency, C++)-",
+      "url": "https://builtinbengaluru.in/job/software-developer-algorithmic-trading-low-latency-c/8671884",
+      "source_name": "Built In Bengaluru",
+      "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
+    },
+    {
+      "title": "Product Analyst",
+      "url": "https://builtinbengaluru.in/job/product-analyst/6883752",
       "source_name": "Built In Bengaluru",
       "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
     },
@@ -51,8 +105,8 @@
       "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
     },
     {
-      "title": "Software Engineer, AI Applications",
-      "url": "https://builtinbengaluru.in/job/ai-applications-engineer/4454323",
+      "title": "Senior AI Applications Engineer",
+      "url": "https://builtinbengaluru.in/job/senior-ai-applications-engineer/4802406",
       "source_name": "Built In Bengaluru",
       "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
     },
@@ -69,14 +123,14 @@
       "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
     },
     {
-      "title": "SOC Manager",
-      "url": "https://builtinbengaluru.in/job/soc-manager/7287887",
+      "title": "Oracle HCM Fusion",
+      "url": "https://builtinbengaluru.in/job/oracle-hcm-fusion/7287880",
       "source_name": "Built In Bengaluru",
       "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
     },
     {
-      "title": "Platform Engineer",
-      "url": "https://builtinbengaluru.in/job/platform-engineer/7287901",
+      "title": "Data Engineer",
+      "url": "https://builtinbengaluru.in/job/data-engineer/7287962",
       "source_name": "Built In Bengaluru",
       "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
     },
@@ -93,44 +147,20 @@
       "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
     },
     {
-      "title": "Technical Support Lead",
-      "url": "https://builtinbengaluru.in/job/customer-support-lead/8255066",
-      "source_name": "Built In Bengaluru",
-      "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
-    },
-    {
-      "title": "ServiceNow Operational Analyst",
-      "url": "https://builtinbengaluru.in/job/servicenow-operational-analyst/8436298",
-      "source_name": "Built In Bengaluru",
-      "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
-    },
-    {
-      "title": "Principal specialist  - ABAP",
-      "url": "https://builtinbengaluru.in/job/principal-specialist-abap/8441111",
-      "source_name": "Built In Bengaluru",
-      "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
-    },
-    {
-      "title": "Senior SQL Developer",
-      "url": "https://builtinbengaluru.in/job/senior-sql-developer/8450044",
-      "source_name": "Built In Bengaluru",
-      "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
-    },
-    {
       "title": "Sr Dotnet Developer",
       "url": "https://builtinbengaluru.in/job/sr-dotnet-developer/8037746",
       "source_name": "Built In Bengaluru",
       "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
     },
     {
-      "title": "Product Analyst",
-      "url": "https://builtinbengaluru.in/job/product-analyst/8037737",
+      "title": "React js Lead",
+      "url": "https://builtinbengaluru.in/job/react-js-lead/8037742",
       "source_name": "Built In Bengaluru",
       "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
     },
     {
-      "title": "React js Lead",
-      "url": "https://builtinbengaluru.in/job/react-js-lead/8037742",
+      "title": "Product Analyst",
+      "url": "https://builtinbengaluru.in/job/product-analyst/8037737",
       "source_name": "Built In Bengaluru",
       "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
     },
@@ -185,12 +215,6 @@
     {
       "title": "3D Artist",
       "url": "https://builtinbengaluru.in/job/3d-artist/8660721",
-      "source_name": "Built In Bengaluru",
-      "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
-    },
-    {
-      "title": "Associate Supply Operations(Kannada)",
-      "url": "https://builtinbengaluru.in/job/associate-supply-operations-kannada/8660410",
       "source_name": "Built In Bengaluru",
       "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
     },
@@ -345,18 +369,6 @@
       "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
     },
     {
-      "title": "People Partner",
-      "url": "https://builtinbengaluru.in/job/people-partner/8173060",
-      "source_name": "Built In Bengaluru",
-      "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
-    },
-    {
-      "title": "Design Verification Lead",
-      "url": "https://builtinbengaluru.in/job/design-verification-lead/4793294",
-      "source_name": "Built In Bengaluru",
-      "source_id": "601414df-91ad-4332-ab51-c6aaa2fce50c"
-    },
-    {
       "title": "Software Engineer 2 (Backend)",
       "url": "https://builtinhyderabad.in/job/software-engineer-2-backend/8651766",
       "source_name": "Built In Hyderabad",
@@ -365,6 +377,12 @@
     {
       "title": "Applied AI Engineer (Agentic Workflows) - India",
       "url": "https://builtinhyderabad.in/job/applied-ai-engineer-agentic-workflows-india/6248258",
+      "source_name": "Built In Hyderabad",
+      "source_id": "5d3909b6-85fb-46db-9991-b6f5ca4465c2"
+    },
+    {
+      "title": "Tax Services Senior Associate -Partnership",
+      "url": "https://builtinhyderabad.in/job/tax-services-senior-associate-partnership/8085901",
       "source_name": "Built In Hyderabad",
       "source_id": "5d3909b6-85fb-46db-9991-b6f5ca4465c2"
     },
@@ -395,24 +413,6 @@
     {
       "title": "Senior Technical Operations Analyst",
       "url": "https://builtinhyderabad.in/job/senior-technical-operations-analyst/8343515",
-      "source_name": "Built In Hyderabad",
-      "source_id": "5d3909b6-85fb-46db-9991-b6f5ca4465c2"
-    },
-    {
-      "title": "Tax Transformation Manager",
-      "url": "https://builtinhyderabad.in/job/tax-transformation-manager/8661588",
-      "source_name": "Built In Hyderabad",
-      "source_id": "5d3909b6-85fb-46db-9991-b6f5ca4465c2"
-    },
-    {
-      "title": "Financial Crime System Implementation Manager",
-      "url": "https://builtinhyderabad.in/job/financial-crime-system-implementation-manager/8661581",
-      "source_name": "Built In Hyderabad",
-      "source_id": "5d3909b6-85fb-46db-9991-b6f5ca4465c2"
-    },
-    {
-      "title": "International Tax Senior Manager",
-      "url": "https://builtinhyderabad.in/job/international-tax-senior-manager/8661582",
       "source_name": "Built In Hyderabad",
       "source_id": "5d3909b6-85fb-46db-9991-b6f5ca4465c2"
     },
@@ -675,26 +675,8 @@
       "source_id": "5d3909b6-85fb-46db-9991-b6f5ca4465c2"
     },
     {
-      "title": "L&D Multimedia & AI Production, HR, Associate",
-      "url": "https://builtinmumbai.in/job/l-d-multimedia-ai-production-hr-associate/8224201",
-      "source_name": "Built In Mumbai",
-      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
-    },
-    {
-      "title": "Senior Trade Operations Specialist",
-      "url": "https://builtinmumbai.in/job/senior-trade-operations-specialist/8669981",
-      "source_name": "Built In Mumbai",
-      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
-    },
-    {
-      "title": "Senior Data Scientist",
-      "url": "https://builtinmumbai.in/job/senior-data-scientist/6647007",
-      "source_name": "Built In Mumbai",
-      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
-    },
-    {
-      "title": "Senior Employee Support Analyst",
-      "url": "https://builtinmumbai.in/job/senior-employee-support-analyst/7304206",
+      "title": "Consumer Experience Lead - Digital, Consumer Data & CRM",
+      "url": "https://builtinmumbai.in/job/consumer-experience-lead-digital-consumer-data-crm/8547415",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
@@ -705,14 +687,68 @@
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "o9 & APO COE - E2E Planning Support",
-      "url": "https://builtinmumbai.in/job/o9-apo-coe-e2e-planning-support/8662058",
+      "title": "Sr. Data Engineer, Analytics Engineering",
+      "url": "https://builtinmumbai.in/job/sr-data-engineer-analytics-engineering/8673097",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "TTF India Management Intern, Marketing",
-      "url": "https://builtinmumbai.in/job/ttf-india-management-intern-marketing/8662038",
+      "title": "Senior Employee Support Analyst",
+      "url": "https://builtinmumbai.in/job/senior-employee-support-analyst/7304206",
+      "source_name": "Built In Mumbai",
+      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
+    },
+    {
+      "title": "Senior Data Scientist",
+      "url": "https://builtinmumbai.in/job/senior-data-scientist/6647007",
+      "source_name": "Built In Mumbai",
+      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
+    },
+    {
+      "title": "Implementation Consultant, Aladdin Client Technology, Vice President",
+      "url": "https://builtinmumbai.in/job/implementation-consultant-aladdin-client-technology-vice-president/8673049",
+      "source_name": "Built In Mumbai",
+      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
+    },
+    {
+      "title": "Associate, Quality Engineer",
+      "url": "https://builtinmumbai.in/job/associate-quality-engineer/8673041",
+      "source_name": "Built In Mumbai",
+      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
+    },
+    {
+      "title": "L&D Multimedia & AI Production, HR, Associate",
+      "url": "https://builtinmumbai.in/job/l-d-multimedia-ai-production-hr-associate/8224201",
+      "source_name": "Built In Mumbai",
+      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
+    },
+    {
+      "title": "Sr Data Scientist",
+      "url": "https://builtinmumbai.in/job/sr-data-scientist/8672743",
+      "source_name": "Built In Mumbai",
+      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
+    },
+    {
+      "title": "Trainee (Technology)",
+      "url": "https://builtinmumbai.in/job/trainee-technology/8618076",
+      "source_name": "Built In Mumbai",
+      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
+    },
+    {
+      "title": "Lead Software Engineer",
+      "url": "https://builtinmumbai.in/job/lead-software-engineer/8672740",
+      "source_name": "Built In Mumbai",
+      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
+    },
+    {
+      "title": "Sr Enterprise Account Executive - MRD",
+      "url": "https://builtinmumbai.in/job/sr-enterprise-account-executive-mrd/8672328",
+      "source_name": "Built In Mumbai",
+      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
+    },
+    {
+      "title": "Senior Trade Operations Specialist",
+      "url": "https://builtinmumbai.in/job/senior-trade-operations-specialist/8669981",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
@@ -767,18 +803,6 @@
     {
       "title": "Manager, Analytics & Data Science",
       "url": "https://builtinmumbai.in/job/manager-analytics-data-science/8653191",
-      "source_name": "Built In Mumbai",
-      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
-    },
-    {
-      "title": "Sr Data Scientist",
-      "url": "https://builtinmumbai.in/job/sr-data-scientist/8649662",
-      "source_name": "Built In Mumbai",
-      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
-    },
-    {
-      "title": "CRM Advisory Solution Consultant - FSI, Mumbai",
-      "url": "https://builtinmumbai.in/job/crm-advisory-solution-consultant-fsi-mumbai/8648516",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
@@ -849,212 +873,176 @@
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
+      "title": "Business Process Architect",
+      "url": "https://builtinmumbai.in/job/business-process-architect/8674117",
+      "source_name": "Built In Mumbai",
+      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
+    },
+    {
+      "title": "Custom Software Engineer",
+      "url": "https://builtinmumbai.in/job/custom-software-engineer/8245456",
+      "source_name": "Built In Mumbai",
+      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
+    },
+    {
+      "title": "Custom Software Engineer",
+      "url": "https://builtinmumbai.in/job/custom-software-engineer/8668570",
+      "source_name": "Built In Mumbai",
+      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
+    },
+    {
+      "title": "Senior Technical Architect",
+      "url": "https://builtinmumbai.in/job/senior-technical-architect/8674109",
+      "source_name": "Built In Mumbai",
+      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
+    },
+    {
+      "title": "Territory Account Executive- HRE",
+      "url": "https://builtinmumbai.in/job/territory-account-executive-hre/7744988",
+      "source_name": "Built In Mumbai",
+      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
+    },
+    {
+      "title": "Named Account Executive",
+      "url": "https://builtinmumbai.in/job/named-account-executive/7925332",
+      "source_name": "Built In Mumbai",
+      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
+    },
+    {
+      "title": "Chief Auditor – Technology & Business Enablement International and Wealth International Technology",
+      "url": "https://builtinmumbai.in/job/chief-auditor-technology-business-enablement-international-and-wealth-international-technology/8674014",
+      "source_name": "Built In Mumbai",
+      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
+    },
+    {
+      "title": "KYC Operations Analyst",
+      "url": "https://builtinmumbai.in/job/kyc-operations-analyst-2-mumbai/7740002",
+      "source_name": "Built In Mumbai",
+      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
+    },
+    {
       "title": "Tax Specialist (Tax reporting FATCA)",
       "url": "https://builtinmumbai.in/job/tax-specialist-tax-reporting-fatca/7737998",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "Tax Analyst (Tax reporting FATCA CRS) Officer",
-      "url": "https://builtinmumbai.in/job/tax-analyst-tax-reporting-fatca-crs-officer/7737997",
+      "title": "Architect II",
+      "url": "https://builtinmumbai.in/job/architect-ii/8673853",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "Tax Analyst (Tax reporting FATCA CRS) Officer",
-      "url": "https://builtinmumbai.in/job/tax-analyst-tax-reporting-fatca-crs-officer/7737996",
+      "title": "Group Financial Accountant",
+      "url": "https://builtinmumbai.in/job/group-financial-accountant/8673362",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "Associate Clinical Data Specialist - Mumbai",
-      "url": "https://builtinmumbai.in/job/associate-clinical-data-specialist-mumbai/7946260",
+      "title": "India - Supervisor – Credit Control",
+      "url": "https://builtinmumbai.in/job/india-supervisor-credit-control/8673290",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "Project Coordinator  II - Mumbai",
-      "url": "https://builtinmumbai.in/job/project-coordinator-ii-mumbai/7658131",
+      "title": "India - Executive – Credit Control",
+      "url": "https://builtinmumbai.in/job/india-executive-credit-control/8672235",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "Staff Software Engineer",
-      "url": "https://builtinmumbai.in/job/staff-software-engineer/8371554",
+      "title": "SAP Sr Analyst - Finance",
+      "url": "https://builtinmumbai.in/job/sap-sr-analyst-finance/8673246",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "Staff Software Engineer",
-      "url": "https://builtinmumbai.in/job/staff-software-engineer/8197893",
+      "title": "GenAI & Agentic AI Developer",
+      "url": "https://builtinmumbai.in/job/genai-agentic-ai-developer/8004899",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "Staff Software Engineer",
-      "url": "https://builtinmumbai.in/job/staff-software-engineer/8198590",
+      "title": "Data Scientist",
+      "url": "https://builtinmumbai.in/job/data-scientist/8004878",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "Global Learning and Development Analyst",
-      "url": "https://builtinmumbai.in/job/global-learning-and-development-analyst/8671571",
-      "source_name": "Built In Mumbai",
-      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
-    },
-    {
-      "title": "Order Processing Coordinator",
-      "url": "https://builtinmumbai.in/job/order-processing-coordinator/8671541",
-      "source_name": "Built In Mumbai",
-      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
-    },
-    {
-      "title": "Order Processing Coordinator",
-      "url": "https://builtinmumbai.in/job/order-processing-coordinator/7528748",
-      "source_name": "Built In Mumbai",
-      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
-    },
-    {
-      "title": "Manager, AI & Automation",
-      "url": "https://builtinmumbai.in/job/manager-ai-automation/7528513",
-      "source_name": "Built In Mumbai",
-      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
-    },
-    {
-      "title": "Development Manager / Technical Architect",
-      "url": "https://builtinmumbai.in/job/development-manager-technical-architect/8527956",
-      "source_name": "Built In Mumbai",
-      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
-    },
-    {
-      "title": "Manager - Account Management",
-      "url": "https://builtinmumbai.in/job/manager-account-management/8539651",
-      "source_name": "Built In Mumbai",
-      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
-    },
-    {
-      "title": "Senior Executive - Account Management",
-      "url": "https://builtinmumbai.in/job/senior-executive-account-management/8479819",
-      "source_name": "Built In Mumbai",
-      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
-    },
-    {
-      "title": "Mulesoft Technical Architect",
-      "url": "https://builtinmumbai.in/job/mulesoft-technical-architect/8671419",
-      "source_name": "Built In Mumbai",
-      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
-    },
-    {
-      "title": "Lead, Account SE",
-      "url": "https://builtinmumbai.in/job/lead-account-se/8450923",
-      "source_name": "Built In Mumbai",
-      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
-    },
-    {
-      "title": "Senior Full Stack Developer (Node + Angular)",
-      "url": "https://builtinmumbai.in/job/senior-node-js-full-stack-developer/8355722",
-      "source_name": "Built In Mumbai",
-      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
-    },
-    {
-      "title": "Workday Integration Developer",
-      "url": "https://builtinmumbai.in/job/workday-integration-developer/8347351",
-      "source_name": "Built In Mumbai",
-      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
-    },
-    {
-      "title": "People & Culture Specialist - Experience & Performance",
-      "url": "https://builtinmumbai.in/job/people-culture-specialist-experience-performance/8671371",
-      "source_name": "Built In Mumbai",
-      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
-    },
-    {
-      "title": "Launch Planning Manager - Gynaecology",
-      "url": "https://builtinmumbai.in/job/launch-planning-manager-gynaecology/8671337",
-      "source_name": "Built In Mumbai",
-      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
-    },
-    {
-      "title": "Business Executive - Mumbai",
-      "url": "https://builtinmumbai.in/job/business-executive-mumbai/8398987",
-      "source_name": "Built In Mumbai",
-      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
-    },
-    {
-      "title": "Openshift Platform consultant",
-      "url": "https://builtinmumbai.in/job/openshift-platform-consultant/7180672",
-      "source_name": "Built In Mumbai",
-      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
-    },
-    {
-      "title": "Key Account Manager (1 Year Contract)",
-      "url": "https://builtinmumbai.in/job/key-account-manager-1-year-contract/8671126",
-      "source_name": "Built In Mumbai",
-      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
-    },
-    {
-      "title": "Associate Key Account Manager",
-      "url": "https://builtinmumbai.in/job/associate-key-account-manager/8671122",
+      "title": "Software Engineer Backend Developer Python",
+      "url": "https://builtinmumbai.in/job/software-engineer-backend-developer-python/7558815",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
       "title": "Sales Manager",
-      "url": "https://builtinmumbai.in/job/sales-manager/8075567",
+      "url": "https://builtinmumbai.in/job/sales-manager/8673162",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "Quantitative Modeling Analyst",
-      "url": "https://builtinmumbai.in/job/analyst/8323183",
+      "title": "Junior Amazon Connect Support Engineer",
+      "url": "https://builtinmumbai.in/job/junior-amazon-connect-support-engineer/8673065",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "Associate Director - IT Audit",
-      "url": "https://builtinmumbai.in/job/associate-director-it-audit/8659445",
+      "title": "Manager - Corporate Development",
+      "url": "https://builtinmumbai.in/job/manager-corporate-development/8673054",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "Coupa Techno-Functional Consultant",
-      "url": "https://builtinmumbai.in/job/coupa-techno-functional-consultant/8671115",
+      "title": "Assistant Project Engineer",
+      "url": "https://builtinmumbai.in/job/assistant-project-engineer/8503659",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "Web Application firewall Specialist - Lead",
-      "url": "https://builtinmumbai.in/job/web-application-firewall-specialist-lead/7804130",
+      "title": "Helpdesk Executive",
+      "url": "https://builtinmumbai.in/job/helpdesk-executive/8545826",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "QA Engineer",
-      "url": "https://builtinmumbai.in/job/qa-engineer/8205846",
+      "title": "Senior Executive – Operations",
+      "url": "https://builtinmumbai.in/job/senior-executive-operations/8593859",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "National Account Manager - Nora",
-      "url": "https://builtinmumbai.in/job/national-account-manager-nora/8671058",
+      "title": "Business Director",
+      "url": "https://builtinmumbai.in/job/business-director/8672992",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "Senior Engineer - Investment Data Platform",
-      "url": "https://builtinmumbai.in/job/senior-engineer-investment-data-platform/7497006",
+      "title": "Group head - Digital",
+      "url": "https://builtinmumbai.in/job/group-head-digital/8671682",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "Senior SDET Engineer - Investment Data Platform",
-      "url": "https://builtinmumbai.in/job/senior-test-engineer-investment-data-platform/7532689",
+      "title": "Senior Analyst -Analytics",
+      "url": "https://builtinmumbai.in/job/senior-analyst-analytics/8667899",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "Senior Analyst - Research",
-      "url": "https://builtinmumbai.in/job/senior-analyst-research/8437235",
+      "title": "Executive - Production",
+      "url": "https://builtinmumbai.in/job/executive-production/8540769",
+      "source_name": "Built In Mumbai",
+      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
+    },
+    {
+      "title": "Senior Lead UI Design",
+      "url": "https://builtinmumbai.in/job/senior-lead-ui-design/8520400",
+      "source_name": "Built In Mumbai",
+      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
+    },
+    {
+      "title": "Software Engineer (Python, Database)",
+      "url": "https://builtinmumbai.in/job/software-engineer-python-database/8672958",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
@@ -1065,74 +1053,116 @@
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "eDiscovery System Administrator",
-      "url": "https://builtinmumbai.in/job/ediscovery-system-administrator/7327900",
+      "title": "Associate Account Executive",
+      "url": "https://builtinmumbai.in/job/associate-account-executive/8672952",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "Senior Executive-Revenue Assurance",
-      "url": "https://builtinmumbai.in/job/senior-executive-revenue-assurance/8671009",
+      "title": "Manager - Product & Revenue Strategy, Sports",
+      "url": "https://builtinmumbai.in/job/manager-product-revenue-strategy-sports/8672915",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "Manager - Impact Solutions, Entertainment Ad Sales",
-      "url": "https://builtinmumbai.in/job/manager-impact-solutions-entertainment-ad-sales/8198953",
+      "title": "Senior Data Engineer",
+      "url": "https://builtinmumbai.in/job/senior-data-engineer/8672913",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "Senior Executive- Contract Negotiations (Commercial Contracts)",
-      "url": "https://builtinmumbai.in/job/senior-executive-contract-negotiations-commercial-contracts/8662750",
+      "title": "Associate Director – Syndication Sales",
+      "url": "https://builtinmumbai.in/job/associate-director-syndication-sales/8672912",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "Treasury Associate",
-      "url": "https://builtinmumbai.in/job/treasury-associate/8670607",
+      "title": "Senior Associate - Performance & Analytics",
+      "url": "https://builtinmumbai.in/job/senior-associate-performance-analytics/8672816",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "HRBP - India Fulfilment",
-      "url": "https://builtinmumbai.in/job/hrbp-india-fulfilment/8670604",
+      "title": "Associate - Performance & Analytics",
+      "url": "https://builtinmumbai.in/job/associate-performance-analytics/8672814",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "Product Support Engineer",
-      "url": "https://builtinmumbai.in/job/product-support-engineer-india/7486492",
+      "title": "Associate - Data Analytics",
+      "url": "https://builtinmumbai.in/job/associate-data-analytics/8672815",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "Functional Consultant",
-      "url": "https://builtinmumbai.in/job/functional-consultant/8670263",
+      "title": "SAP Sr Analyst - Finance",
+      "url": "https://builtinmumbai.in/job/sap-sr-analyst-finance/8672784",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "Sales Advisor",
-      "url": "https://builtinmumbai.in/job/sales-advisor/8669266",
+      "title": "Finance Assistant",
+      "url": "https://builtinmumbai.in/job/finance-assistant/8672737",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "Sales Advisor",
-      "url": "https://builtinmumbai.in/job/sales-advisor/8669261",
+      "title": "Principal Software Engineer",
+      "url": "https://builtinmumbai.in/job/principal-software-engineer/8620883",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "Sales Advisor",
-      "url": "https://builtinmumbai.in/job/sales-advisor/8669237",
+      "title": "Staff Software Engineer",
+      "url": "https://builtinmumbai.in/job/staff-software-engineer/8611210",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
     {
-      "title": "AI Research (Freelancer)",
-      "url": "https://builtinmumbai.in/job/ai-research-freelancer/7065439",
+      "title": "Staff Platform Engineer",
+      "url": "https://builtinmumbai.in/job/staff-platform-engineer/8199679",
+      "source_name": "Built In Mumbai",
+      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
+    },
+    {
+      "title": "Regional Manager - Ultrasound West",
+      "url": "https://builtinmumbai.in/job/regional-manager-ultrasound-west/8661306",
+      "source_name": "Built In Mumbai",
+      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
+    },
+    {
+      "title": "Program Manager",
+      "url": "https://builtinmumbai.in/job/program-manager/8660827",
+      "source_name": "Built In Mumbai",
+      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
+    },
+    {
+      "title": "Modality Leader- HPM",
+      "url": "https://builtinmumbai.in/job/modality-leader-hpm/8662214",
+      "source_name": "Built In Mumbai",
+      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
+    },
+    {
+      "title": "Senior Prepress Specialist",
+      "url": "https://builtinmumbai.in/job/senior-prepress-specialist/8246370",
+      "source_name": "Built In Mumbai",
+      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
+    },
+    {
+      "title": "Principal Technical Services Support Specialist",
+      "url": "https://builtinmumbai.in/job/principal-technical-services-support-specialist/8311821",
+      "source_name": "Built In Mumbai",
+      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
+    },
+    {
+      "title": "Project Coordinator  II - Mumbai",
+      "url": "https://builtinmumbai.in/job/project-coordinator-ii-mumbai/7658131",
+      "source_name": "Built In Mumbai",
+      "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
+    },
+    {
+      "title": "Associate Clinical Data Specialist - Mumbai",
+      "url": "https://builtinmumbai.in/job/associate-clinical-data-specialist-mumbai/7946260",
       "source_name": "Built In Mumbai",
       "source_id": "76e445e3-40ed-49ac-983a-dce5bfde2233"
     },
@@ -1161,14 +1191,14 @@
       "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
     },
     {
-      "title": "Senior Software Engineer",
-      "url": "https://builtinpune.in/job/senior-software-engineer/8662755",
+      "title": "AI Engineer - II",
+      "url": "https://builtinpune.in/job/ai-engineer-ii/8662756",
       "source_name": "Built In Pune",
       "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
     },
     {
-      "title": "AI Engineer - II",
-      "url": "https://builtinpune.in/job/ai-engineer-ii/8662756",
+      "title": "Senior Software Engineer",
+      "url": "https://builtinpune.in/job/senior-software-engineer/8662755",
       "source_name": "Built In Pune",
       "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
     },
@@ -1199,12 +1229,6 @@
     {
       "title": "Associate Business Operations Specialist",
       "url": "https://builtinpune.in/job/associate-business-operations-specialist/8660377",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Murex Environment Support - Capital Market",
-      "url": "https://builtinpune.in/job/murex-environment-support-capital-market/8660322",
       "source_name": "Built In Pune",
       "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
     },
@@ -1257,80 +1281,62 @@
       "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
     },
     {
-      "title": "Digital Technology (DT) Leader – India",
-      "url": "https://builtinpune.in/job/digital-technology-dt-leader-india/7973733",
+      "title": "Business Process Architect",
+      "url": "https://builtinpune.in/job/business-process-architect/8674117",
       "source_name": "Built In Pune",
       "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
     },
     {
-      "title": "Private Wealth Support Associate",
-      "url": "https://builtinpune.in/job/private-wealth-support-associate/8671563",
+      "title": "Custom Software Engineer",
+      "url": "https://builtinpune.in/job/custom-software-engineer/8668570",
       "source_name": "Built In Pune",
       "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
     },
     {
-      "title": "Senior UX Designer",
-      "url": "https://builtinpune.in/job/senior-ux-designer/8544862",
+      "title": "Custom Software Engineer",
+      "url": "https://builtinpune.in/job/custom-software-engineer/8668540",
       "source_name": "Built In Pune",
       "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
     },
     {
-      "title": "Associate Business Analyst",
-      "url": "https://builtinpune.in/job/associate-business-analyst/8582263",
+      "title": "Proposal Adminstrator",
+      "url": "https://builtinpune.in/job/proposal-adminstrator/8673262",
       "source_name": "Built In Pune",
       "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
     },
     {
-      "title": "Workday Integration Developer",
-      "url": "https://builtinpune.in/job/workday-integration-developer/8347351",
+      "title": "Proposal Administrator",
+      "url": "https://builtinpune.in/job/proposal-administrator/8341191",
       "source_name": "Built In Pune",
       "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
     },
     {
-      "title": "Workday Configuration Analyst – Recruiting and Talent",
-      "url": "https://builtinpune.in/job/workday-configuration-analyst-recruiting-and-talent/8424548",
+      "title": "Manager - LCS Projects Administration",
+      "url": "https://builtinpune.in/job/manager-lcs-projects-administration/8489204",
       "source_name": "Built In Pune",
       "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
     },
     {
-      "title": "Workday Configuration Analyst – Core and Advanced Compensation",
-      "url": "https://builtinpune.in/job/digital-technology-specialist-technical-product-management/8426007",
+      "title": "SAP Sr Analyst - Finance",
+      "url": "https://builtinpune.in/job/sap-sr-analyst-finance/8673246",
       "source_name": "Built In Pune",
       "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
     },
     {
-      "title": "Senior Learning and Development Partner",
-      "url": "https://builtinpune.in/job/senior-learning-and-development-partner/8545630",
+      "title": "Senior Analyst - ROI Quality",
+      "url": "https://builtinpune.in/job/senior-analyst-roi-quality/8491866",
       "source_name": "Built In Pune",
       "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
     },
     {
-      "title": "Senior Software Test Engineer- AI",
-      "url": "https://builtinpune.in/job/senior-software-test-engineer/8159543",
+      "title": "Senior Analyst - ROI Quality",
+      "url": "https://builtinpune.in/job/senior-analyst-roi-quality/8673213",
       "source_name": "Built In Pune",
       "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
     },
     {
-      "title": "Project Engineer – Electrical",
-      "url": "https://builtinpune.in/job/project-engineer-electrical/8524485",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "QMS Administrator",
-      "url": "https://builtinpune.in/job/qms-administrator/8569514",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Process Governance Manager - FPNA",
-      "url": "https://builtinpune.in/job/process-governance-manager-fpna/8671201",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Senior Specialist - RTR/ATR",
-      "url": "https://builtinpune.in/job/senior-specialist-fna/8354973",
+      "title": "Software Engineer - Full Stack Java",
+      "url": "https://builtinpune.in/job/software-engineer-full-stack-java/8067543",
       "source_name": "Built In Pune",
       "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
     },
@@ -1347,32 +1353,308 @@
       "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
     },
     {
-      "title": "Lead II, System Administration",
-      "url": "https://builtinpune.in/job/lead-ii-system-administration/8621377",
+      "title": "Sales Manager",
+      "url": "https://builtinpune.in/job/sales-manager/8673162",
       "source_name": "Built In Pune",
       "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
     },
     {
-      "title": "Lead QA Automation Engineer, AVP",
-      "url": "https://builtinpune.in/job/lead-qa-automation-engineer-avp/8534690",
+      "title": "Software Senior Principal Engineer",
+      "url": "https://builtinpune.in/job/software-senior-principal-engineer/8238721",
       "source_name": "Built In Pune",
       "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
     },
     {
-      "title": "Full Stack Developer, Associate",
-      "url": "https://builtinpune.in/job/operational-risk-management-orm-business-functional-analyst-associate/8411715",
+      "title": "Software Principal Engineer- C,Python",
+      "url": "https://builtinpune.in/job/software-senior-principal-engineer-c-python/8035355",
       "source_name": "Built In Pune",
       "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
     },
     {
-      "title": "Technical Lead - VP",
-      "url": "https://builtinpune.in/job/technical-lead-vp/8661701",
+      "title": "Software Principal Engineer",
+      "url": "https://builtinpune.in/job/software-principal-engineer/8137004",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Senior Associate",
+      "url": "https://builtinpune.in/job/senior-associate/8673096",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Manager-Middle Office",
+      "url": "https://builtinpune.in/job/manager-middle-office/8673092",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "ESG Consultant (Carbon)",
+      "url": "https://builtinpune.in/job/esg-consultant-carbon/7541214",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Requirement Engineer, AVP",
+      "url": "https://builtinpune.in/job/requirement-engineer-avp/8095312",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Data Platform Engineer, AVP",
+      "url": "https://builtinpune.in/job/data-platform-engineer-avp/8583858",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Technology Management Lead, VP",
+      "url": "https://builtinpune.in/job/technology-management-lead-vp/8583855",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Senior Business Analyst",
+      "url": "https://builtinpune.in/job/senior-business-analyst/8527957",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Manager- Paid Media",
+      "url": "https://builtinpune.in/job/manager-paid-media/8537689",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Braze Lead",
+      "url": "https://builtinpune.in/job/braze-lead/8478727",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "PA2025041401 - Senior Associate - Qualified Plan",
+      "url": "https://builtinpune.in/job/pa2025041401-senior-associate-qualified-plan/8672965",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Associate II, Corporate Action - Nuveen Global Investment Operations",
+      "url": "https://builtinpune.in/job/associate-ii-corporate-action-nuveen-global-investment-operations/8672833",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Sr Analyst - Portfolio accounting, Nuveen Global Investment Operations",
+      "url": "https://builtinpune.in/job/sr-analyst-portfolio-accounting-nuveen-global-investment-operations/8672822",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "SAP Sr Analyst - Finance",
+      "url": "https://builtinpune.in/job/sap-sr-analyst-finance/8672784",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Analyst, FNA",
+      "url": "https://builtinpune.in/job/analyst-fna/8672499",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Process Governance Manager - FPNA",
+      "url": "https://builtinpune.in/job/process-governance-manager-fpna/8671201",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Lead Application & Product Architect- (.Net Core, Angular ,Azure)",
+      "url": "https://builtinpune.in/job/lead-application-product-architect-net-core-angular-azure/8239121",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Lead Engineer - DevOps",
+      "url": "https://builtinpune.in/job/lead-engineer-devops/8224600",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "VisionApp Dandelion - Product Software Engineer - Java",
+      "url": "https://builtinpune.in/job/visionapp-dandelion-product-software-engineer-java/8672371",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Functional Safety Engineer",
+      "url": "https://builtinpune.in/job/functional-safety-engineer/8672337",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Simulation Engineer",
+      "url": "https://builtinpune.in/job/simulation-engineer/8672336",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Process Excellence & Transformation Consultant",
+      "url": "https://builtinpune.in/job/process-excellence-transformation-consultant/8071256",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Senior Process Associate ITP",
+      "url": "https://builtinpune.in/job/senior-process-associate-itp/8535801",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Software Development Engineer in Test - 1 (C++)",
+      "url": "https://builtinpune.in/job/senior-scrum-master/8048666",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Senior Business Analyst",
+      "url": "https://builtinpune.in/job/senior-business-analyst/8422744",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Senior Analyst",
+      "url": "https://builtinpune.in/job/senior-analyst/8262311",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Consultant - Amnet",
+      "url": "https://builtinpune.in/job/consultant-amnet/8620655",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Staff software Engineer -  Snowflake/AI Automation Engineer",
+      "url": "https://builtinpune.in/job/staff-software-engineer-snowflake-ai-automation-engineer/8582723",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Senior Software Engineer",
+      "url": "https://builtinpune.in/job/senior-software-engineer/8597172",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Staff Software Engineer (Frontend)",
+      "url": "https://builtinpune.in/job/staff-software-engineer-frontend/8477386",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "IT Data Engineer",
+      "url": "https://builtinpune.in/job/it-data-engineer/8649278",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Senior Software Specialist",
+      "url": "https://builtinpune.in/job/senior-software-specialist/8224259",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Associate Product Analyst (Windchill Support/Admin)",
+      "url": "https://builtinpune.in/job/associate-product-analyst-windchill-support-admin/8477226",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "QA Technical Consultant",
+      "url": "https://builtinpune.in/job/qa-technical-consultant/8536481",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Senior Recruitment Business Partner",
+      "url": "https://builtinpune.in/job/senior-recruitment-business-partner/8671896",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Junior Engineer, Production Assembly",
+      "url": "https://builtinpune.in/job/junior-engineer-production-assembly/7855542",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Junior Engineer II, Rework",
+      "url": "https://builtinpune.in/job/junior-engineer-ii-rework/7793413",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "QA Automation Engineer",
+      "url": "https://builtinpune.in/job/qa-automation-engineer/8671840",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Senior Software Engineer",
+      "url": "https://builtinpune.in/job/senior-software-engineer/8664078",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Desktop Support Engineer",
+      "url": "https://builtinpune.in/job/desktop-support-engineer/8671782",
       "source_name": "Built In Pune",
       "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
     },
     {
       "title": "Technology Consultant",
       "url": "https://builtinpune.in/job/technology-consultant/8671075",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Senior Test Engineer - Investment Data Platform",
+      "url": "https://builtinpune.in/job/senior-test-engineer-investment-data-platform/8199084",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Senior SDET Engineer - Investment Data Platform",
+      "url": "https://builtinpune.in/job/senior-test-engineer-investment-data-platform/7532689",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Digital Technology (DT) Leader – India",
+      "url": "https://builtinpune.in/job/digital-technology-dt-leader-india/7973733",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Private Wealth Support Associate",
+      "url": "https://builtinpune.in/job/private-wealth-support-associate/8671563",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Workday Integration Developer",
+      "url": "https://builtinpune.in/job/workday-integration-developer/8347351",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Workday Configuration Analyst – Recruiting and Talent",
+      "url": "https://builtinpune.in/job/workday-configuration-analyst-recruiting-and-talent/8424548",
+      "source_name": "Built In Pune",
+      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
+    },
+    {
+      "title": "Senior Learning and Development Partner",
+      "url": "https://builtinpune.in/job/senior-learning-and-development-partner/8545630",
       "source_name": "Built In Pune",
       "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
     },
@@ -1395,24 +1677,6 @@
       "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
     },
     {
-      "title": "Senior SDET Engineer - Investment Data Platform",
-      "url": "https://builtinpune.in/job/senior-test-engineer-investment-data-platform/7532689",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Manager - CTO - Engineering Enablement",
-      "url": "https://builtinpune.in/job/manager-cto-engineering-enablement/8569725",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Manager Enterprise technology cloud engineer",
-      "url": "https://builtinpune.in/job/manager-enterprise-technology-cloud-engineer/8476468",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
       "title": "DGX Cloud Performance Engineer",
       "url": "https://builtinpune.in/job/dgx-cloud-performance-engineer/7471274",
       "source_name": "Built In Pune",
@@ -1425,224 +1689,8 @@
       "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
     },
     {
-      "title": "Senior Associate Level 1",
-      "url": "https://builtinpune.in/job/senior-associate-level-1/7540679",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Associate Level 3",
-      "url": "https://builtinpune.in/job/associate-level-3/7541806",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Senior Associate 2",
-      "url": "https://builtinpune.in/job/senior-associate-2/7542069",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Associate Product Analyst (Windchill Support/Admin)",
-      "url": "https://builtinpune.in/job/associate-product-analyst-windchill-support-admin/8477226",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "QA Technical Consultant",
-      "url": "https://builtinpune.in/job/qa-technical-consultant/8536481",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Technical Product Manager-Consultant",
-      "url": "https://builtinpune.in/job/technical-product-manager-consultant/8534250",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
       "title": "Territory Sales Manager - South India",
       "url": "https://builtinpune.in/job/regional-sales-manager-south/7338565",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Engagement Manager",
-      "url": "https://builtinpune.in/job/engagement-manager/8669011",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "MDM Developer Analyst - C360",
-      "url": "https://builtinpune.in/job/mdm-developer-analyst-c360/8040462",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Staff Software Development Engineer ( Fullstack )",
-      "url": "https://builtinpune.in/job/staff-software-development-engineer-fullstack/7509733",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Digital Solutions - Automation & Analytics - Developer (Location: India)",
-      "url": "https://builtinpune.in/job/digital-solutions-automation-analytics-developer-location-india/7418541",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Associate Director-Content and Communications",
-      "url": "https://builtinpune.in/job/associate-director-director-content-communications/7274161",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Analyst, Medtech",
-      "url": "https://builtinpune.in/job/analyst-medtech/8436446",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Lead Product Software Engineer",
-      "url": "https://builtinpune.in/job/lead-product-software-engineer/8490057",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Senior Software Test Automation Engineer (C# and Selenium mandatory)",
-      "url": "https://builtinpune.in/job/senior-software-test-automation-engineer-c-and-selenium-mandatory/8490060",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Senior Technology Product Manager",
-      "url": "https://builtinpune.in/job/senior-technology-product-manager/8339482",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Partner Support Specialist",
-      "url": "https://builtinpune.in/job/partner-support-specialist/8667660",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Technical Support Specialist",
-      "url": "https://builtinpune.in/job/technical-support-specialist/8661408",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Staff Software Engineer (Frontend)",
-      "url": "https://builtinpune.in/job/staff-software-engineer-frontend/8477386",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Senior Site Reliability Engineer (OpenShift/Kubernetes, AWS, Golang, Linux)",
-      "url": "https://builtinpune.in/job/senior-site-reliability-engineer-openshift-kubernetes-aws-golang-linux/7512437",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Trainee - Project Management",
-      "url": "https://builtinpune.in/job/trainee-project-management/8663590",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Manager - Data Science",
-      "url": "https://builtinpune.in/job/manager-data-science/8648348",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Senior Manager - Business Development",
-      "url": "https://builtinpune.in/job/senior-manager-business-development/8649931",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Associate Manager - Paid Media",
-      "url": "https://builtinpune.in/job/associate-manager-paid-media/8422738",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Associate Director - IT Audit",
-      "url": "https://builtinpune.in/job/associate-director-it-audit/8659445",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Cloud DevOps Engineer",
-      "url": "https://builtinpune.in/job/cloud-devops-engineer/8665131",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Custom Software Engineer",
-      "url": "https://builtinpune.in/job/custom-software-engineer/8474207",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "AI / ML Engineer",
-      "url": "https://builtinpune.in/job/ai-ml-engineer/8556372",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Custom Software Engineer",
-      "url": "https://builtinpune.in/job/custom-software-engineer/8662361",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Electrical Engineer",
-      "url": "https://builtinpune.in/job/sr-test-automation-engineer/8069434",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Finance Business Partner",
-      "url": "https://builtinpune.in/job/finance-business-partner/8273325",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Accountant - Rebate",
-      "url": "https://builtinpune.in/job/senior-accountant-rebate/7552356",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Senior Software Engineer",
-      "url": "https://builtinpune.in/job/senior-software-engineer/8664078",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "QA Automation Engineer",
-      "url": "https://builtinpune.in/job/qa-automation-engineer/8661663",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Software Principal Engineer",
-      "url": "https://builtinpune.in/job/software-principal-engineer/8137004",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Software Principal Engineer_DataPath",
-      "url": "https://builtinpune.in/job/software-principal-engineer/8057767",
-      "source_name": "Built In Pune",
-      "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
-    },
-    {
-      "title": "Software Senior Engineer-Java, Spring, DataProtection",
-      "url": "https://builtinpune.in/job/software-senior-engineer/8137000",
       "source_name": "Built In Pune",
       "source_id": "b57a68a9-a00d-47de-886f-ea15126fadc1"
     },
