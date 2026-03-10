@@ -1,14 +1,19 @@
 """
-scrape_all_jobs.py — ONE script, ALL sources, LOTS of jobs.
+scrape_all_jobs.py — ONE script, ALL sources, LOTS of jobs (tech + non-tech).
 
 Sources:
   1. Your shortlisted sources API  (Built In Bengaluru, Hyderabad, Mumbai, Pune, etc.)
-  2. RemoteOK API                  (free, no auth)
-  3. Remotive API                  (free, no auth, 10 categories)
-  4. Arbeitnow API                 (free, no auth, paginated)
-  5. GitHub: remoteintech/remote-jobs  (500+ company career links)
-  6. GitHub: awesome-remote-job        (curated job board links)
-  7. HackerNews "Who is Hiring"    (monthly startup jobs thread)
+  2. RemoteOK API                  (free, no auth — tech + non-tech categories)
+  3. Remotive API                  (free, no auth — tech + non-tech categories)
+  4. Arbeitnow API                 (free, no auth, paginated — all industries)
+  5. The Muse API                  (free, no auth — marketing, finance, HR, ops, etc.)
+  6. GitHub: remoteintech/remote-jobs  (500+ company career links)
+  7. GitHub: awesome-remote-job        (curated job board links)
+  8. HackerNews "Who is Hiring"    (monthly startup jobs thread)
+
+Non-tech categories covered:
+  Marketing, Sales, Finance, HR, Operations, Customer Support,
+  Writing, Design, Legal, Healthcare, Teaching, Management
 
 Output: app/data/all_jobs.json
 
@@ -112,9 +117,21 @@ JUNK_TITLES = {
     "be part of our talent community", "apply now", "apply",
 }
 
+# ── Remotive categories — tech + non-tech ────────────────────────────────────
 REMOTIVE_CATEGORIES = [
+    # Tech
     "software-dev", "devops-sysadmin", "data", "product",
     "design", "qa", "backend", "frontend", "fullstack", "mobile",
+    # Non-tech
+    "marketing",         # digital marketing, SEO, content
+    "sales",             # sales, business development
+    "customer-support",  # support, customer success
+    "finance-legal",     # finance, accounting, legal
+    "hr",                # human resources, recruiting, talent
+    "teaching",          # education, tutoring, instructional design
+    "writing",           # content writing, copywriting, editing
+    "management",        # project management, operations
+    "all-others",        # catch-all for unlisted categories
 ]
 
 
@@ -430,7 +447,7 @@ def run_remoteok(limit: int = 300) -> List[dict]:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def run_remotive(limit: int = 300) -> List[dict]:
-    section(f"SOURCE 3 — Remotive API ({len(REMOTIVE_CATEGORIES)} categories)")
+    section(f"SOURCE 3 — Remotive API ({len(REMOTIVE_CATEGORIES)} categories — tech + non-tech)")
     jobs: List[dict] = []
     seen: set = set()
 
@@ -541,8 +558,84 @@ def run_arbeitnow(limit: int = 200) -> List[dict]:
     return jobs[:limit]
 
 
+
 # ═══════════════════════════════════════════════════════════════════════════════
-#  SOURCE 5 — GitHub: remoteintech/remote-jobs
+#  SOURCE 5b — The Muse API (free, no auth — strong non-tech coverage)
+#  https://www.themuse.com/developers/api/v2
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Non-tech categories The Muse covers well
+MUSE_CATEGORIES = [
+    "Account Management", "Accounting & Finance", "Administration & Office",
+    "Advertising & Marketing", "Business & Strategy", "Customer Service",
+    "Education", "Editorial", "Environmental & Sustainability",
+    "Fashion & Beauty", "Government & Public Policy", "Graphic Design",
+    "Healthcare & Medicine", "HR & Recruiting", "Legal",
+    "Management & Leadership", "Media & Journalism", "Nonprofit & Philanthropy",
+    "Operations", "Project & Program Management", "Public Relations",
+    "Real Estate", "Retail", "Sales", "Social Media & Community",
+    "Supply Chain & Logistics", "Teaching", "Travel & Hospitality",
+    "UX & Interaction Design", "Writing",
+]
+
+def run_the_muse(limit: int = 300) -> List[dict]:
+    section("SOURCE 5b — The Muse API (non-tech categories)")
+    jobs: List[dict] = []
+    seen: set = set()
+
+    with httpx.Client(timeout=REQUEST_TIMEOUT, follow_redirects=True) as client:
+        for cat in MUSE_CATEGORIES:
+            if len(jobs) >= limit:
+                break
+            try:
+                resp = client.get(
+                    "https://www.themuse.com/api/public/jobs",
+                    params={"category": cat, "page": 1, "descending": "true"},
+                    headers=JSON_HEADERS,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+            except Exception as e:
+                print(f"  [{cat[:30]}] FAILED: {e}")
+                continue
+
+            raw   = data.get("results") or []
+            added = 0
+            for j in raw:
+                url   = j.get("refs", {}).get("landing_page") or ""
+                title = j.get("name") or ""
+                if not url or not title:
+                    continue
+                h = url_hash(url)
+                if h in seen:
+                    continue
+                seen.add(h)
+                # company
+                co  = j.get("company", {}).get("name") or ""
+                # location — list of {name: "..."}
+                locs = j.get("locations") or []
+                loc  = ", ".join(l.get("name", "") for l in locs[:2]) if locs else "Remote"
+                jobs.append(make_job(
+                    title       = title,
+                    url         = url,
+                    source_name = "The Muse",
+                    source_id   = "themuse-api",
+                    company     = co,
+                    location    = loc,
+                    tags        = [cat],
+                ))
+                added += 1
+
+            if added:
+                print(f"  [{cat[:35]:<35}] {added} jobs")
+            time.sleep(0.2)
+
+    print(f"  ✅ The Muse total: {len(jobs)} jobs")
+    return jobs[:limit]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  SOURCE 6 — GitHub: remoteintech/remote-jobs
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def run_github_remoteintech(limit: int = 200) -> List[dict]:
@@ -585,7 +678,7 @@ def run_github_remoteintech(limit: int = 200) -> List[dict]:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  SOURCE 6 — GitHub: awesome-remote-job
+#  SOURCE 7 — GitHub: awesome-remote-job
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def run_github_awesome_remote(limit: int = 100) -> List[dict]:
@@ -638,7 +731,7 @@ def run_github_awesome_remote(limit: int = 100) -> List[dict]:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  SOURCE 7 — HackerNews "Who is Hiring"
+#  SOURCE 8 — HackerNews "Who is Hiring"
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def run_hn_hiring(limit: int = 200) -> List[dict]:
@@ -734,6 +827,7 @@ def main() -> int:
     parser.add_argument("--no-remoteok",     action="store_true", help="Skip RemoteOK API")
     parser.add_argument("--no-remotive",     action="store_true", help="Skip Remotive API")
     parser.add_argument("--no-arbeitnow",    action="store_true", help="Skip Arbeitnow API")
+    parser.add_argument("--no-muse",         action="store_true", help="Skip The Muse API (non-tech jobs)")
     parser.add_argument("--no-github",       action="store_true", help="Skip GitHub sources")
     parser.add_argument("--no-hn",           action="store_true", help="Skip HackerNews")
 
@@ -747,6 +841,7 @@ def main() -> int:
         args.no_shortlisted = True
         args.no_github      = True
         args.no_hn          = True
+        args.no_muse        = True
 
     out_path = JOBLEAD_ROOT / args.out
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -768,6 +863,9 @@ def main() -> int:
 
     if not args.no_arbeitnow:
         all_raw.extend(run_arbeitnow(limit=200))
+
+    if not args.no_muse:
+        all_raw.extend(run_the_muse(limit=300))
 
     if not args.no_github:
         all_raw.extend(run_github_remoteintech(limit=200))
