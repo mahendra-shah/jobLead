@@ -1,0 +1,166 @@
+"""
+Phase 2 (pilot): crawl jobs from crawl-ready sources discovered in Phase 1.
+
+For now, this uses a generic HTML extractor (extract_jobs_from_html) on each
+source's crawl_strategy.entry_urls, and stores a JSON file with the schema:
+
+  title, company, location, url,
+  source_domain, source_discovered_date,
+  job_posted_at_raw, crawled_at_utc
+
+This is a pilot crawler: start with a small number of sources (e.g. 5–10)
+before scaling.
+"""
+import argparse
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from urllib.parse import urlparse
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+JOBLEAD_ROOT = SCRIPT_DIR.parent
+if str(JOBLEAD_ROOT) not in sys.path:
+    sys.path.insert(0, str(JOBLEAD_ROOT))
+
+import httpx
+from bs4 import BeautifulSoup  # not heavily used here but available for future refinements
+
+from scripts.discovery.domain_rate_limiter import rate_limit_before_request
+from scripts.discovery.proxy_pool import get_next_proxy
+from scripts.scrape_all_jobs import (
+    extract_jobs_from_html,
+    REQUEST_TIMEOUT,
+    BROWSER_HEADERS,
+)
+
+
+def load_crawl_ready_sources(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return data.get("sources") or []
+
+
+def iso_now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Crawl jobs from crawl-ready sources (pilot)")
+    parser.add_argument(
+        "--sources-file",
+        type=Path,
+        default=Path("app/data/crawl_ready_sources.json"),
+        help="Input crawl-ready sources JSON",
+    )
+    parser.add_argument(
+        "--max-sources",
+        type=int,
+        default=10,
+        help="Max number of sources to crawl (pilot)",
+    )
+    parser.add_argument(
+        "--max-jobs-per-source",
+        type=int,
+        default=100,
+        help="Soft cap on jobs per source",
+    )
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="Output jobs JSON (default: app/data/jobs/jobs_run_<timestamp>.json)",
+    )
+    args = parser.parse_args()
+
+    sources_file = args.sources_file
+    if not sources_file.is_absolute():
+        sources_file = JOBLEAD_ROOT / sources_file
+    sources = load_crawl_ready_sources(sources_file)
+    if not sources:
+        print(f"No sources in {sources_file}")
+        return 0
+
+    to_crawl = sources[: args.max_sources]
+    print(f"Crawling {len(to_crawl)} sources (of {len(sources)} total crawl-ready).")
+
+    run_ts = iso_now().replace(":", "").replace("-", "")
+    default_out = Path(f"app/data/jobs/jobs_run_{run_ts}.json")
+    out_path = args.out if args.out is not None else default_out
+    if not out_path.is_absolute():
+        out_path = JOBLEAD_ROOT / out_path
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    proxies = get_next_proxy()
+    client = httpx.Client(timeout=REQUEST_TIMEOUT, follow_redirects=True, headers=BROWSER_HEADERS, proxies=proxies)
+
+    jobs: list[dict] = []
+    seen_urls: set[str] = set()
+
+    try:
+        for idx, source in enumerate(to_crawl, 1):
+            m = source.get("metadata") or {}
+            strategy = m.get("crawl_strategy") or {}
+            entry_urls = strategy.get("entry_urls") or [source.get("url")]
+            source_domain = source.get("domain") or (urlparse(source.get("url") or "").netloc or "")
+            source_discovered_date = m.get("discovered_date")
+
+            print(f"[{idx}/{len(to_crawl)}] {source_domain} ... ", end="", flush=True)
+            source_jobs_before = len(jobs)
+
+            for entry_url in entry_urls:
+                if len(jobs) - source_jobs_before >= args.max_jobs_per_source:
+                    break
+                if not entry_url:
+                    continue
+
+                try:
+                    rate_limit_before_request(entry_url)
+                    resp = client.get(entry_url)
+                    resp.raise_for_status()
+                except Exception as e:
+                    print(f"\n  entry {entry_url} FAILED: {e}")
+                    continue
+
+                raw_jobs = extract_jobs_from_html(resp.text, entry_url, source_name=source_domain, source_id=str(source.get("id")))
+                crawled_at = iso_now()
+                for j in raw_jobs:
+                    url = j.get("url")
+                    if not url or url in seen_urls:
+                        continue
+                    seen_urls.add(url)
+                    job = {
+                        "title": j.get("title"),
+                        "company": j.get("company"),
+                        "location": j.get("location"),
+                        "url": url,
+                        "source_domain": source_domain,
+                        "source_discovered_date": source_discovered_date,
+                        "job_posted_at_raw": None,
+                        "crawled_at_utc": crawled_at,
+                    }
+                    jobs.append(job)
+                    if len(jobs) - source_jobs_before >= args.max_jobs_per_source:
+                        break
+
+            print(f"{len(jobs) - source_jobs_before} jobs")
+    finally:
+        client.close()
+
+    payload = {
+        "meta": {
+            "generated_at_utc": iso_now(),
+            "sources_used": len(to_crawl),
+            "total_jobs": len(jobs),
+        },
+        "jobs": jobs,
+    }
+    out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(f"Saved {len(jobs)} jobs -> {out_path}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+
