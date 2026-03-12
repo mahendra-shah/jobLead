@@ -97,7 +97,8 @@ class Settings(BaseSettings):
     APP_URL: str = "https://placement-dashboard.com"  # For OpenRouter referer
     
     # Google Sheets
-    SHEET_ID: str = ""  # Google Sheets ID for daily job exports
+    SHEET_ID: str = ""  # Google Sheets ID for Telegram/daily job exports
+    JOB_BOARD_SHEET_ID: str = ""  # Google Sheets ID for job-board (Phase 1/2) exports
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
 
