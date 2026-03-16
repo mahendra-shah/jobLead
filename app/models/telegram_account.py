@@ -2,7 +2,8 @@
 Telegram Account Model
 Stores Telegram account credentials for rotation
 """
-from sqlalchemy import Column, String, Integer, Boolean, DateTime, Text, Enum
+from sqlalchemy import Column, String, Integer, Boolean, DateTime, Text
+from sqlalchemy.types import TypeDecorator
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from uuid import uuid4
@@ -13,9 +14,42 @@ from app.db.base import Base
 
 class HealthStatus(str, enum.Enum):
     """Account health status enum."""
-    HEALTHY = "HEALTHY"
-    DEGRADED = "DEGRADED"
-    BANNED = "BANNED"
+    HEALTHY = "healthy"
+    DEGRADED = "degraded"
+    BANNED = "banned"
+
+
+class HealthStatusType(TypeDecorator):
+    """Case-tolerant storage/parser for Telegram account health status."""
+
+    impl = String(16)
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+
+        if isinstance(value, HealthStatus):
+            return value.value
+
+        normalized = str(value).strip().lower()
+        if normalized in {HealthStatus.HEALTHY.value, HealthStatus.DEGRADED.value, HealthStatus.BANNED.value}:
+            return normalized
+
+        raise ValueError(f"Invalid health status: {value}")
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+
+        normalized = str(value).strip().lower()
+        if normalized == HealthStatus.HEALTHY.value:
+            return HealthStatus.HEALTHY
+        if normalized == HealthStatus.DEGRADED.value:
+            return HealthStatus.DEGRADED
+        if normalized == HealthStatus.BANNED.value:
+            return HealthStatus.BANNED
+        return HealthStatus.DEGRADED
 
 
 class TelegramAccount(Base):
@@ -32,7 +66,7 @@ class TelegramAccount(Base):
     is_banned = Column(Boolean, default=False, nullable=False)
     
     # Health Tracking
-    health_status = Column(Enum(HealthStatus, native_enum=False, values_callable=lambda x: [e.value for e in x]), default=HealthStatus.HEALTHY, nullable=False)
+    health_status = Column(HealthStatusType(), default=HealthStatus.HEALTHY, nullable=False)
     last_successful_fetch_at = Column(DateTime(timezone=True), nullable=True)
     consecutive_errors = Column(Integer, default=0, nullable=False)
     last_error_message = Column(Text, nullable=True)
