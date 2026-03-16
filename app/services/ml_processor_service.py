@@ -345,6 +345,38 @@ class MLProcessorService:
         
         # 2. If it's a job, extract details and store
         if classification.is_job:
+            # Message-level deduplication guard:
+            # If this Telegram message_id was already processed earlier,
+            # skip the whole message. This still allows multiple extracted jobs
+            # from the same *current* message in this run.
+            _msg_id = str(message.get("message_id", ""))
+            if _msg_id:
+                existing_by_msg = db.execute(
+                    select(Job.id).where(Job.source_message_id == _msg_id)
+                ).first()
+                if existing_by_msg:
+                    logger.info(
+                        f"   ⏭️  Duplicate message_id={_msg_id} already stored, skipping message"
+                    )
+                    return result
+
+            # Exact message text deduplication guard:
+            # Normalize message text, hash it, and check if exact same text already exists.
+            # This catches cases where the same message is posted with different message_id.
+            if text and len(text.strip()) > 20:  # Only check meaningful messages
+                # Use deduplication service to compute hash (matches how content_hash is stored)
+                text_hash = deduplication_service.compute_content_hash(text)
+                
+                # Check if this hash already exists
+                existing_by_hash = db.execute(
+                    select(Job.id).where(Job.content_hash == text_hash)
+                ).first()
+                
+                if existing_by_hash:
+                    logger.info(
+                        f"   ⏭️  Duplicate exact message text (hash={text_hash[:8]}...) already stored, skipping message"
+                    )
+                    return result
             
             # Check confidence threshold
             if classification.confidence < min_confidence:
@@ -408,22 +440,7 @@ class MLProcessorService:
                         continue
 
                     # ── Deduplication guard ──────────────────────────────────────────
-                    # 1) Hard guard on message_id:
-                    #    If we've already stored any job for this Telegram message_id,
-                    #    skip creating another one (covers reprocessing and resets).
-                    _msg_id = str(message.get("message_id", ""))
-                    if _msg_id:
-                        existing_by_msg = db.execute(
-                            select(Job.id).where(Job.source_message_id == _msg_id)
-                        ).first()
-                        if existing_by_msg:
-                            logger.info(
-                                f"      ⏭️  Duplicate — job already exists for "
-                                f"message_id={_msg_id}, skipping"
-                            )
-                            continue
-
-                    # 2) Heuristic guard on (title, company, apply_link):
+                    # Heuristic guard on (title, company, apply_link):
                     #    Handles cases where effectively the same job is posted again
                     #    with a different message_id but identical core fields.
                     # Normalise title and company a bit for dedup:
