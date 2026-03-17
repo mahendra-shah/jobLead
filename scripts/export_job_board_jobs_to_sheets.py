@@ -12,11 +12,17 @@ same service-account credentials.json as the Telegram exporter.
 Usage:
   python scripts/export_job_board_jobs_to_sheets.py
   python scripts/export_job_board_jobs_to_sheets.py --date 2026-03-16
+<<<<<<< HEAD
   python scripts/export_job_board_jobs_to_sheets.py --append-jobs   # same-day batches: add rows, do not wipe tab
 """
 
 import argparse
 import os
+=======
+"""
+
+import argparse
+>>>>>>> 9149248 (crowler and google sheet enhancement)
 import sys
 from pathlib import Path
 from sqlalchemy import create_engine
@@ -40,6 +46,7 @@ def main() -> int:
         default=None,
         help="IST date string for tab names (YYYY-MM-DD). Defaults to today's IST date.",
     )
+<<<<<<< HEAD
     parser.add_argument(
         "--append-jobs",
         action="store_true",
@@ -62,6 +69,8 @@ def main() -> int:
         default="job_board",
         help="When --from-postgres: filter jobs.source by this value (default: job_board).",
     )
+=======
+>>>>>>> 9149248 (crowler and google sheet enhancement)
     args = parser.parse_args()
 
     if args.date:

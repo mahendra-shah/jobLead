@@ -13,7 +13,10 @@ before scaling.
 """
 import argparse
 import json
+<<<<<<< HEAD
 import random
+=======
+>>>>>>> 9149248 (crowler and google sheet enhancement)
 import re
 import sys
 import time
@@ -155,6 +158,7 @@ def extract_job_details_from_page(html: str, page_url: str) -> dict:
     return details
 
 
+<<<<<<< HEAD
 # Full set of keys we want in every job JSON (matches Google Sheet columns).
 JOB_KEYS = [
     "title", "company", "location", "url",
@@ -599,6 +603,8 @@ def _filter_jobs_for_target_profile(jobs: list[dict], *, focus_digital_marketing
     return filtered
 
 
+=======
+>>>>>>> 9149248 (crowler and google sheet enhancement)
 def main() -> int:
     parser = argparse.ArgumentParser(description="Crawl jobs from crawl-ready sources (pilot)")
     parser.add_argument(
@@ -904,7 +910,10 @@ def main() -> int:
                     # Fetch job detail page for richer fields (best-effort, but skip on error)
                     extra: dict = {}
                     try:
+<<<<<<< HEAD
                         _sleep_source_delay(args.source_request_delay, args.source_request_jitter)
+=======
+>>>>>>> 9149248 (crowler and google sheet enhancement)
                         rate_limit_before_request(url)
                         detail_resp = client.get(url)
                         detail_resp.raise_for_status()
@@ -922,8 +931,11 @@ def main() -> int:
                         "crawled_at_utc": crawled_at,
                     }
                     job.update(extra)
+<<<<<<< HEAD
                     job["apply_url"] = _to_absolute_url(job.get("apply_url") or "", url) or url
                     job = _normalize_job(job)
+=======
+>>>>>>> 9149248 (crowler and google sheet enhancement)
                     jobs.append(job)
                     if len(jobs) - source_jobs_before >= source_job_cap:
                         break

@@ -18,13 +18,9 @@ from urllib.parse import urlparse
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from sqlalchemy.orm import Session  # kept for future DB-based exports
-from sqlalchemy import and_, select
-
-import pytz
 
 from app.config import settings
-from app.models.job import Job
-from app.utils.timezone import IST, ist_today_utc_window
+from app.utils.timezone import ist_today_utc_window
 
 logger = logging.getLogger(__name__)
 
@@ -52,30 +48,6 @@ class JobBoardSheetsService:
         )
         service = build("sheets", "v4", credentials=self.credentials)
         self.sheets = service.spreadsheets()
-
-    # ── Column width presets (pixels): clear, aligned, readable ──────────────────
-    SOURCE_COLUMN_WIDTHS = [50, 180, 140, 90, 80, 80, 70, 60, 100, 100, 90, 50, 200, 60, 90]
-    JOB_COLUMN_WIDTHS = [
-        130,  # Segment
-        150,  # Category
-        220,  # Job Title
-        180,  # Company
-        110,  # Location Type
-        200,  # Location Detail
-        120,  # Country
-        120,  # Work Type
-        130,  # Seniority
-        130,  # Salary
-        220,  # Skills
-        160,  # Degree
-        420,  # Job Description (full)
-        220,  # Apply URL
-        140,  # Source Domain
-        140,  # Source Discovered Date
-        130,  # Job Posted At (raw)
-        150,  # Date & time (India)
-        130,  # Crawled At (UTC)
-    ]
 
     # ── Internal helpers ──────────────────────────────────────────────────────
 
@@ -175,44 +147,13 @@ class JobBoardSheetsService:
                         "properties": {"pixelSize": 180},
                         "fields": "pixelSize",
                     }
-                })
-            self.sheets.batchUpdate(spreadsheetId=self.sheet_id, body={"requests": requests}).execute()
-        return sheet_id
+                },
+            ]
 
-    def _format_data_cells(
-        self,
-        tab_name: str,
-        sheet_id: int,
-        num_cols: int,
-        num_rows: int,
-        *,
-        data_start_row_0based: int = 1,
-    ) -> None:
-        """Apply text wrap and left alignment to data area for readability."""
-        if num_rows == 0:
-            return
-        requests = [
-            {
-                "repeatCell": {
-                    "range": {
-                        "sheetId": sheet_id,
-                        "startRowIndex": data_start_row_0based,
-                        "endRowIndex": data_start_row_0based + num_rows,
-                        "startColumnIndex": 0,
-                        "endColumnIndex": num_cols,
-                    },
-                    "cell": {
-                        "userEnteredFormat": {
-                            "wrapStrategy": "WRAP",
-                            "horizontalAlignment": "LEFT",
-                            "verticalAlignment": "TOP",
-                        }
-                    },
-                    "fields": "userEnteredFormat(wrapStrategy,horizontalAlignment,verticalAlignment)",
-                }
-            }
-        ]
-        self.sheets.batchUpdate(spreadsheetId=self.sheet_id, body={"requests": requests}).execute()
+            self.sheets.batchUpdate(
+                spreadsheetId=self.sheet_id,
+                body={"requests": requests},
+            ).execute()
 
     def _clear_data_rows(self, tab_name: str, num_cols: int = 26) -> None:
         """Clear all rows except the header (row 1)."""
@@ -314,86 +255,6 @@ class JobBoardSheetsService:
 
         return segment, category
 
-    @staticmethod
-    def _sheet_description_cell(text: Optional[str]) -> str:
-        t = (text or "").strip()
-        if len(t) <= SHEET_DESCRIPTION_MAX_CHARS:
-            return t
-        return t[: SHEET_DESCRIPTION_MAX_CHARS - 40] + "\n...[truncated: Sheets cell limit]"
-
-    @staticmethod
-    def _pretty_location_type(val: Optional[str]) -> str:
-        v = (val or "").strip().lower()
-        if not v:
-            return ""
-        if v in ("on-site", "on_site"):
-            v = "onsite"
-        return v[:1].upper() + v[1:] if len(v) > 1 else v.upper()
-
-    @staticmethod
-    def _crawled_at_ist_simple(utc_str: str) -> str:
-        """Format crawled_at_utc (ISO) as India date and time, e.g. '16 March, 11:20 am'."""
-        if not utc_str or not isinstance(utc_str, str):
-            return ""
-        s = utc_str.strip().replace("Z", "+00:00")
-        try:
-            dt = datetime.fromisoformat(s)
-            if dt.tzinfo is None:
-                dt = pytz.utc.localize(dt)
-            ist_dt = dt.astimezone(IST)
-            # e.g. "16 March, 11:20 am"
-            out = ist_dt.strftime("%d %B, %I:%M %p")
-            return out.replace("AM", "am").replace("PM", "pm")
-        except Exception:
-            return utc_str
-
-    @staticmethod
-    def _derive_job_metadata(job: dict) -> Tuple[str, str, str, str, str, str, str, str]:
-        """Derive location type, location detail, country, work type, seniority, salary, skills, degree."""
-        title = (job.get("title") or "").lower()
-        location = (job.get("location") or "").strip()
-        desc = (job.get("description") or "").lower()
-
-        loc_combined = " ".join([location, desc])
-        if "remote" in loc_combined:
-            location_type = "Remote"
-        elif "hybrid" in loc_combined:
-            location_type = "Hybrid"
-        elif location:
-            location_type = "Onsite"
-        else:
-            location_type = ""
-
-        location_detail = location
-        country = ""
-        for c in ["india", "usa", "united states", "uk", "germany", "canada", "australia"]:
-            if c in loc_combined:
-                country = c.title()
-                break
-
-        work_type = ""
-        if any(w in title for w in ["intern", "internship"]):
-            work_type = "Internship"
-        elif "part-time" in desc or "part time" in desc:
-            work_type = "Part-time"
-        elif "contract" in desc:
-            work_type = "Contract"
-        elif "full-time" in desc or "full time" in desc:
-            work_type = "Full-time"
-
-        seniority = ""
-        if any(w in title for w in ["intern", "fresher", "graduate", "entry level", "entry-level"]):
-            seniority = "Fresher / Entry"
-        elif "junior" in title:
-            seniority = "Junior"
-        elif "senior" in title or "lead" in title:
-            seniority = "Senior"
-
-        salary = job.get("salary") or job.get("salary_text") or ""
-        skills = ", ".join(job.get("skills") or []) if isinstance(job.get("skills"), list) else (job.get("skills") or "")
-        degree = job.get("degree") or job.get("education") or ""
-
-        return location_type, location_detail, country, work_type, seniority, salary, skills, degree
     # ── Public API: JSON exports ──────────────────────────────────────────────
 
     def export_sources_from_json(
@@ -519,60 +380,22 @@ class JobBoardSheetsService:
             "Category",
             "Job Title",
             "Company",
-            "Location Type",
-            "Location Detail",
-            "Country",
-            "Work Type",
-            "Seniority Level",
-            "Salary",
-            "Skills",
-            "Degree / Education",
-            "Job Description (full)",
-            "Apply URL",
+            "Location",
+            "Job URL",
             "Source Domain",
             "Source Discovered Date",
             "Job Posted At (raw)",
             "Date & time (India)",
             "Crawled At (UTC)",
         ]
-        sheet_id = self._ensure_tab_with_headers(tab_name, headers, self.JOB_COLUMN_WIDTHS)
-        num_cols = len(headers)
-        if not append:
-            self._clear_data_rows(tab_name, num_cols=num_cols)
-            start_row_1based = 2
-        else:
-            start_row_1based = self._next_append_row_1based(tab_name)
-            if start_row_1based < 2:
-                start_row_1based = 2
+        self._ensure_tab_with_headers(tab_name, headers)
+        self._clear_data_rows(tab_name)
 
         rows: List[List[str]] = []
         for job in jobs:
             title = job.get("title") or ""
             source_domain = job.get("source_domain") or ""
-            # Prefer fields from JSON (crawler now fills them); fall back to derived
-            segment = job.get("segment") or ""
-            category = job.get("category") or ""
-            if not segment or not category:
-                s, c = self._classify_job(title, source_domain)
-                segment = segment or s
-                category = category or c
-            lt, ld, co, wt, sr, sal_der, sk_der, deg_der = self._derive_job_metadata(job)
-            location_type = job.get("location_type") or lt
-            location_detail = job.get("location_detail") or job.get("location") or ld
-            country = job.get("country") or co
-            work_type = job.get("work_type") or wt
-            seniority = job.get("seniority") or sr
-            salary = job.get("salary") or sal_der
-            degree = job.get("degree") or deg_der
-            skills_val = job.get("skills")
-            if isinstance(skills_val, list):
-                skills = ", ".join(str(s) for s in skills_val) if skills_val else sk_der
-            else:
-                skills = (skills_val or sk_der) if isinstance(skills_val, str) else sk_der
-            description = self._sheet_description_cell(
-                job.get("description") or job.get("raw_text") or ""
-            )
-            apply_url = job.get("apply_url") or job.get("url") or ""
+            segment, category = self._classify_job(title, source_domain)
 
             rows.append(
                 [
@@ -844,15 +667,8 @@ class JobBoardSheetsService:
             valueInputOption="RAW",
             body={"values": rows},
         ).execute()
-        if sheet_id is not None:
-            self._format_data_cells(
-                tab_name,
-                sheet_id,
-                len(headers),
-                len(rows),
-                data_start_row_0based=start_row_1based - 1,
-            )
 
+        logger.info("Exported %d jobs to '%s'", len(rows), tab_name)
         return {
             "status": "success",
             "date": date_str,
