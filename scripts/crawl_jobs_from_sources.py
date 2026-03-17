@@ -13,6 +13,7 @@ before scaling.
 """
 import argparse
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -44,6 +45,75 @@ def load_crawl_ready_sources(path: Path) -> list[dict]:
 
 def iso_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def extract_job_details_from_page(html: str, page_url: str) -> dict:
+    """
+    Best-effort extraction of richer job fields from a job detail page.
+    Keeps things generic so it works across many boards.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    details: dict = {}
+
+    # 1) Description: concatenate paragraphs and list items, trimmed
+    text_blocks: list[str] = []
+    for node in soup.select("section, div, article"):
+        cls = " ".join(node.get("class", [])).lower()
+        if any(k in cls for k in ["description", "job-body", "job_body", "content", "jd"]):
+            text_blocks.append(node.get_text(" ", strip=True))
+    if not text_blocks:
+        # fallback: all <p> and <li>
+        for node in soup.find_all(["p", "li"]):
+            txt = node.get_text(" ", strip=True)
+            if len(txt) > 40:
+                text_blocks.append(txt)
+    if text_blocks:
+        desc = " ".join(text_blocks)
+        details["description"] = desc[:2000]
+
+    # 2) Salary: look for common patterns
+    full_text = (details.get("description") or soup.get_text(" ", strip=True) or "")[:5000]
+    salary_match = re.search(
+        r"(₹\s?[\d.,]+(?:\s*-\s*₹?\s*[\d.,]+)?\s*(?:lpa|per month|per annum)?|"
+        r"\$[\d.,]+(?:\s*-\s*\$?[\d.,]+)?|"
+        r"\b\d+\s*(?:k|K)\s*(?:-\s*\d+\s*(?:k|K))?\b)",
+        full_text,
+        re.IGNORECASE,
+    )
+    if salary_match:
+        details["salary"] = salary_match.group(0).strip()
+
+    # 3) Skills: bullets under headings like Skills / Requirements
+    skills: list[str] = []
+    for heading in soup.find_all(["h2", "h3", "h4"]):
+        htxt = heading.get_text(" ", strip=True).lower()
+        if any(k in htxt for k in ["skill", "requirement", "qualification", "responsibil"]):
+            ul = heading.find_next(["ul", "ol"])
+            if ul:
+                for li in ul.find_all("li"):
+                    txt = li.get_text(" ", strip=True)
+                    if 2 < len(txt) < 120:
+                        skills.append(txt)
+    if skills:
+        details["skills"] = skills[:25]
+
+    # 4) Degree / education
+    degree_match = re.search(
+        r"(b\.?tech|bachelor['’]s?|bsc|b\.sc|mca|m\.tech|master['’]s?|b\.e\.|be in [^,.;]+)",
+        full_text,
+        re.IGNORECASE,
+    )
+    if degree_match:
+        details["degree"] = degree_match.group(0).strip()
+
+    # 5) Apply URL (if there is a clear apply button/link)
+    for a in soup.find_all("a", href=True):
+        txt = a.get_text(" ", strip=True).lower()
+        if any(k in txt for k in ["apply", "submit application", "apply now"]):
+            details["apply_url"] = a["href"]
+            break
+
+    return details
 
 
 def main() -> int:
@@ -123,13 +193,27 @@ def main() -> int:
                     print(f"\n  entry {entry_url} FAILED: {e}")
                     continue
 
-                raw_jobs = extract_jobs_from_html(resp.text, entry_url, source_name=source_domain, source_id=str(source.get("id")))
+                raw_jobs = extract_jobs_from_html(
+                    resp.text,
+                    entry_url,
+                    source_name=source_domain,
+                    source_id=str(source.get("id")),
+                )
                 crawled_at = iso_now()
                 for j in raw_jobs:
                     url = j.get("url")
                     if not url or url in seen_urls:
                         continue
                     seen_urls.add(url)
+                    # Fetch job detail page for richer fields (best-effort, but skip on error)
+                    extra: dict = {}
+                    try:
+                        rate_limit_before_request(url)
+                        detail_resp = client.get(url)
+                        detail_resp.raise_for_status()
+                        extra = extract_job_details_from_page(detail_resp.text, url)
+                    except Exception:
+                        extra = {}
                     job = {
                         "title": j.get("title"),
                         "company": j.get("company"),
@@ -140,6 +224,7 @@ def main() -> int:
                         "job_posted_at_raw": None,
                         "crawled_at_utc": crawled_at,
                     }
+                    job.update(extra)
                     jobs.append(job)
                     if len(jobs) - source_jobs_before >= args.max_jobs_per_source:
                         break

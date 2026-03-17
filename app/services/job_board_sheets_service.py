@@ -18,8 +18,10 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from sqlalchemy.orm import Session  # kept for future DB-based exports
 
+import pytz
+
 from app.config import settings
-from app.utils.timezone import ist_today_utc_window
+from app.utils.timezone import IST, ist_today_utc_window
 
 logger = logging.getLogger(__name__)
 
@@ -45,10 +47,36 @@ class JobBoardSheetsService:
         service = build("sheets", "v4", credentials=self.credentials)
         self.sheets = service.spreadsheets()
 
+    # ── Column width presets (pixels): clear, aligned, readable ──────────────────
+    SOURCE_COLUMN_WIDTHS = [50, 180, 140, 90, 80, 80, 70, 60, 100, 100, 90, 50, 200, 60, 90]
+    JOB_COLUMN_WIDTHS = [
+        130,  # Segment
+        150,  # Category
+        220,  # Job Title
+        180,  # Company
+        110,  # Location Type
+        200,  # Location Detail
+        120,  # Country
+        120,  # Work Type
+        130,  # Seniority
+        130,  # Salary
+        220,  # Skills
+        160,  # Degree
+        260,  # Job Description (short)
+        220,  # Apply URL
+        140,  # Source Domain
+        140,  # Source Discovered Date
+        130,  # Job Posted At (raw)
+        150,  # Date & time (India)
+        130,  # Crawled At (UTC)
+    ]
+
     # ── Internal helpers ──────────────────────────────────────────────────────
 
-    def _ensure_tab_with_headers(self, tab_name: str, headers: List[str]) -> None:
-        """Create (or reuse) a tab and ensure header row + basic formatting."""
+    def _ensure_tab_with_headers(
+        self, tab_name: str, headers: List[str], column_widths: Optional[List[int]] = None
+    ) -> Optional[int]:
+        """Create (or reuse) a tab, header row, and formatting. Returns sheet_id for data formatting."""
         sheet_metadata = self.sheets.get(spreadsheetId=self.sheet_id).execute()
         sheets = sheet_metadata.get("sheets", [])
         existing_sheets = {s["properties"]["title"] for s in sheets}
@@ -92,26 +120,15 @@ class JobBoardSheetsService:
         ).execute()
 
         if sheet_id is not None:
-            # Basic formatting: bold header, background color, frozen first row,
-            # and uniform column width for readability.
+            widths = column_widths if column_widths and len(column_widths) >= len(headers) else None
             requests = [
                 {
                     "repeatCell": {
-                        "range": {
-                            "sheetId": sheet_id,
-                            "startRowIndex": 0,
-                            "endRowIndex": 1,
-                        },
+                        "range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1},
                         "cell": {
                             "userEnteredFormat": {
-                                "backgroundColor": {
-                                    "red": 0.9,
-                                    "green": 0.9,
-                                    "blue": 0.9,
-                                },
-                                "textFormat": {
-                                    "bold": True,
-                                },
+                                "backgroundColor": {"red": 0.85, "green": 0.88, "blue": 0.92},
+                                "textFormat": {"bold": True},
                             }
                         },
                         "fields": "userEnteredFormat(backgroundColor,textFormat)",
@@ -119,14 +136,29 @@ class JobBoardSheetsService:
                 },
                 {
                     "updateSheetProperties": {
-                        "properties": {
-                            "sheetId": sheet_id,
-                            "gridProperties": {"frozenRowCount": 1},
-                        },
+                        "properties": {"sheetId": sheet_id, "gridProperties": {"frozenRowCount": 1}},
                         "fields": "gridProperties.frozenRowCount",
                     }
                 },
-                {
+            ]
+            if widths:
+                for i, w in enumerate(widths):
+                    if i >= len(headers):
+                        break
+                    requests.append({
+                        "updateDimensionProperties": {
+                            "range": {
+                                "sheetId": sheet_id,
+                                "dimension": "COLUMNS",
+                                "startIndex": i,
+                                "endIndex": i + 1,
+                            },
+                            "properties": {"pixelSize": w},
+                            "fields": "pixelSize",
+                        }
+                    })
+            else:
+                requests.append({
                     "updateDimensionProperties": {
                         "range": {
                             "sheetId": sheet_id,
@@ -134,18 +166,41 @@ class JobBoardSheetsService:
                             "startIndex": 0,
                             "endIndex": len(headers),
                         },
-                        "properties": {
-                            "pixelSize": 220,
-                        },
+                        "properties": {"pixelSize": 180},
                         "fields": "pixelSize",
                     }
-                },
-            ]
+                })
+            self.sheets.batchUpdate(spreadsheetId=self.sheet_id, body={"requests": requests}).execute()
+        return sheet_id
 
-            self.sheets.batchUpdate(
-                spreadsheetId=self.sheet_id,
-                body={"requests": requests},
-            ).execute()
+    def _format_data_cells(
+        self, tab_name: str, sheet_id: int, num_cols: int, num_rows: int
+    ) -> None:
+        """Apply text wrap and left alignment to data area for readability."""
+        if num_rows == 0:
+            return
+        requests = [
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "startRowIndex": 1,
+                        "endRowIndex": 1 + num_rows,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": num_cols,
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "wrapStrategy": "WRAP",
+                            "horizontalAlignment": "LEFT",
+                            "verticalAlignment": "TOP",
+                        }
+                    },
+                    "fields": "userEnteredFormat(wrapStrategy,horizontalAlignment,verticalAlignment)",
+                }
+            }
+        ]
+        self.sheets.batchUpdate(spreadsheetId=self.sheet_id, body={"requests": requests}).execute()
 
     def _clear_data_rows(self, tab_name: str) -> None:
         """Clear all rows except the header."""
@@ -236,15 +291,80 @@ class JobBoardSheetsService:
 
         return segment, category
 
+    @staticmethod
+    def _crawled_at_ist_simple(utc_str: str) -> str:
+        """Format crawled_at_utc (ISO) as India date and time, e.g. '16 March, 11:20 am'."""
+        if not utc_str or not isinstance(utc_str, str):
+            return ""
+        s = utc_str.strip().replace("Z", "+00:00")
+        try:
+            dt = datetime.fromisoformat(s)
+            if dt.tzinfo is None:
+                dt = pytz.utc.localize(dt)
+            ist_dt = dt.astimezone(IST)
+            # e.g. "16 March, 11:20 am"
+            out = ist_dt.strftime("%d %B, %I:%M %p")
+            return out.replace("AM", "am").replace("PM", "pm")
+        except Exception:
+            return utc_str
+
+    @staticmethod
+    def _derive_job_metadata(job: dict) -> Tuple[str, str, str, str, str, str, str, str]:
+        """Derive location type, location detail, country, work type, seniority, salary, skills, degree."""
+        title = (job.get("title") or "").lower()
+        location = (job.get("location") or "").strip()
+        desc = (job.get("description") or "").lower()
+
+        loc_combined = " ".join([location, desc])
+        if "remote" in loc_combined:
+            location_type = "Remote"
+        elif "hybrid" in loc_combined:
+            location_type = "Hybrid"
+        elif location:
+            location_type = "Onsite"
+        else:
+            location_type = ""
+
+        location_detail = location
+        country = ""
+        for c in ["india", "usa", "united states", "uk", "germany", "canada", "australia"]:
+            if c in loc_combined:
+                country = c.title()
+                break
+
+        work_type = ""
+        if any(w in title for w in ["intern", "internship"]):
+            work_type = "Internship"
+        elif "part-time" in desc or "part time" in desc:
+            work_type = "Part-time"
+        elif "contract" in desc:
+            work_type = "Contract"
+        elif "full-time" in desc or "full time" in desc:
+            work_type = "Full-time"
+
+        seniority = ""
+        if any(w in title for w in ["intern", "fresher", "graduate", "entry level", "entry-level"]):
+            seniority = "Fresher / Entry"
+        elif "junior" in title:
+            seniority = "Junior"
+        elif "senior" in title or "lead" in title:
+            seniority = "Senior"
+
+        salary = job.get("salary") or job.get("salary_text") or ""
+        skills = ", ".join(job.get("skills") or []) if isinstance(job.get("skills"), list) else (job.get("skills") or "")
+        degree = job.get("degree") or job.get("education") or ""
+
+        return location_type, location_detail, country, work_type, seniority, salary, skills, degree
     # ── Public API: JSON exports ──────────────────────────────────────────────
 
     def export_sources_from_json(
         self, json_path: Path, date_str: Optional[str] = None
     ) -> Dict:
-        """Export discovery sources from JSON to a <date>_sources tab."""
+        """Export discovery sources from JSON to a single 'sources' tab (no per-day tabs)."""
+        # We keep one canonical sources tab that is refreshed every time.
         if not date_str:
             date_str = self._default_ist_date_str()
-        tab_name = f"{date_str}_sources"
+        tab_name = "sources"
 
         with open(json_path, encoding="utf-8") as f:
             payload = json.load(f)
@@ -276,7 +396,7 @@ class JobBoardSheetsService:
             "Crawl Ready",
             "Discovery Origin",
         ]
-        self._ensure_tab_with_headers(tab_name, headers)
+        sheet_id = self._ensure_tab_with_headers(tab_name, headers, self.SOURCE_COLUMN_WIDTHS)
         self._clear_data_rows(tab_name)
 
         rows: List[List[str]] = []
@@ -313,6 +433,8 @@ class JobBoardSheetsService:
             valueInputOption="RAW",
             body={"values": rows},
         ).execute()
+        if sheet_id is not None:
+            self._format_data_cells(tab_name, sheet_id, len(headers), len(rows))
 
         logger.info("Exported %d sources to '%s'", len(rows), tab_name)
         return {
@@ -346,16 +468,25 @@ class JobBoardSheetsService:
         headers = [
             "Segment (Tech / Non-tech)",
             "Category",
-            "Title",
+            "Job Title",
             "Company",
-            "Location",
-            "Job URL",
+            "Location Type",
+            "Location Detail",
+            "Country",
+            "Work Type",
+            "Seniority Level",
+            "Salary",
+            "Skills",
+            "Degree / Education",
+            "Job Description (short)",
+            "Apply URL",
             "Source Domain",
             "Source Discovered Date",
             "Job Posted At (raw)",
+            "Date & time (India)",
             "Crawled At (UTC)",
         ]
-        self._ensure_tab_with_headers(tab_name, headers)
+        sheet_id = self._ensure_tab_with_headers(tab_name, headers, self.JOB_COLUMN_WIDTHS)
         self._clear_data_rows(tab_name)
 
         rows: List[List[str]] = []
@@ -363,6 +494,19 @@ class JobBoardSheetsService:
             title = job.get("title") or ""
             source_domain = job.get("source_domain") or ""
             segment, category = self._classify_job(title, source_domain)
+            (
+                location_type,
+                location_detail,
+                country,
+                work_type,
+                seniority,
+                salary,
+                skills,
+                degree,
+            ) = self._derive_job_metadata(job)
+
+            description = (job.get("description") or job.get("raw_text") or "")[:240]
+            apply_url = job.get("apply_url") or job.get("url") or ""
 
             rows.append(
                 [
@@ -370,11 +514,20 @@ class JobBoardSheetsService:
                     category,
                     title,
                     job.get("company") or "",
-                    job.get("location") or "",
-                    job.get("url") or "",
+                    location_type,
+                    location_detail,
+                    country,
+                    work_type,
+                    seniority,
+                    salary,
+                    skills,
+                    degree,
+                    description,
+                    apply_url,
                     source_domain,
                     job.get("source_discovered_date") or "",
                     job.get("job_posted_at_raw") or "",
+                    self._crawled_at_ist_simple(job.get("crawled_at_utc") or ""),
                     job.get("crawled_at_utc") or "",
                 ]
             )
@@ -387,6 +540,8 @@ class JobBoardSheetsService:
             valueInputOption="RAW",
             body={"values": rows},
         ).execute()
+        if sheet_id is not None:
+            self._format_data_cells(tab_name, sheet_id, len(headers), len(rows))
 
         logger.info("Exported %d jobs to '%s'", len(rows), tab_name)
         return {

@@ -8,8 +8,13 @@ This script reads:
 
 The target sheet is configured via JOB_BOARD_SHEET_ID in .env and uses the
 same service-account credentials.json as the Telegram exporter.
+
+Usage:
+  python scripts/export_job_board_jobs_to_sheets.py
+  python scripts/export_job_board_jobs_to_sheets.py --date 2026-03-16
 """
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -23,7 +28,19 @@ from app.utils.timezone import ist_today_utc_window  # noqa: E402
 
 
 def main() -> int:
-    _, _, ist_date_str = ist_today_utc_window()
+    parser = argparse.ArgumentParser(description="Export job-board sources + jobs to Google Sheets")
+    parser.add_argument(
+        "--date",
+        type=str,
+        default=None,
+        help="IST date string for tab names (YYYY-MM-DD). Defaults to today's IST date.",
+    )
+    args = parser.parse_args()
+
+    if args.date:
+        ist_date_str = args.date
+    else:
+        _, _, ist_date_str = ist_today_utc_window()
 
     data_dir = PROJECT_ROOT / "app" / "data"
     sources_path = data_dir / "discovery_sources_test.json"
