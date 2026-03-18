@@ -493,18 +493,26 @@ class JobBoardSheetsService:
         for job in jobs:
             title = job.get("title") or ""
             source_domain = job.get("source_domain") or ""
-            segment, category = self._classify_job(title, source_domain)
-            (
-                location_type,
-                location_detail,
-                country,
-                work_type,
-                seniority,
-                salary,
-                skills,
-                degree,
-            ) = self._derive_job_metadata(job)
-
+            # Prefer fields from JSON (crawler now fills them); fall back to derived
+            segment = job.get("segment") or ""
+            category = job.get("category") or ""
+            if not segment or not category:
+                s, c = self._classify_job(title, source_domain)
+                segment = segment or s
+                category = category or c
+            lt, ld, co, wt, sr, sal_der, sk_der, deg_der = self._derive_job_metadata(job)
+            location_type = job.get("location_type") or lt
+            location_detail = job.get("location_detail") or job.get("location") or ld
+            country = job.get("country") or co
+            work_type = job.get("work_type") or wt
+            seniority = job.get("seniority") or sr
+            salary = job.get("salary") or sal_der
+            degree = job.get("degree") or deg_der
+            skills_val = job.get("skills")
+            if isinstance(skills_val, list):
+                skills = ", ".join(str(s) for s in skills_val) if skills_val else sk_der
+            else:
+                skills = (skills_val or sk_der) if isinstance(skills_val, str) else sk_der
             description = (job.get("description") or job.get("raw_text") or "")[:240]
             apply_url = job.get("apply_url") or job.get("url") or ""
 

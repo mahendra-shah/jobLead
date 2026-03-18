@@ -15,6 +15,7 @@ if str(JOBLEAD_ROOT) not in sys.path:
 
 
 def find_job_run_files(jobs_dir: Path) -> list[Path]:
+    """Return run files sorted oldest first. Caller should process in reverse so newest wins per URL."""
     return sorted(jobs_dir.glob("jobs_run_*.json"))
 
 
@@ -32,7 +33,8 @@ def main() -> int:
     all_jobs: list[dict] = []
     seen_urls: set[str] = set()
 
-    for f in run_files:
+    # Process newest runs first so that when we dedupe by URL we keep the latest crawl (today's data).
+    for f in reversed(run_files):
         data = json.loads(f.read_text(encoding="utf-8"))
         jobs = data.get("jobs") or []
         print(f"  {f.name}: {len(jobs)} jobs")

@@ -116,6 +116,95 @@ def extract_job_details_from_page(html: str, page_url: str) -> dict:
     return details
 
 
+# Full set of keys we want in every job JSON (matches Google Sheet columns).
+JOB_KEYS = [
+    "title", "company", "location", "url",
+    "source_domain", "source_discovered_date", "job_posted_at_raw", "crawled_at_utc",
+    "segment", "category",
+    "location_type", "location_detail", "country",
+    "work_type", "seniority",
+    "salary", "skills", "degree",
+    "description", "apply_url",
+]
+
+
+def _derive_segment_category(title: str, source_domain: str) -> tuple[str, str]:
+    """Derive Segment (Tech/Non-tech) and Category from title and domain."""
+    t = (title or "").lower()
+    domain = (source_domain or "").lower()
+    tech_kw = ["developer", "engineer", "software", "backend", "frontend", "full stack", "data scientist", "devops", "sre", "qa engineer", "mobile developer"]
+    sales_kw = ["sales", "account executive", "business development", "bdm"]
+    marketing_kw = ["marketing", "growth", "seo", "content", "performance"]
+    support_kw = ["customer support", "customer success", "support specialist"]
+    hr_kw = ["hr ", "talent acquisition", "recruiter", "recruitment"]
+    finance_kw = ["finance", "accountant", "controller", "fp&a", "audit"]
+    product_kw = ["product manager", "product owner"]
+    design_kw = ["designer", "ux", "ui", "product design", "graphic design"]
+    def any_kw(kws): return any(kw in t for kw in kws)
+    if any_kw(tech_kw): return "Tech", "Software / Engineering"
+    if any_kw(product_kw): return "Tech", "Product Management"
+    if any_kw(design_kw): return "Tech", "Design / UX"
+    if any_kw(sales_kw): return "Non-tech", "Sales"
+    if any_kw(marketing_kw): return "Non-tech", "Marketing / Growth"
+    if any_kw(support_kw): return "Non-tech", "Customer Support / Success"
+    if any_kw(hr_kw): return "Non-tech", "HR / Talent"
+    if any_kw(finance_kw): return "Non-tech", "Finance / Accounting"
+    if any(d in domain for d in ["github", "remoteintech", "stackoverflow"]): return "Tech", "Other / Unknown"
+    return "Unknown", "Other / Unknown"
+
+
+def _derive_location_work_seniority(job: dict) -> dict:
+    """Derive location_type, location_detail, country, work_type, seniority from job text."""
+    title = (job.get("title") or "").lower()
+    location = (job.get("location") or "").strip()
+    desc = (job.get("description") or "").lower()
+    combined = " ".join([location, desc])
+    out = {}
+    out["location_type"] = "Remote" if "remote" in combined else ("Hybrid" if "hybrid" in combined else ("Onsite" if location else ""))
+    out["location_detail"] = location
+    out["country"] = ""
+    for c in ["india", "usa", "united states", "uk", "germany", "canada", "australia"]:
+        if c in combined:
+            out["country"] = c.title()
+            break
+    if any(w in title for w in ["intern", "internship"]): out["work_type"] = "Internship"
+    elif "part-time" in desc or "part time" in desc: out["work_type"] = "Part-time"
+    elif "contract" in desc: out["work_type"] = "Contract"
+    elif "full-time" in desc or "full time" in desc: out["work_type"] = "Full-time"
+    else: out["work_type"] = ""
+    if any(w in title for w in ["intern", "fresher", "graduate", "entry level", "entry-level"]): out["seniority"] = "Fresher / Entry"
+    elif "junior" in title: out["seniority"] = "Junior"
+    elif "senior" in title or "lead" in title: out["seniority"] = "Senior"
+    else: out["seniority"] = ""
+    return out
+
+
+def _normalize_job(job: dict) -> dict:
+    """Ensure job has all JOB_KEYS; derive segment/category/location/work/seniority if missing."""
+    segment, category = _derive_segment_category(job.get("title") or "", job.get("source_domain") or "")
+    job.setdefault("segment", segment)
+    job.setdefault("category", category)
+    derived = _derive_location_work_seniority(job)
+    for k, v in derived.items():
+        job.setdefault(k, v)
+    job.setdefault("description", None)
+    job.setdefault("apply_url", job.get("url") or "")
+    job.setdefault("salary", None)
+    job.setdefault("degree", None)
+    if "skills" not in job:
+        job["skills"] = []
+    elif isinstance(job["skills"], str):
+        job["skills"] = [s.strip() for s in job["skills"].split(",") if s.strip()] if job["skills"] else []
+    result = {}
+    for k in JOB_KEYS:
+        result[k] = job.get(k)
+        if result[k] is None and k not in ("skills", "company", "location", "source_discovered_date", "job_posted_at_raw"):
+            result[k] = ""
+        if result[k] is None and k == "skills":
+            result[k] = []
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Crawl jobs from crawl-ready sources (pilot)")
     parser.add_argument(
@@ -225,6 +314,9 @@ def main() -> int:
                         "crawled_at_utc": crawled_at,
                     }
                     job.update(extra)
+                    if not job.get("apply_url"):
+                        job["apply_url"] = url
+                    job = _normalize_job(job)
                     jobs.append(job)
                     if len(jobs) - source_jobs_before >= args.max_jobs_per_source:
                         break
