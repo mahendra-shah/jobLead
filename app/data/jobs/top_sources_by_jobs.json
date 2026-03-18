@@ -6,7 +6,7 @@
   "sources": [
     {
       "source_domain": "builtin.com",
-      "job_count": 124
+      "job_count": 177
     },
     {
       "source_domain": "landing.jobs",
@@ -14,11 +14,11 @@
     },
     {
       "source_domain": "dribbble.com",
-      "job_count": 74
+      "job_count": 77
     },
     {
       "source_domain": "findjobit.com",
-      "job_count": 55
+      "job_count": 60
     },
     {
       "source_domain": "crypto.jobs",
@@ -85,6 +85,10 @@
       "job_count": 1
     },
     {
+      "source_domain": "jobs.drupal.org",
+      "job_count": 1
+    },
+    {
       "source_domain": "hackerx.org",
       "job_count": 1
     },
@@ -98,10 +102,6 @@
     },
     {
       "source_domain": "vuejobs.com",
-      "job_count": 1
-    },
-    {
-      "source_domain": "jobs.drupal.org",
       "job_count": 1
     }
   ]

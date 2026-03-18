@@ -159,6 +159,9 @@ def extract_job_details_from_page(html: str, page_url: str) -> dict:
 
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> be4cd6c (Crawler enhancement)
 # Full set of keys we want in every job JSON (matches Google Sheet columns).
 JOB_KEYS = [
     "title", "company", "location", "url",
@@ -170,6 +173,7 @@ JOB_KEYS = [
     "description", "apply_url",
 ]
 
+<<<<<<< HEAD
 DIGITAL_MARKETING_TERMS = (
     "digital marketing",
     "marketing",
@@ -246,11 +250,14 @@ def _normalize_company_name(raw_company: str, title: str, source_domain: str) ->
             return guess
     return (source_domain or "").replace("www.", "")
 
+=======
+>>>>>>> be4cd6c (Crawler enhancement)
 
 def _derive_segment_category(title: str, source_domain: str) -> tuple[str, str]:
     """Derive Segment (Tech/Non-tech) and Category from title and domain."""
     t = (title or "").lower()
     domain = (source_domain or "").lower()
+<<<<<<< HEAD
     tech_kw = ["developer", "engineer", "software", "backend", "frontend", "full stack", "devops", "sre", "qa engineer", "mobile developer"]
     data_kw = [
         "data analyst",
@@ -264,12 +271,16 @@ def _derive_segment_category(title: str, source_domain: str) -> tuple[str, str]:
         "analyst",
         "analytics",
     ]
+=======
+    tech_kw = ["developer", "engineer", "software", "backend", "frontend", "full stack", "data scientist", "devops", "sre", "qa engineer", "mobile developer"]
+>>>>>>> be4cd6c (Crawler enhancement)
     sales_kw = ["sales", "account executive", "business development", "bdm"]
     marketing_kw = ["marketing", "growth", "seo", "content", "performance"]
     support_kw = ["customer support", "customer success", "support specialist"]
     hr_kw = ["hr ", "talent acquisition", "recruiter", "recruitment"]
     finance_kw = ["finance", "accountant", "controller", "fp&a", "audit"]
     product_kw = ["product manager", "product owner"]
+<<<<<<< HEAD
     management_kw = ["management", "manager", "operations", "project manager", "account manager", "people operations"]
     design_kw = ["designer", "ux", "ui", "product design", "graphic design"]
     def any_kw(kws): return any(kw in t for kw in kws)
@@ -278,6 +289,13 @@ def _derive_segment_category(title: str, source_domain: str) -> tuple[str, str]:
     if any_kw(design_kw): return "Tech", "Design / UX"
     if any_kw(product_kw): return "Non-tech", "Product Management"
     if any_kw(management_kw): return "Non-tech", "Management / Operations"
+=======
+    design_kw = ["designer", "ux", "ui", "product design", "graphic design"]
+    def any_kw(kws): return any(kw in t for kw in kws)
+    if any_kw(tech_kw): return "Tech", "Software / Engineering"
+    if any_kw(product_kw): return "Tech", "Product Management"
+    if any_kw(design_kw): return "Tech", "Design / UX"
+>>>>>>> be4cd6c (Crawler enhancement)
     if any_kw(sales_kw): return "Non-tech", "Sales"
     if any_kw(marketing_kw): return "Non-tech", "Marketing / Growth"
     if any_kw(support_kw): return "Non-tech", "Customer Support / Success"
@@ -297,6 +315,7 @@ def _derive_location_work_seniority(job: dict) -> dict:
     out["location_type"] = "Remote" if "remote" in combined else ("Hybrid" if "hybrid" in combined else ("Onsite" if location else ""))
     out["location_detail"] = location
     out["country"] = ""
+<<<<<<< HEAD
     if re.search(r"\bindia\b", combined):
         out["country"] = "India"
     elif re.search(r"\b(united states|usa|u\.s\.a?)\b", combined):
@@ -309,6 +328,12 @@ def _derive_location_work_seniority(job: dict) -> dict:
         out["country"] = "Canada"
     elif re.search(r"\baustralia\b", combined):
         out["country"] = "Australia"
+=======
+    for c in ["india", "usa", "united states", "uk", "germany", "canada", "australia"]:
+        if c in combined:
+            out["country"] = c.title()
+            break
+>>>>>>> be4cd6c (Crawler enhancement)
     if any(w in title for w in ["intern", "internship"]): out["work_type"] = "Internship"
     elif "part-time" in desc or "part time" in desc: out["work_type"] = "Part-time"
     elif "contract" in desc: out["work_type"] = "Contract"
@@ -347,6 +372,7 @@ def _normalize_job(job: dict) -> dict:
     return result
 
 
+<<<<<<< HEAD
 def _is_non_job_or_spam(title: str, url: str, combined_text: str) -> bool:
     t = (title or "").strip().lower()
     u = (url or "").strip().lower()
@@ -605,6 +631,8 @@ def _filter_jobs_for_target_profile(jobs: list[dict], *, focus_digital_marketing
 
 =======
 >>>>>>> 9149248 (crowler and google sheet enhancement)
+=======
+>>>>>>> be4cd6c (Crawler enhancement)
 def main() -> int:
     parser = argparse.ArgumentParser(description="Crawl jobs from crawl-ready sources (pilot)")
     parser.add_argument(
@@ -932,10 +960,16 @@ def main() -> int:
                     }
                     job.update(extra)
 <<<<<<< HEAD
+<<<<<<< HEAD
                     job["apply_url"] = _to_absolute_url(job.get("apply_url") or "", url) or url
                     job = _normalize_job(job)
 =======
 >>>>>>> 9149248 (crowler and google sheet enhancement)
+=======
+                    if not job.get("apply_url"):
+                        job["apply_url"] = url
+                    job = _normalize_job(job)
+>>>>>>> be4cd6c (Crawler enhancement)
                     jobs.append(job)
                     if len(jobs) - source_jobs_before >= source_job_cap:
                         break
