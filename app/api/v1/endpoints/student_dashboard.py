@@ -88,6 +88,8 @@ def _student_profile_payload(student: Student, current_user: User) -> dict:
     if student.date_of_birth:
         dob = student.date_of_birth.isoformat() if hasattr(student.date_of_birth, "isoformat") else str(student.date_of_birth)
 
+    tech_links = student.tech_links if isinstance(getattr(student, 'tech_links', None), dict) else {}
+
     return {
         "id": str(student.id) if getattr(student, "id", None) else None,
         "is_active": getattr(current_user, "is_active", None),
@@ -115,6 +117,7 @@ def _student_profile_payload(student: Student, current_user: User) -> dict:
         "cgpa": student.cgpa,
 
         # Skills
+        "skills": student.technical_skills or [],
         "technical_skills": student.technical_skills or [],
         "soft_skills": student.soft_skills or [],
 
@@ -124,16 +127,16 @@ def _student_profile_payload(student: Student, current_user: User) -> dict:
         "projects": projects,
 
         # Languages
-        "languages": languages,
+        "spoken_languages": languages,
+        "email": student.email or getattr(current_user, "email", None),
 
         # Preferences (from JSONB preference column)
         "preference": student.preference or {},
+        "preferred_job_role": (student.preference or {}).get("preferred_job_role", []),
+        "job_category": student.job_category,
 
         # Links
-        "github_profile": student.github_profile,
-        "linkedin_profile": student.linkedin_profile,
-        "portfolio_url": student.portfolio_url,
-        "coding_platforms": student.coding_platforms or {},
+        "tech_links": tech_links,
 
         # Resume
         "resume_url": student.resume_url,

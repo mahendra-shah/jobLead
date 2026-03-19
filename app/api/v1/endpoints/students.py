@@ -62,11 +62,9 @@ async def create_student(
         first_name=student_in.first_name,
         last_name=student_in.last_name,
         phone=student_in.phone,
-        college_id=student_in.college_id,
         degree=student_in.degree,
         branch=student_in.branch,
         passing_year=student_in.passing_year,
-        cgpa=student_in.cgpa,
         is_active=True
     )
     
@@ -81,14 +79,11 @@ async def create_student(
 async def list_students(
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
-    college_id: Optional[int] = None,
     branch: Optional[str] = None,
     passing_year: Optional[int] = None,
-    cgpa_min: Optional[float] = None,
-    cgpa_max: Optional[float] = None,
     is_active: Optional[bool] = None,
     search: Optional[str] = None,
-    sort_by: str = Query("created_at", regex="^(name|cgpa|created_at|updated_at)$"),
+    sort_by: str = Query("created_at", regex="^(name|created_at|updated_at)$"),
     sort_order: str = Query("desc", regex="^(asc|desc)$"),
     current_user: User = Depends(require_placement_or_admin),
     db: AsyncSession = Depends(get_db)
@@ -99,33 +94,22 @@ async def list_students(
     **RBAC**: SuperAdmin, Admin, Placement
     
     **Filters**:
-    - `college_id`: Filter by college
     - `branch`: Filter by branch
     - `passing_year`: Filter by passing year
-    - `cgpa_min`, `cgpa_max`: CGPA range
     - `is_active`: Active status
     - `search`: Search in name or email
-    - `sort_by`: Sort field (name, cgpa, created_at, updated_at)
+    - `sort_by`: Sort field (name, created_at, updated_at)
     - `sort_order`: asc or desc
     """
     # Build query
-    query = select(Student).options(joinedload(Student.college))
+    query = select(Student)
     
     # Apply filters
-    if college_id:
-        query = query.where(Student.college_id == college_id)
-    
     if branch:
         query = query.where(Student.branch == branch)
     
     if passing_year:
         query = query.where(Student.passing_year == passing_year)
-    
-    if cgpa_min is not None:
-        query = query.where(Student.cgpa >= cgpa_min)
-    
-    if cgpa_max is not None:
-        query = query.where(Student.cgpa <= cgpa_max)
     
     if is_active is not None:
         query = query.where(Student.is_active == is_active)
@@ -142,16 +126,10 @@ async def list_students(
     
     # Count total
     count_query = select(func.count()).select_from(Student)
-    if college_id:
-        count_query = count_query.where(Student.college_id == college_id)
     if branch:
         count_query = count_query.where(Student.branch == branch)
     if passing_year:
         count_query = count_query.where(Student.passing_year == passing_year)
-    if cgpa_min is not None:
-        count_query = count_query.where(Student.cgpa >= cgpa_min)
-    if cgpa_max is not None:
-        count_query = count_query.where(Student.cgpa <= cgpa_max)
     if is_active is not None:
         count_query = count_query.where(Student.is_active == is_active)
     if search:
@@ -170,8 +148,6 @@ async def list_students(
     # Apply sorting
     if sort_by == "name":
         order_column = Student.first_name
-    elif sort_by == "cgpa":
-        order_column = Student.cgpa
     elif sort_by == "updated_at":
         order_column = Student.updated_at
     else:
@@ -288,16 +264,17 @@ async def delete_student(
             detail=f"Student with id {student_id} not found"
         )
     
-    # Get the associated user
-    result = await db.execute(
-        select(User).where(User.id == student.user_id)
-    )
-    user = result.scalar_one_or_none()
-    
-    if user:
-        # Deactivate user account
-        user.is_active = False
-        db.add(user)
+    # Get the associated user (if this relationship exists)
+    # Commented out as user_id field has been removed from Student model
+    # result = await db.execute(
+    #     select(User).where(User.id == student.user_id)
+    # )
+    # user = result.scalar_one_or_none()
+    #
+    # if user:
+    #     # Deactivate user account
+    #     user.is_active = False
+    #     db.add(user)
     
     # Set student status to inactive
     student.status = "inactive"
@@ -378,11 +355,9 @@ async def bulk_create_students(
                 first_name=student_data.first_name,
                 last_name=student_data.last_name,
                 phone=student_data.phone,
-                college_id=student_data.college_id,
                 degree=student_data.degree,
                 branch=student_data.branch,
                 passing_year=student_data.passing_year,
-                cgpa=student_data.cgpa,
                 is_active=True
             )
             db.add(db_student)
@@ -432,11 +407,9 @@ async def export_students(
                     "first_name": s.first_name,
                     "last_name": s.last_name,
                     "phone": s.phone,
-                    "college": s.college.name if s.college else None,
                     "degree": s.degree,
                     "branch": s.branch,
                     "passing_year": s.passing_year,
-                    "cgpa": s.cgpa,
                     "is_active": s.is_active
                 }
                 for s in students
@@ -451,7 +424,7 @@ async def export_students(
     output = StringIO()
     writer = csv.DictWriter(output, fieldnames=[
         "id", "email", "first_name", "last_name", "phone",
-        "college", "degree", "branch", "passing_year", "cgpa", "is_active"
+        "degree", "branch", "passing_year", "is_active"
     ])
     writer.writeheader()
     
@@ -462,11 +435,9 @@ async def export_students(
             "first_name": s.first_name,
             "last_name": s.last_name,
             "phone": s.phone,
-            "college": s.college.name if s.college else "",
             "degree": s.degree or "",
             "branch": s.branch or "",
             "passing_year": s.passing_year or "",
-            "cgpa": s.cgpa or "",
             "is_active": s.is_active
         })
     

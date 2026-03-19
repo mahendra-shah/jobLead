@@ -80,6 +80,7 @@ class Job(Base):
     # Stats
     view_count = Column(Integer, default=0)
     application_count = Column(Integer, default=0)
+    shared_count = Column(Integer, default=0)
     
     # Relationships
     company = relationship("Company", back_populates="jobs")

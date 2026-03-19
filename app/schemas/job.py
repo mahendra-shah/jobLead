@@ -82,6 +82,7 @@ class JobBase(BaseModel):
                 'is_active': getattr(data, 'is_active', True),
                 'view_count': getattr(data, 'view_count', 0),
                 'application_count': getattr(data, 'application_count', 0),
+                            'shared_count': getattr(data, 'shared_count', 0),
                 'created_at': getattr(data, 'created_at', None),
                 'updated_at': getattr(data, 'updated_at', None),
             }
@@ -115,6 +116,7 @@ class JobBase(BaseModel):
     is_active: bool = True
     view_count: int = 0
     application_count: int = 0
+    shared_count: int = 0
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

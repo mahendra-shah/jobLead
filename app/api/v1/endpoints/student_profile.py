@@ -18,8 +18,6 @@ from app.models.student import Student
 from app.schemas.student_profile import (
     StudentProfileResponse,
     StudentProfileUpdate,
-    InternshipDetail,
-    ProjectDetail,
     LanguageProficiency
 )
 from app.schemas.student import ProfileCompletenessResponse
@@ -198,23 +196,30 @@ def build_profile_response(student: Student, user: User) -> StudentProfileRespon
     
     # Handle preference JSONB field
     preference = None
+    preferred_job_role = None
+    job_category = None
     if student.preference and isinstance(student.preference, dict):
         # Ensure all fields in preference are properly formatted
         preference = {
             "job_type": student.preference.get('job_type') or [],
             "work_mode": student.preference.get('work_mode') or [],
             "preferred_job_role": student.preference.get('preferred_job_role') or [],
+            "job_category": student.preference.get('job_category'),
             "preferred_location": student.preference.get('preferred_location') or [],
             "expected_salary": student.preference.get('expected_salary'),
         }
+        preferred_job_role = preference.get("preferred_job_role") or None
+        job_category = preference.get("job_category") or None
         # Only return if there's actual data
         if any([preference.get('job_type'), preference.get('work_mode'), 
-                preference.get('preferred_job_role'), preference.get('preferred_location'), 
+                preference.get('preferred_job_role'), preference.get('job_category'), preference.get('preferred_location'), 
                 preference.get('expected_salary')]):
             preference = preference
         else:
             preference = None
     
+    tech_links = student.tech_links if isinstance(getattr(student, 'tech_links', None), dict) else {}
+
     # Calculate profile completeness
     profile_completeness = _calculate_profile_completeness(student)
     
@@ -223,7 +228,6 @@ def build_profile_response(student: Student, user: User) -> StudentProfileRespon
         last_name=student.last_name,
         full_name=student.full_name,
         phone=student.phone,
-        email=user.email,
         date_of_birth=date_of_birth_str,
         gender=student.gender,
         current_address=student.current_address,
@@ -235,17 +239,18 @@ def build_profile_response(student: Student, user: User) -> StudentProfileRespon
         passing_year=student.passing_year,
         percentage=student.percentage,
         cgpa=student.cgpa,
+        skills=student.technical_skills or [],
         technical_skills=student.technical_skills or [],
         soft_skills=student.soft_skills or [],
         experience_type=student.experience_type,
         internship_details=internship_details,
         projects=projects,
-        languages=languages,
+        spoken_languages=languages,
+        email=student.email or getattr(user, 'email', None),
         preference=preference,
-        github_profile=student.github_profile,
-        linkedin_profile=student.linkedin_profile,
-        portfolio_url=student.portfolio_url,
-        coding_platforms=student.coding_platforms or {},
+        preferred_job_role=preferred_job_role,
+        job_category=job_category,
+        tech_links=tech_links,
         resume_url=student.resume_url,
         id=student_id,
         is_active=user.is_active,
@@ -338,10 +343,28 @@ async def update_my_profile(
                 preference_data['work_mode'] = update_data.pop('work_mode')
             if 'preferred_job_role' in update_data and update_data['preferred_job_role'] is not None:
                 preference_data['preferred_job_role'] = update_data.pop('preferred_job_role')
+            if 'job_category' in update_data and update_data['job_category'] is not None:
+                pass
             if 'preferred_location' in update_data and update_data['preferred_location'] is not None:
                 preference_data['preferred_location'] = update_data.pop('preferred_location')
             if 'expected_salary' in update_data and update_data['expected_salary'] is not None:
                 preference_data['expected_salary'] = update_data.pop('expected_salary')
+
+        # Keep job_category as direct string column on students table
+        if 'job_category' in update_data and isinstance(update_data['job_category'], list):
+            update_data['job_category'] = update_data['job_category'][0] if update_data['job_category'] else None
+
+        # Map schema email -> DB email
+        if 'email' in update_data and isinstance(update_data['email'], str):
+            update_data['email'] = update_data['email'].strip() or None
+
+        # Map schema field spoken_languages -> DB field languages
+        if 'spoken_languages' in update_data:
+            update_data['languages'] = update_data.pop('spoken_languages')
+
+        # Map generic skills -> technical_skills for storage
+        if 'skills' in update_data and 'technical_skills' not in update_data:
+            update_data['technical_skills'] = update_data['skills']
         
         # Store consolidated preference data
         if preference_data:
@@ -678,7 +701,7 @@ async def get_profile_completeness(
         
         # Languages (5%)
         languages_fields = {
-            "languages": (student.languages and len(student.languages) > 0, "Languages"),
+            "spoken_languages": (student.languages and len(student.languages) > 0, "Spoken Languages"),
         }
         
         # Job Preferences (15%) - Use new preference JSONB column
@@ -688,6 +711,7 @@ async def get_profile_completeness(
                 "job_type": (student.preference.get('job_type') and len(student.preference.get('job_type', [])) > 0, "Job Type"),
                 "work_mode": (student.preference.get('work_mode') and len(student.preference.get('work_mode', [])) > 0, "Work Mode"),
                 "preferred_job_role": (student.preference.get('preferred_job_role') and len(student.preference.get('preferred_job_role', [])) > 0, "Preferred Job Role"),
+                "job_category": (student.job_category, "Job Category"),
                 "preferred_location": (student.preference.get('preferred_location') and len(student.preference.get('preferred_location', [])) > 0, "Preferred Location"),
             }
         else:
@@ -696,15 +720,17 @@ async def get_profile_completeness(
                 "job_type": (False, "Job Type"),
                 "work_mode": (False, "Work Mode"),
                 "preferred_job_role": (False, "Preferred Job Role"),
+                "job_category": (False, "Job Category"),
                 "preferred_location": (False, "Preferred Location"),
             }
         
         # Technical Profile Links (5%)
+        tech_links = student.tech_links if isinstance(getattr(student, 'tech_links', None), dict) else {}
         links_fields = {
-            "github_profile": (student.github_profile, "GitHub Profile"),
-            "linkedin_profile": (student.linkedin_profile, "LinkedIn Profile"),
-            "portfolio_url": (student.portfolio_url, "Portfolio URL"),
-            "coding_platforms": (student.coding_platforms and len(student.coding_platforms) > 0, "Coding Platforms"),
+            "github_profile": (tech_links.get('github_profile'), "GitHub Profile"),
+            "linkedin_profile": (tech_links.get('linkedin_profile'), "LinkedIn Profile"),
+            "portfolio_url": (tech_links.get('portfolio_url'), "Portfolio URL"),
+            "coding_platforms": (tech_links.get('coding_platforms') and len(tech_links.get('coding_platforms')) > 0, "Coding Platforms"),
         }
         
         # Resume (5%)
