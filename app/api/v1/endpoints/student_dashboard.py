@@ -88,7 +88,7 @@ def _student_profile_payload(student: Student, current_user: User) -> dict:
     if student.date_of_birth:
         dob = student.date_of_birth.isoformat() if hasattr(student.date_of_birth, "isoformat") else str(student.date_of_birth)
 
-    tech_links = student.tech_links if isinstance(getattr(student, 'tech_links', None), dict) else {}
+    social_links = student.social_links if isinstance(getattr(student, 'social_links', None), dict) else {}
 
     return {
         "id": str(student.id) if getattr(student, "id", None) else None,
@@ -136,7 +136,7 @@ def _student_profile_payload(student: Student, current_user: User) -> dict:
         "job_category": student.job_category,
 
         # Links
-        "tech_links": tech_links,
+        "social_links": social_links,
 
         # Resume
         "resume_url": student.resume_url,

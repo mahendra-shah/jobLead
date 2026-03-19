@@ -197,9 +197,9 @@ class StudentProfileCreate(PersonalDetailsMixin, EducationDetailsMixin):
         ge=0,
         description="Expected annual salary in INR (e.g., 600000 for 6 LPA)"
     )
-    tech_links: Optional[Dict[str, Any]] = Field(
+    social_links: Optional[Dict[str, Any]] = Field(
         None,
-        description="Tech links object: {github_profile, linkedin_profile, portfolio_url, coding_platforms}"
+        description="Social links object: {github_profile, linkedin_profile, portfolio_url, coding_platforms}"
     )
     
     @validator('experience_type')
@@ -255,7 +255,7 @@ class StudentProfileResponse(BaseModel):
     job_category: Optional[str] = None
     preferred_location: Optional[List[str]] = None
     expected_salary: Optional[int] = None
-    tech_links: Optional[Dict[str, Any]] = None
+    social_links: Optional[Dict[str, Any]] = None
     
     # Resume
     resume_url: Optional[str] = None

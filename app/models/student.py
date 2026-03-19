@@ -41,7 +41,7 @@ class Student(Base):
     preference = Column(JSONB, default=dict)  # {"job_type": [...], "work_mode": [...], "preferred_job_role": [...], "preferred_location": [...], "expected_salary": ...}
     preferred_job_role = Column(JSONB, default=list)
     job_category = Column(String(100), nullable=True)
-    tech_links = Column(JSONB, default=dict)
+    social_links = Column(JSONB, default=dict)
     
     # Settings
     email_notifications = Column(Boolean, default=True)

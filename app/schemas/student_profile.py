@@ -124,9 +124,9 @@ class StudentProfileUpdate(BaseModel):
         None,
         description="Job preferences (job_type, work_mode, preferred_job_role, preferred_location, expected_salary)"
     )
-    tech_links: Optional[Dict[str, Any]] = Field(
+    social_links: Optional[Dict[str, Any]] = Field(
         None,
-        description="Tech links object: {github_profile, linkedin_profile, portfolio_url, coding_platforms}"
+        description="Social links object: {github_profile, linkedin_profile, portfolio_url, coding_platforms}"
     )
     
     @validator('experience_type')
@@ -177,7 +177,7 @@ class StudentProfileResponse(BaseModel):
     )
     preferred_job_role: Optional[List[str]] = None
     job_category: Optional[str] = None
-    tech_links: Optional[Dict[str, Any]] = None
+    social_links: Optional[Dict[str, Any]] = None
     
     # Resume
     resume_url: Optional[str] = None

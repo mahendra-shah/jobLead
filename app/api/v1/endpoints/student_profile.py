@@ -218,7 +218,7 @@ def build_profile_response(student: Student, user: User) -> StudentProfileRespon
         else:
             preference = None
     
-    tech_links = student.tech_links if isinstance(getattr(student, 'tech_links', None), dict) else {}
+    social_links = student.social_links if isinstance(getattr(student, 'social_links', None), dict) else {}
 
     # Calculate profile completeness
     profile_completeness = _calculate_profile_completeness(student)
@@ -250,7 +250,7 @@ def build_profile_response(student: Student, user: User) -> StudentProfileRespon
         preference=preference,
         preferred_job_role=preferred_job_role,
         job_category=job_category,
-        tech_links=tech_links,
+        social_links=social_links,
         resume_url=student.resume_url,
         id=student_id,
         is_active=user.is_active,
@@ -365,6 +365,14 @@ async def update_my_profile(
         # Map generic skills -> technical_skills for storage
         if 'skills' in update_data and 'technical_skills' not in update_data:
             update_data['technical_skills'] = update_data['skills']
+
+        # Map schema field social_links -> DB field social_links
+        if 'social_links' in update_data:
+            update_data['social_links'] = update_data.pop('social_links')
+
+        # Backward compatibility: accept legacy tech_links payload key
+        if 'tech_links' in update_data and 'social_links' not in update_data:
+            update_data['social_links'] = update_data.pop('tech_links')
         
         # Store consolidated preference data
         if preference_data:
@@ -725,12 +733,12 @@ async def get_profile_completeness(
             }
         
         # Technical Profile Links (5%)
-        tech_links = student.tech_links if isinstance(getattr(student, 'tech_links', None), dict) else {}
+        social_links = student.social_links if isinstance(getattr(student, 'social_links', None), dict) else {}
         links_fields = {
-            "github_profile": (tech_links.get('github_profile'), "GitHub Profile"),
-            "linkedin_profile": (tech_links.get('linkedin_profile'), "LinkedIn Profile"),
-            "portfolio_url": (tech_links.get('portfolio_url'), "Portfolio URL"),
-            "coding_platforms": (tech_links.get('coding_platforms') and len(tech_links.get('coding_platforms')) > 0, "Coding Platforms"),
+            "github_profile": (social_links.get('github_profile'), "GitHub Profile"),
+            "linkedin_profile": (social_links.get('linkedin_profile'), "LinkedIn Profile"),
+            "portfolio_url": (social_links.get('portfolio_url'), "Portfolio URL"),
+            "coding_platforms": (social_links.get('coding_platforms') and len(social_links.get('coding_platforms')) > 0, "Coding Platforms"),
         }
         
         # Resume (5%)
