@@ -21,13 +21,15 @@ import argparse
 import re
 import smtplib
 import sys
+import time
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from email.message import EmailMessage
 from pathlib import Path
-from typing import Dict, List, Sequence, Set, Tuple
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import OperationalError
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from app.config import settings  # noqa: E402
@@ -366,35 +368,112 @@ def send_email(to_email: str, subject: str, text_body: str, html_body: str) -> N
     msg.set_content(text_body)
     msg.add_alternative(html_body, subtype="html")
 
+    print(f"[SMTP] connect host={settings.SMTP_HOST} port={settings.SMTP_PORT}", flush=True)
     with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30) as server:
+        print("[SMTP] connected", flush=True)
+        print("[SMTP] starttls...", flush=True)
         server.starttls()
+        print("[SMTP] starttls done", flush=True)
         if settings.SMTP_USER and settings.SMTP_PASSWORD:
+            print(f"[SMTP] login user={settings.SMTP_USER}", flush=True)
             server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+            print("[SMTP] login done", flush=True)
+        print(f"[SMTP] send_message to={to_email}", flush=True)
         server.send_message(msg)
+        print("[SMTP] send_message done", flush=True)
 
 
-def mark_jobs_shared(conn, student_id: str, job_ids: List[str]) -> int:
+def open_smtp_server(timeout_seconds: int = 30) -> smtplib.SMTP:
+    """Open and authenticate a reusable SMTP connection."""
+    print(f"[SMTP] open reusable connection host={settings.SMTP_HOST} port={settings.SMTP_PORT}", flush=True)
+    server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=timeout_seconds)
+    print("[SMTP] connected", flush=True)
+    server.starttls()
+    print("[SMTP] starttls done", flush=True)
+    if settings.SMTP_USER and settings.SMTP_PASSWORD:
+        print(f"[SMTP] login user={settings.SMTP_USER}", flush=True)
+        server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+        print("[SMTP] login done", flush=True)
+    return server
+
+
+def send_email_via_server(
+    server: smtplib.SMTP,
+    to_email: str,
+    subject: str,
+    text_body: str,
+    html_body: str,
+) -> None:
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = settings.EMAIL_FROM
+    msg["To"] = to_email
+    msg.set_content(text_body)
+    msg.add_alternative(html_body, subtype="html")
+    print(f"[SMTP] send_message to={to_email}", flush=True)
+    server.send_message(msg)
+    print("[SMTP] send_message done", flush=True)
+
+
+def _is_lock_timeout_error(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return (
+        "locknotavailable" in msg
+        or "lock timeout" in msg
+        or "canceling statement due to lock timeout" in msg
+        or "55p03" in msg
+    )
+
+
+def mark_jobs_shared(conn, student_id: str, job_ids: List[str]) -> Tuple[int, int]:
     if not job_ids:
-        return 0
+        return 0, 0
 
     updated = 0
+    lock_conflicts = 0
     for job_id in job_ids:
-        result = conn.execute(
-            text(
-                """
-                UPDATE jobs
-                SET
-                    students_shown_to = COALESCE(students_shown_to, '[]'::jsonb) || to_jsonb(CAST(:student_id AS text)),
-                    shared_count = COALESCE(shared_count, 0) + 1,
-                    updated_at = NOW()
-                WHERE id = CAST(:job_id AS uuid)
-                  AND NOT (COALESCE(students_shown_to, '[]'::jsonb) ? :student_id)
-                """
-            ),
-            {"student_id": student_id, "job_id": job_id},
-        )
-        updated += result.rowcount or 0
-    return updated
+        try:
+            with conn.begin_nested():
+                lock_row = conn.execute(
+                    text(
+                        """
+                        SELECT id
+                        FROM jobs
+                        WHERE id = CAST(:job_id AS uuid)
+                        FOR UPDATE SKIP LOCKED
+                        """
+                    ),
+                    {"job_id": job_id},
+                ).first()
+
+                if not lock_row:
+                    lock_conflicts += 1
+                    print(f"[DB] row locked for job_id={job_id}, skipping this row", flush=True)
+                    continue
+
+                result = conn.execute(
+                    text(
+                        """
+                        UPDATE jobs
+                        SET
+                            students_shown_to = COALESCE(students_shown_to, '[]'::jsonb) || to_jsonb(CAST(:student_id AS text)),
+                            shared_count = COALESCE(shared_count, 0) + 1,
+                            updated_at = NOW()
+                        WHERE id = CAST(:job_id AS uuid)
+                          AND NOT (COALESCE(students_shown_to, '[]'::jsonb) ? :student_id)
+                        """
+                    ),
+                    {"student_id": student_id, "job_id": job_id},
+                )
+                updated += result.rowcount or 0
+        except OperationalError as exc:
+            if _is_lock_timeout_error(exc):
+                lock_conflicts += 1
+                print(f"[DB] lock-timeout on job_id={job_id}, skipping this row", flush=True)
+                continue
+            raise
+
+    return updated, lock_conflicts
 
 
 def validate_email_settings() -> None:
@@ -413,6 +492,7 @@ def validate_email_settings() -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Send matched jobs email to students and track unique shares")
     parser.add_argument("--student-limit", type=int, default=0, help="Process only first N students (0 = all)")
+    parser.add_argument("--send-limit", type=int, default=0, help="Send to only first N matched students (0 = no limit)")
     parser.add_argument("--max-jobs-per-student", type=int, default=5, help="Max jobs to send per student")
     parser.add_argument("--min-score", type=int, default=2, help="Minimum match score")
     parser.add_argument(
@@ -432,58 +512,118 @@ def main() -> int:
         "students_with_matches": 0,
         "emails_sent": 0,
         "jobs_shared": 0,
+        "db_lock_conflicts": 0,
         "students_skipped_no_match": 0,
         "errors": 0,
     }
 
-    with engine.begin() as conn:
-        students = fetch_students(conn, args.student_limit)
-        start_utc, end_utc, job_date_label = resolve_job_window(args.job_date)
-        jobs = fetch_jobs(conn, start_utc, end_utc)
+    smtp_server: Optional[smtplib.SMTP] = None
 
-        print(f"Loaded students: {len(students)}")
-        print(f"Loaded active jobs for date {job_date_label} (IST): {len(jobs)}")
+    try:
+        if not args.dry_run:
+            smtp_server = open_smtp_server(timeout_seconds=30)
 
-        for student in students:
-            summary["students_processed"] += 1
-            if not student.email:
-                summary["students_skipped_no_match"] += 1
-                continue
+        with engine.connect() as conn:
+            students = fetch_students(conn, args.student_limit)
+            start_utc, end_utc, job_date_label = resolve_job_window(args.job_date)
+            jobs = fetch_jobs(conn, start_utc, end_utc)
 
-            matches = match_student_jobs(
-                student=student,
-                jobs=jobs,
-                max_jobs_per_student=args.max_jobs_per_student,
-                min_score=args.min_score,
-            )
+            print(f"Loaded students: {len(students)}", flush=True)
+            print(f"Loaded active jobs for date {job_date_label} (IST): {len(jobs)}", flush=True)
 
-            if not matches:
-                summary["students_skipped_no_match"] += 1
-                continue
+            for idx, student in enumerate(students, start=1):
+                if args.send_limit > 0 and summary["emails_sent"] >= args.send_limit and not args.dry_run:
+                    print(f"[LIMIT] send-limit reached ({args.send_limit}), stopping run", flush=True)
+                    break
 
-            summary["students_with_matches"] += 1
-            text_body, html_body = build_email(student, matches)
-            subject = f"{len(matches)} job match(es) for your profile"
-            matched_job_ids = [item[0].id for item in matches]
+                summary["students_processed"] += 1
+                print(f"[PROGRESS] {idx}/{len(students)} student={student.email or 'NO_EMAIL'}", flush=True)
+                if not student.email:
+                    summary["students_skipped_no_match"] += 1
+                    print(f"[SKIP] missing email student_id={student.id}", flush=True)
+                    continue
 
+                matches = match_student_jobs(
+                    student=student,
+                    jobs=jobs,
+                    max_jobs_per_student=args.max_jobs_per_student,
+                    min_score=args.min_score,
+                )
+
+                if not matches:
+                    summary["students_skipped_no_match"] += 1
+                    print(f"[SKIP] no matches for {student.email}", flush=True)
+                    continue
+
+                summary["students_with_matches"] += 1
+                text_body, html_body = build_email(student, matches)
+                subject = f"{len(matches)} job match(es) for your profile"
+                matched_job_ids = [item[0].id for item in matches]
+
+                try:
+                    if args.dry_run:
+                        print(f"[DRY RUN] Would send {len(matches)} jobs to {student.email}", flush=True)
+                    else:
+                        print(f"[SEND] Sending {len(matches)} jobs to {student.email}", flush=True)
+                        if smtp_server is None:
+                            smtp_server = open_smtp_server(timeout_seconds=30)
+                        send_email_via_server(smtp_server, student.email, subject, text_body, html_body)
+                        print(f"[DB] Updating share-tracking for {student.email} ...", flush=True)
+                        db_start = time.monotonic()
+                        updated_rows, lock_conflicts = mark_jobs_shared(conn, student.id, matched_job_ids)
+                        conn.commit()
+                        db_elapsed = time.monotonic() - db_start
+                        summary["emails_sent"] += 1
+                        summary["jobs_shared"] += updated_rows
+                        summary["db_lock_conflicts"] += lock_conflicts
+                        print(
+                            f"Sent {len(matches)} job(s) to {student.email} | "
+                            f"shared_count updates: {updated_rows} | "
+                            f"lock_conflicts={lock_conflicts} | db_update_time={db_elapsed:.2f}s",
+                            flush=True,
+                        )
+                except smtplib.SMTPServerDisconnected:
+                    # One reconnect retry for long runs.
+                    summary["errors"] += 1
+                    print(f"[SMTP] disconnected while sending to {student.email}, reconnecting once...", flush=True)
+                    try:
+                        smtp_server = open_smtp_server(timeout_seconds=30)
+                        send_email_via_server(smtp_server, student.email, subject, text_body, html_body)
+                        print(f"[DB] Updating share-tracking for {student.email} ...", flush=True)
+                        db_start = time.monotonic()
+                        updated_rows, lock_conflicts = mark_jobs_shared(conn, student.id, matched_job_ids)
+                        conn.commit()
+                        db_elapsed = time.monotonic() - db_start
+                        summary["emails_sent"] += 1
+                        summary["jobs_shared"] += updated_rows
+                        summary["db_lock_conflicts"] += lock_conflicts
+                        print(
+                            f"Sent {len(matches)} job(s) to {student.email} | "
+                            f"shared_count updates: {updated_rows} | "
+                            f"lock_conflicts={lock_conflicts} | db_update_time={db_elapsed:.2f}s",
+                            flush=True,
+                        )
+                    except Exception as retry_exc:
+                        conn.rollback()
+                        summary["errors"] += 1
+                        print(f"Failed for {student.email} after reconnect: {retry_exc}", flush=True)
+                except Exception as exc:
+                    conn.rollback()
+                    summary["errors"] += 1
+                    print(f"Failed for {student.email}: {exc}", flush=True)
+    finally:
+        if smtp_server is not None:
             try:
-                if args.dry_run:
-                    print(f"[DRY RUN] Would send {len(matches)} jobs to {student.email}")
-                else:
-                    send_email(student.email, subject, text_body, html_body)
-                    updated_rows = mark_jobs_shared(conn, student.id, matched_job_ids)
-                    summary["emails_sent"] += 1
-                    summary["jobs_shared"] += updated_rows
-                    print(f"Sent {len(matches)} job(s) to {student.email} | shared_count updates: {updated_rows}")
-            except Exception as exc:
-                summary["errors"] += 1
-                print(f"Failed for {student.email}: {exc}")
+                smtp_server.quit()
+            except Exception:
+                pass
 
     print("\nRun summary")
     print(f"  Students processed      : {summary['students_processed']}")
     print(f"  Students with matches   : {summary['students_with_matches']}")
     print(f"  Emails sent             : {summary['emails_sent']}")
     print(f"  Jobs newly shared       : {summary['jobs_shared']}")
+    print(f"  DB lock conflicts       : {summary['db_lock_conflicts']}")
     print(f"  Students skipped        : {summary['students_skipped_no_match']}")
     print(f"  Errors                  : {summary['errors']}")
     print(f"  Dry run                 : {args.dry_run}")
