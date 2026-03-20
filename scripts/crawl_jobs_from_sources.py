@@ -27,7 +27,9 @@ if str(JOBLEAD_ROOT) not in sys.path:
 import httpx
 from bs4 import BeautifulSoup  # not heavily used here but available for future refinements
 
+from app.utils.job_parser import parse_experience
 from scripts.discovery.domain_rate_limiter import rate_limit_before_request
+from scripts.discovery.base import load_pilot_cities
 from scripts.discovery.proxy_pool import get_next_proxy
 from scripts.scrape_all_jobs import (
     extract_jobs_from_html,
@@ -132,18 +134,33 @@ def _derive_segment_category(title: str, source_domain: str) -> tuple[str, str]:
     """Derive Segment (Tech/Non-tech) and Category from title and domain."""
     t = (title or "").lower()
     domain = (source_domain or "").lower()
-    tech_kw = ["developer", "engineer", "software", "backend", "frontend", "full stack", "data scientist", "devops", "sre", "qa engineer", "mobile developer"]
+    tech_kw = ["developer", "engineer", "software", "backend", "frontend", "full stack", "devops", "sre", "qa engineer", "mobile developer"]
+    data_kw = [
+        "data analyst",
+        "data analytics",
+        "data analysis",
+        "data manager",
+        "data entry",
+        "business analyst",
+        "data scientist",
+        "data science",
+        "analyst",
+        "analytics",
+    ]
     sales_kw = ["sales", "account executive", "business development", "bdm"]
     marketing_kw = ["marketing", "growth", "seo", "content", "performance"]
     support_kw = ["customer support", "customer success", "support specialist"]
     hr_kw = ["hr ", "talent acquisition", "recruiter", "recruitment"]
     finance_kw = ["finance", "accountant", "controller", "fp&a", "audit"]
     product_kw = ["product manager", "product owner"]
+    management_kw = ["management", "manager", "operations", "project manager", "account manager", "people operations"]
     design_kw = ["designer", "ux", "ui", "product design", "graphic design"]
     def any_kw(kws): return any(kw in t for kw in kws)
     if any_kw(tech_kw): return "Tech", "Software / Engineering"
-    if any_kw(product_kw): return "Tech", "Product Management"
+    if any_kw(data_kw): return "Non-tech", "Data / Analytics"
     if any_kw(design_kw): return "Tech", "Design / UX"
+    if any_kw(product_kw): return "Non-tech", "Product Management"
+    if any_kw(management_kw): return "Non-tech", "Management / Operations"
     if any_kw(sales_kw): return "Non-tech", "Sales"
     if any_kw(marketing_kw): return "Non-tech", "Marketing / Growth"
     if any_kw(support_kw): return "Non-tech", "Customer Support / Success"
@@ -205,6 +222,230 @@ def _normalize_job(job: dict) -> dict:
     return result
 
 
+def _is_non_job_or_spam(title: str, url: str, combined_text: str) -> bool:
+    t = (title or "").strip().lower()
+    u = (url or "").strip().lower()
+    if not t or len(t) < 6:
+        return True
+
+    # Non-job listings / chrome that many boards expose as "job cards".
+    NON_JOB_TITLE_MARKERS = (
+        "see open roles",
+        "see open positions",
+        "open positions",
+        "open roles",
+        "learn more",
+        "benefits",
+        "life at",
+        "university",
+        "general application",
+        "apply now",
+        "view job",
+        "view jobs",
+        "post a job",
+    )
+    if any(m in t for m in NON_JOB_TITLE_MARKERS):
+        return True
+
+    # Spam patterns adapted from your earlier Telegram-style prefilter.
+    SPAM_PATTERNS = [
+        re.compile(
+            r"\b(?:USDT|bitcoin|BTC|ETH|ethereum|crypto\s+earn|earn\s+USDT|\d+\s*USDT\s*=|buy\s+USDT|sell\s+USDT|IMPS.*UPI.*(?:rupee|INR|RS))\b",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            r"\b(?:job\s+support|interview\s+support|interview\s+preparation\s+service|mock\s+interview|interview\s+coaching|interview\s+assist|we\s+provide\s+structured\s+interview|training\s+support\s+for\s+IT\s+professionals)\b",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            r"(?:youtube|instagram|telegram)\s+chann?el.*task|promote.*chann?el|online.*youtube.*task|earn.*(?:like|subscribe|view|share)",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            r"24\s*\*\s*365.*(?:all\.weather|supplier|work)|reliable.*supplier.*(?:earn|income)|IMPS|UPI.*bank\s+card",
+            re.IGNORECASE,
+        ),
+    ]
+
+    txt = (combined_text or "").lower()
+    if any(p.search(txt) for p in SPAM_PATTERNS):
+        return True
+
+    # Extra crypto noise filter: many "crypto jobs" are scammy promotions.
+    if "crypto" in txt and any(
+        k in txt
+        for k in (
+            "usdt",
+            "bitcoin",
+            "btc",
+            "eth",
+            "defi",
+            "trader",
+            "spot trading",
+            "exchange",
+            "token",
+        )
+    ):
+        return True
+
+    # Some sources expose listing/search hubs as "job-like" URLs; skip them.
+    if any(h in u for h in ("/jobs/search", "/jobs/all", "/jobs?")) and "/job/" not in u:
+        return True
+
+    return False
+
+
+def _filter_jobs_for_target_profile(jobs: list[dict]) -> list[dict]:
+    """
+    Keep only jobs suitable for:
+    - Remote/Hybrid (global) OR India + pilot cities
+    - Work types: Internship / Part-time / Full-time (or unknown)
+    - Experience: fresher OR parseable min/max does not exceed 2 years
+    - Reject senior titles + common non-job/spam listings
+    """
+    cities = load_pilot_cities()
+    india_cities = [c.strip().lower() for c in (cities.get("india") or []) if c and c.strip()]
+
+    # Keep only jobs that match your tech/non-tech intent (reduces "Unknown" junk).
+    TECH_WORDS = (
+        "mern",
+        "pern",
+        "react",
+        "javascript",
+        "nodejs",
+        "node.js",
+        "express",
+        "mongodb",
+        "mongo",
+        "python",
+        "html",
+        "css",
+        "full stack",
+        "fullstack",
+        "full-stack",
+        "software engineer",
+        "software developer",
+        "developer",
+        "engineer",
+        "backend",
+        "frontend",
+        "microservices",
+        "programmer",
+        "programming",
+        "code",
+    )
+    NONTECH_WORDS = (
+        "data analyst",
+        "data analytics",
+        "data analysis",
+        "data manager",
+        "data entry",
+        "marketing",
+        "digital marketing",
+        "sales",
+        "account executive",
+        "business development",
+        "hr",
+        "human resources",
+        "recruiter",
+        "talent acquisition",
+        "customer support",
+        "customer care",
+        "customer success",
+        "management",
+        "project manager",
+        "product manager",
+        "admin",
+        "recruitment",
+        "analyst",
+        "coordinator",
+    )
+
+    def experience_ok(desc: str) -> bool:
+        exp = parse_experience(desc.lower())
+        if exp.get("is_fresher"):
+            return True
+        mn = exp.get("min")
+        mx = exp.get("max")
+        # If we cannot parse, keep it (better recall).
+        if mn is None and mx is None:
+            return True
+        if mn is not None and mn > 2:
+            return False
+        if mx is not None and mx > 2:
+            return False
+        return True
+
+    def location_ok(job: dict) -> bool:
+        loc_type = (job.get("location_type") or "").strip()
+        remote_ok = loc_type in ("Remote", "Hybrid")
+        country = (job.get("country") or "").strip().lower()
+
+        desc = (job.get("description") or "") or ""
+        loc_detail = (job.get("location_detail") or job.get("location") or "") or ""
+        combined_loc = f"{loc_detail} {desc}".lower()
+        city_ok = any(city in combined_loc for city in india_cities)
+        india_ok = country == "india"
+        if remote_ok or india_ok or city_ok:
+            return True
+
+        # Fallback: if location fields are missing, keep early-career roles.
+        wt = (job.get("work_type") or "").strip()
+        seniority = (job.get("seniority") or "").strip()
+        if not loc_detail.strip() and not city_ok and country != "india":
+            # If we cannot confirm location at all, prefer recall.
+            return True
+        return seniority in ("Fresher / Entry", "Junior") or wt in ("Internship", "Part-time", "Full-time")
+
+    def work_ok(job: dict) -> bool:
+        wt = (job.get("work_type") or "").strip()
+        if not wt:
+            return True
+        return wt in ("Internship", "Part-time", "Full-time")
+
+    def seniority_ok(job: dict) -> bool:
+        if (job.get("seniority") or "").strip() == "Senior":
+            return False
+        title = (job.get("title") or "").lower()
+        # Keep only strong seniority markers; allow "Manager" roles to pass
+        # (experience parsing will still gate by <= 2 years).
+        return not any(s in title for s in ("senior", "sr.", "staff", "lead"))
+
+    filtered: list[dict] = []
+    for job in jobs:
+        title = job.get("title") or ""
+        url = job.get("apply_url") or job.get("url") or ""
+        desc = job.get("description") or ""
+
+        combined = " ".join(
+            [
+                title,
+                desc,
+                job.get("location_detail") or job.get("location") or "",
+                job.get("company") or "",
+                url or "",
+            ]
+        )
+
+        if _is_non_job_or_spam(title, url, combined):
+            continue
+        text = f"{title} {desc}".lower()
+        if not (any(w in text for w in TECH_WORDS) or any(w in text for w in NONTECH_WORDS)):
+            continue
+        if not location_ok(job):
+            continue
+        if not work_ok(job):
+            continue
+        if not seniority_ok(job):
+            continue
+        if not experience_ok(desc):
+            continue
+
+        filtered.append(job)
+
+    return filtered
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Crawl jobs from crawl-ready sources (pilot)")
     parser.add_argument(
@@ -224,6 +465,11 @@ def main() -> int:
         type=int,
         default=100,
         help="Soft cap on jobs per source",
+    )
+    parser.add_argument(
+        "--no-profile-filter",
+        action="store_true",
+        help="Disable target profile filtering (for debugging)",
     )
     parser.add_argument(
         "--out",
@@ -324,6 +570,11 @@ def main() -> int:
             print(f"{len(jobs) - source_jobs_before} jobs")
     finally:
         client.close()
+
+    if not args.no_profile_filter:
+        before = len(jobs)
+        jobs = _filter_jobs_for_target_profile(jobs)
+        print(f"Target profile filter: {len(jobs)}/{before} jobs kept.")
 
     payload = {
         "meta": {

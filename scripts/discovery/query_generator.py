@@ -68,7 +68,9 @@ def pipeline_1_search_engine_queries() -> list[tuple[str, str | None, str | None
         "graduate jobs",
     ]
 
-    role_kw = tech_roles + non_tech_roles
+    # Bias discovery toward non-tech first (so Phase-2 crawling
+    # produces more of the non-tech roles you want).
+    role_kw = non_tech_roles + tech_roles
 
     for city in india[:15]:  # cap for pilot
         for kw in role_kw[:8]:
