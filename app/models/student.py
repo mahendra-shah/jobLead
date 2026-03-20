@@ -1,6 +1,6 @@
 """Student model."""
 
-from sqlalchemy import Boolean, Column, Integer, String, Date
+from sqlalchemy import Boolean, Column, String, Date
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
@@ -19,11 +19,7 @@ class Student(Base):
     # Personal Details
     date_of_birth = Column(Date)
     gender = Column(String(50))
-    
-    # Education Details
-    highest_qualification = Column(String(100))
-    course = Column(String(100))
-    passing_year = Column(Integer)
+    extra_detail = Column(JSONB, default=dict)
     
     # Skills
     skills = Column(JSONB, default=list)

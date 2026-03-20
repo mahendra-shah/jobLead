@@ -21,6 +21,8 @@ import os
 import re
 import smtplib
 import sys
+import time
+import socket
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from difflib import SequenceMatcher
@@ -41,6 +43,42 @@ from app.utils.timezone import now_ist
 
 DEFAULT_SPREADSHEET_ID = "112GNJ2uwwoYbf7OdmjSPFgDa0m_nH-STEuVbeCpECeg"
 DEFAULT_RESUME_TAB = "resume review"
+
+
+def _is_transient_google_network_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    transient_markers = [
+        "oauth2.googleapis.com",
+        "www.googleapis.com",
+        "name or service not known",
+        "temporary failure in name resolution",
+        "unable to find the server",
+        "nodename nor servname provided",
+        "failed to establish a new connection",
+        "connection reset",
+        "timed out",
+    ]
+    return any(marker in message for marker in transient_markers)
+
+
+def _execute_with_retry(callable_fn, *, attempts: int = 4, initial_delay: float = 1.5):
+    delay = initial_delay
+    last_exc: Optional[Exception] = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return callable_fn()
+        except Exception as exc:
+            last_exc = exc
+            if attempt == attempts or not _is_transient_google_network_error(exc):
+                raise
+            print(
+                f"⚠️ Network/DNS issue while calling Google API (attempt {attempt}/{attempts}): {exc}. "
+                f"Retrying in {delay:.1f}s..."
+            )
+            time.sleep(delay)
+            delay *= 2
+    if last_exc:
+        raise last_exc
 
 
 def resolve_tab_names(source_tab: str, target_tab: str, run_date: str) -> Tuple[str, str]:
@@ -138,14 +176,22 @@ class StudentJobMatcher:
             str(credentials_path),
             scopes=scopes,
         )
-        self.service = build("sheets", "v4", credentials=credentials)
+        self.service = _execute_with_retry(
+            lambda: build("sheets", "v4", credentials=credentials),
+            attempts=4,
+            initial_delay=1.0,
+        )
         self.sheets = self.service.spreadsheets()
 
     def read_tab(self, tab_name: str) -> Tuple[List[str], List[List[str]]]:
-        result = self.sheets.values().get(
-            spreadsheetId=self.spreadsheet_id,
-            range=f"'{tab_name}'!A1:ZZ",
-        ).execute()
+        result = _execute_with_retry(
+            lambda: self.sheets.values().get(
+                spreadsheetId=self.spreadsheet_id,
+                range=f"'{tab_name}'!A1:ZZ",
+            ).execute(),
+            attempts=4,
+            initial_delay=1.0,
+        )
         values = result.get("values", [])
         if not values:
             return [], []
@@ -154,44 +200,64 @@ class StudentJobMatcher:
         return header, rows
 
     def ensure_target_tab(self, tab_name: str):
-        metadata = self.sheets.get(spreadsheetId=self.spreadsheet_id).execute()
+        metadata = _execute_with_retry(
+            lambda: self.sheets.get(spreadsheetId=self.spreadsheet_id).execute(),
+            attempts=4,
+            initial_delay=1.0,
+        )
         sheets = metadata.get("sheets", [])
         existing = {s["properties"]["title"]: s["properties"]["sheetId"] for s in sheets}
 
         if tab_name not in existing:
-            self.sheets.batchUpdate(
-                spreadsheetId=self.spreadsheet_id,
-                body={
-                    "requests": [
-                        {
-                            "addSheet": {
-                                "properties": {
-                                    "title": tab_name,
-                                    "gridProperties": {"rowCount": 3000, "columnCount": 25},
+            _execute_with_retry(
+                lambda: self.sheets.batchUpdate(
+                    spreadsheetId=self.spreadsheet_id,
+                    body={
+                        "requests": [
+                            {
+                                "addSheet": {
+                                    "properties": {
+                                        "title": tab_name,
+                                        "gridProperties": {"rowCount": 3000, "columnCount": 25},
+                                    }
                                 }
                             }
-                        }
-                    ]
-                },
-            ).execute()
+                        ]
+                    },
+                ).execute(),
+                attempts=4,
+                initial_delay=1.0,
+            )
         else:
-            self.sheets.values().clear(
-                spreadsheetId=self.spreadsheet_id,
-                range=f"'{tab_name}'!A1:ZZ",
-            ).execute()
+            _execute_with_retry(
+                lambda: self.sheets.values().clear(
+                    spreadsheetId=self.spreadsheet_id,
+                    range=f"'{tab_name}'!A1:ZZ",
+                ).execute(),
+                attempts=4,
+                initial_delay=1.0,
+            )
 
     def write_tab(self, tab_name: str, rows: List[List[str]]):
         body = {"values": rows}
-        self.sheets.values().update(
-            spreadsheetId=self.spreadsheet_id,
-            range=f"'{tab_name}'!A1",
-            valueInputOption="RAW",
-            body=body,
-        ).execute()
+        _execute_with_retry(
+            lambda: self.sheets.values().update(
+                spreadsheetId=self.spreadsheet_id,
+                range=f"'{tab_name}'!A1",
+                valueInputOption="RAW",
+                body=body,
+            ).execute(),
+            attempts=4,
+            initial_delay=1.0,
+        )
 
     def get_sheet_gid(self, tab_name: str) -> Optional[int]:
         """Return the numeric GID of a sheet tab, or None if not found."""
-        metadata = self.sheets.get(spreadsheetId=self.spreadsheet_id).execute()
+        metadata = _execute_with_retry(
+            lambda: self.sheets.get(spreadsheetId=self.spreadsheet_id).execute(),
+            attempts=4,
+            initial_delay=1.0,
+        )
         for s in metadata.get("sheets", []):
             if s["properties"]["title"] == tab_name:
                 return s["properties"]["sheetId"]
@@ -654,6 +720,11 @@ def main():
 
     except HttpError as e:
         print(f"❌ Google Sheets API error: {e}")
+        sys.exit(1)
+    except socket.gaierror as e:
+        print("❌ DNS error while contacting Google APIs.")
+        print("   Check internet/DNS and retry. Example: ping oauth2.googleapis.com")
+        print(f"   Details: {e}")
         sys.exit(1)
     except Exception as e:
         print(f"❌ Error: {e}")

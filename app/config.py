@@ -1,8 +1,12 @@
 """Application configuration using Pydantic Settings."""
 
+from pathlib import Path
 from typing import List, Union, Annotated, Any
 from pydantic import Field, field_validator, BeforeValidator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def parse_list_of_ints(v: Any) -> List[int]:
@@ -18,7 +22,7 @@ class Settings(BaseSettings):
     """Application settings."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(PROJECT_ROOT / ".env"),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",

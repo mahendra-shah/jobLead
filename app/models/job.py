@@ -1,9 +1,8 @@
 """Job model."""
 
-from sqlalchemy import Boolean, Column, Float, ForeignKey, Integer, String, Text, BigInteger
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, BigInteger
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
-from pgvector.sqlalchemy import Vector
 
 from app.db.base import Base
 
@@ -22,16 +21,12 @@ class Job(Base):
     
     # Job details
     skills_required = Column(JSONB, default=list)  # ["Python", "FastAPI", ...]
-    experience_required = Column(String(50))  # "0-2 years", "2-5 years" (legacy)
-    salary_range = Column(JSONB, default=dict)  # {"min": 50000, "max": 80000, "currency": "USD"} (legacy)
     
     # Structured fields (new - for filtering and stats)
     is_fresher = Column(Boolean, nullable=True, index=True)  # True for fresher jobs (0-1 year)
     work_type = Column(String(50), nullable=True)  # remote, on-site, hybrid
-    experience_min = Column(Integer, nullable=True, index=True)  # Minimum years
-    experience_max = Column(Integer, nullable=True, index=True)  # Maximum years
-    salary_min = Column(Float, nullable=True)  # Minimum salary (in INR)
-    salary_max = Column(Float, nullable=True)  # Maximum salary (in INR)
+    experience = Column(String(255), nullable=True)  # Parsed experience text (e.g., "0-2 years")
+    salary = Column(String(255), nullable=True)  # Parsed salary text (e.g., "3-5 LPA")
     
     # Location
     location = Column(String(255))
@@ -48,11 +43,9 @@ class Job(Base):
     fetched_by_account = Column(Integer, nullable=True)  # NEW - MongoDB account ID (integer like 1, 2, 3)
     telegram_group_id = Column(UUID(as_uuid=True), nullable=True)  # NO FK - telegram_groups table empty
     scraped_by_account_id = Column(UUID(as_uuid=True), nullable=True)  # NO FK - telegram_accounts table empty
-    raw_text = Column(Text)  # Original job posting text
     
     # ML & Deduplication
-    embedding = Column(Vector(1536))  # OpenAI text-embedding-3-small dimensions
-    content_hash = Column(String(32), index=True)  # MD5 hash for deduplication
+    embedding = Column(String, nullable=True)  # Stored as text in current schema
     duplicate_of_id = Column(UUID(as_uuid=True), ForeignKey("jobs.id"), nullable=True)  # Made nullable
     source_message_id = Column(String(255))  # Link to raw messages (MongoDB message_id)
     ml_confidence = Column(String(10))  # Confidence score from ML classifier
@@ -65,6 +58,8 @@ class Job(Base):
     quality_breakdown = Column(JSONB, default=dict)  # Detailed scoring breakdown
     # Example: {"experience_match": 85, "field_completeness": 70, "skill_relevance": 90}
     relevance_reasons = Column(JSONB, default=list)  # List of match/mismatch reasons
+    quality_factors = Column(JSONB, default=dict)
+    quality_scored_at = Column(DateTime(timezone=True), nullable=True)
     
     # Visibility & Recommendation Tracking
     students_shown_to = Column(JSONB, default=list)  # List of student IDs who saw this job
@@ -78,8 +73,6 @@ class Job(Base):
     expires_at = Column(String)  # Job expiration date
     
     # Stats
-    view_count = Column(Integer, default=0)
-    application_count = Column(Integer, default=0)
     shared_count = Column(Integer, default=0)
     
     # Relationships

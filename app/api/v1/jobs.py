@@ -115,7 +115,7 @@ async def list_jobs(
         filters.append(Job.employment_type.ilike(f"%{employment_type}%"))
     
     if experience:
-        filters.append(Job.experience_required.ilike(f"%{experience}%"))
+        filters.append(Job.experience.ilike(f"%{experience}%"))
     
     # New structured field filters
     if is_fresher is not None:
@@ -125,41 +125,16 @@ async def list_jobs(
         filters.append(Job.work_type.ilike(f"%{work_type}%"))
     
     if min_experience is not None:
-        # Show jobs where max_experience >= min_experience (or no experience requirement)
-        filters.append(
-            or_(
-                Job.experience_max >= min_experience,
-                Job.experience_max.is_(None)
-            )
-        )
+        filters.append(Job.experience.ilike(f"%{min_experience}%"))
     
     if max_experience is not None:
-        # Show jobs where min_experience <= max_experience (or is fresher)
-        filters.append(
-            or_(
-                Job.experience_min <= max_experience,
-                Job.experience_min.is_(None),
-                Job.is_fresher.is_(True)
-            )
-        )
+        filters.append(Job.experience.ilike(f"%{max_experience}%"))
     
     if min_salary is not None:
-        # Show jobs where salary_max >= min_salary
-        filters.append(
-            and_(
-                Job.salary_max.isnot(None),
-                Job.salary_max >= min_salary
-            )
-        )
+        filters.append(Job.salary.isnot(None))
     
     if max_salary is not None:
-        # Show jobs where salary_min <= max_salary
-        filters.append(
-            and_(
-                Job.salary_min.isnot(None),
-                Job.salary_min <= max_salary
-            )
-        )
+        filters.append(Job.salary.isnot(None))
     
     if company_id:
         filters.append(Job.company_id == company_id)
@@ -183,22 +158,17 @@ async def list_jobs(
                 Company.name.label('company_name'),
                 Job.description,
                 Job.skills_required,
-                Job.experience_required,
-                Job.salary_range,
+                Job.experience,
+                Job.salary,
                 Job.is_fresher,
                 Job.work_type,
-                Job.experience_min,
-                Job.experience_max,
-                Job.salary_min,
-                Job.salary_max,
                 Job.location,
                 Job.job_type,
                 Job.employment_type,
                 Job.source,
                 Job.source_url,
                 Job.is_active,
-                Job.view_count,
-                Job.application_count,
+                Job.shared_count,
                 Job.created_at,
                 Job.updated_at,
                 func.count().over().label('total_count')  # Window function for total
@@ -226,22 +196,17 @@ async def list_jobs(
                 Company.name.label('company_name'),
                 Job.description,
                 Job.skills_required,
-                Job.experience_required,
-                Job.salary_range,
+                Job.experience,
+                Job.salary,
                 Job.is_fresher,
                 Job.work_type,
-                Job.experience_min,
-                Job.experience_max,
-                Job.salary_min,
-                Job.salary_max,
                 Job.location,
                 Job.job_type,
                 Job.employment_type,
                 Job.source,
                 Job.source_url,
                 Job.is_active,
-                Job.view_count,
-                Job.application_count,
+                Job.shared_count,
                 Job.created_at,
                 Job.updated_at
             )
@@ -268,22 +233,23 @@ async def list_jobs(
             "company_name": row.company_name or "Unknown",
             "description": row.description,
             "skills_required": row.skills_required or [],
-            "experience_required": row.experience_required,
-            "salary_range": row.salary_range or {},
+            "experience_required": row.experience,
+            "salary_range": {"raw": row.salary} if row.salary else {},
             "is_fresher": row.is_fresher,
             "work_type": row.work_type,
-            "experience_min": row.experience_min,
-            "experience_max": row.experience_max,
-            "salary_min": float(row.salary_min) if row.salary_min else None,
-            "salary_max": float(row.salary_max) if row.salary_max else None,
+            "experience_min": None,
+            "experience_max": None,
+            "salary_min": None,
+            "salary_max": None,
             "location": row.location,
             "job_type": row.job_type,
             "employment_type": row.employment_type,
             "source": row.source,
             "source_url": row.source_url,
             "is_active": row.is_active,
-            "view_count": row.view_count,
-            "application_count": row.application_count,
+            "view_count": 0,
+            "application_count": 0,
+            "shared_count": row.shared_count,
             "created_at": row.created_at.isoformat() if row.created_at else None,
             "updated_at": row.updated_at.isoformat() if row.updated_at else None,
         }
@@ -334,27 +300,28 @@ async def get_job(
         skills_required=job.skills_required or [],
         
         # Legacy fields
-        experience_required=job.experience_required,
-        salary_range=job.salary_range or {},
+        experience_required=job.experience,
+        salary_range={"raw": job.salary} if job.salary else {},
         
         # New structured fields
         is_fresher=job.is_fresher,
         work_type=job.work_type,
-        experience_min=job.experience_min,
-        experience_max=job.experience_max,
-        salary_min=float(job.salary_min) if job.salary_min else None,
-        salary_max=float(job.salary_max) if job.salary_max else None,
+        experience_min=None,
+        experience_max=None,
+        salary_min=None,
+        salary_max=None,
         
         location=job.location,
         job_type=job.job_type,
         employment_type=job.employment_type,
         source=job.source,
         source_url=job.source_url,
-        raw_text=job.raw_text,
+        raw_text=None,
         is_active=job.is_active,
         is_verified=job.is_verified,
-        view_count=job.view_count,
-        application_count=job.application_count,
+        view_count=0,
+        application_count=0,
+        shared_count=job.shared_count,
         created_at=job.created_at,
         updated_at=job.updated_at,
     )

@@ -59,6 +59,10 @@ class StudentProfileUpdate(BaseModel):
     phone: Optional[str] = Field(None, max_length=20, description="Mobile number (e.g., +91-9876543210)")
     date_of_birth: Optional[str] = Field(None, description="Date of birth (YYYY-MM-DD format as string)")
     gender: Optional[str] = Field(None, max_length=50, description="Gender (e.g., Male, Female, Other)")
+    extra_detail: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Extra details object; includes highest_qualification, course, passing_year"
+    )
     
     # Education Details
     highest_qualification: Optional[str] = Field(
@@ -152,6 +156,7 @@ class StudentProfileResponse(BaseModel):
     email: Optional[str] = None
     date_of_birth: Optional[str] = None  # Return as string (YYYY-MM-DD) for JSON compatibility
     gender: Optional[str] = None
+    extra_detail: Optional[Dict[str, Any]] = None
     
     # Education Details
     highest_qualification: Optional[str] = None

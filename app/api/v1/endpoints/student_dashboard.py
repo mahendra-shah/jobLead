@@ -21,6 +21,15 @@ from app.schemas.student import (
 
 router = APIRouter()
 
+
+async def _get_student_for_current_user(db: AsyncSession, current_user: User):
+    if not current_user or not current_user.email:
+        return None
+    result = await db.execute(
+        select(Student).where(func.lower(Student.email) == current_user.email.strip().lower())
+    )
+    return result.scalar_one_or_none()
+
 def _has_value(v) -> bool:
     """Generic truthy check that handles lists/dicts/strings consistently."""
     if v is None:
@@ -39,6 +48,8 @@ def _calculate_profile_completeness(student: Student) -> int:
     Compute profile completeness based on the current Student model fields.
     Returns an int percentage (0-100).
     """
+    extra_detail = student.extra_detail if isinstance(getattr(student, 'extra_detail', None), dict) else {}
+
     checks = [
         student.first_name,
         student.last_name,
@@ -46,11 +57,11 @@ def _calculate_profile_completeness(student: Student) -> int:
         student.date_of_birth,
         student.gender,
         student.current_address,
-        student.highest_qualification,
+        extra_detail.get("highest_qualification"),
         student.college_name,
-        student.course,
+        extra_detail.get("course"),
         student.branch,
-        student.passing_year,
+        extra_detail.get("passing_year"),
         student.technical_skills,
         student.soft_skills,
         student.resume_url,
@@ -89,6 +100,7 @@ def _student_profile_payload(student: Student, current_user: User) -> dict:
         dob = student.date_of_birth.isoformat() if hasattr(student.date_of_birth, "isoformat") else str(student.date_of_birth)
 
     social_links = student.social_links if isinstance(getattr(student, 'social_links', None), dict) else {}
+    extra_detail = student.extra_detail if isinstance(getattr(student, 'extra_detail', None), dict) else {}
 
     return {
         "id": str(student.id) if getattr(student, "id", None) else None,
@@ -104,15 +116,16 @@ def _student_profile_payload(student: Student, current_user: User) -> dict:
         "email": getattr(current_user, "email", None),
         "date_of_birth": dob,
         "gender": student.gender,
+        "extra_detail": extra_detail,
         "current_address": student.current_address,
 
         # Education
-        "highest_qualification": student.highest_qualification,
+        "highest_qualification": extra_detail.get("highest_qualification"),
         "college_name": student.college_name,
         "college_id": student.college_id,
-        "course": student.course,
+        "course": extra_detail.get("course"),
         "branch": student.branch,
-        "passing_year": student.passing_year,
+        "passing_year": extra_detail.get("passing_year"),
         "percentage": student.percentage,
         "cgpa": student.cgpa,
 
@@ -161,11 +174,7 @@ async def get_dashboard(
     - Unread notifications count
     - Recommendations available count
     """
-    # Get student by user_id
-    result = await db.execute(
-        select(Student).where(Student.user_id == current_user.id)
-    )
-    student = result.scalar_one_or_none()
+    student = await _get_student_for_current_user(db, current_user)
     
     # If profile doesn't exist yet, still return a valid dashboard with 0% completion.
     if not student:
@@ -289,10 +298,7 @@ async def track_job_view(
         )
 
     # Get student
-    result = await db.execute(
-        select(Student).where(Student.user_id == current_user.id)
-    )
-    student = result.scalar_one_or_none()
+    student = await _get_student_for_current_user(db, current_user)
     
     if not student:
         raise HTTPException(
@@ -343,10 +349,7 @@ async def get_activity(
     Returns detailed analytics about student engagement.
     """
     # Get student
-    result = await db.execute(
-        select(Student).where(Student.user_id == current_user.id)
-    )
-    student = result.scalar_one_or_none()
+    student = await _get_student_for_current_user(db, current_user)
     
     if not student:
         raise HTTPException(

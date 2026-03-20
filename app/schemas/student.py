@@ -26,6 +26,10 @@ class PersonalDetailsMixin(BaseModel):
         max_length=50,
         description="Gender identity (e.g., Male, Female, Other, Prefer not to say)"
     )
+    extra_detail: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Extra details object; includes highest_qualification, course, passing_year"
+    )
 
 
 class EducationDetailsMixin(BaseModel):

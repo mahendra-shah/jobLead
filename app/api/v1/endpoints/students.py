@@ -8,7 +8,7 @@ Student Management API - CRUD with RBAC
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, cast, Integer
 from sqlalchemy.orm import joinedload
 
 from app.api.deps import (
@@ -28,6 +28,22 @@ from app.schemas.student import (
 )
 
 router = APIRouter()
+
+
+def _merge_extra_detail_with_passing_year(existing: Optional[dict], passing_year: Optional[int]) -> dict:
+    extra_detail = dict(existing) if isinstance(existing, dict) else {}
+    if passing_year is not None:
+        extra_detail["passing_year"] = passing_year
+    return extra_detail
+
+
+def _get_passing_year(student: Student) -> Optional[int]:
+    extra_detail = student.extra_detail if isinstance(getattr(student, 'extra_detail', None), dict) else {}
+    passing_year = extra_detail.get("passing_year")
+    try:
+        return int(passing_year) if passing_year is not None else None
+    except (TypeError, ValueError):
+        return None
 
 
 # ==================== Student CRUD (Admin/Placement) ====================
@@ -64,7 +80,7 @@ async def create_student(
         phone=student_in.phone,
         degree=student_in.degree,
         branch=student_in.branch,
-        passing_year=student_in.passing_year,
+        extra_detail=_merge_extra_detail_with_passing_year(None, student_in.passing_year),
         is_active=True
     )
     
@@ -109,7 +125,7 @@ async def list_students(
         query = query.where(Student.branch == branch)
     
     if passing_year:
-        query = query.where(Student.passing_year == passing_year)
+        query = query.where(cast(Student.extra_detail['passing_year'].astext, Integer) == passing_year)
     
     if is_active is not None:
         query = query.where(Student.is_active == is_active)
@@ -129,7 +145,7 @@ async def list_students(
     if branch:
         count_query = count_query.where(Student.branch == branch)
     if passing_year:
-        count_query = count_query.where(Student.passing_year == passing_year)
+        count_query = count_query.where(cast(Student.extra_detail['passing_year'].astext, Integer) == passing_year)
     if is_active is not None:
         count_query = count_query.where(Student.is_active == is_active)
     if search:
@@ -227,6 +243,11 @@ async def update_student(
     
     # Update fields
     update_data = student_in.dict(exclude_unset=True)
+    if "passing_year" in update_data:
+        student.extra_detail = _merge_extra_detail_with_passing_year(
+            student.extra_detail,
+            update_data.pop("passing_year")
+        )
     for field, value in update_data.items():
         setattr(student, field, value)
     
@@ -357,7 +378,7 @@ async def bulk_create_students(
                 phone=student_data.phone,
                 degree=student_data.degree,
                 branch=student_data.branch,
-                passing_year=student_data.passing_year,
+                extra_detail=_merge_extra_detail_with_passing_year(None, student_data.passing_year),
                 is_active=True
             )
             db.add(db_student)
@@ -409,7 +430,7 @@ async def export_students(
                     "phone": s.phone,
                     "degree": s.degree,
                     "branch": s.branch,
-                    "passing_year": s.passing_year,
+                    "passing_year": _get_passing_year(s),
                     "is_active": s.is_active
                 }
                 for s in students
@@ -437,7 +458,7 @@ async def export_students(
             "phone": s.phone,
             "degree": s.degree or "",
             "branch": s.branch or "",
-            "passing_year": s.passing_year or "",
+            "passing_year": _get_passing_year(s) or "",
             "is_active": s.is_active
         })
     

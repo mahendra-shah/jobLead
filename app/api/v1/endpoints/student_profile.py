@@ -7,7 +7,7 @@ All fields match frontend requirements exactly
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from typing import Optional
 import traceback
 import json
@@ -33,10 +33,14 @@ RESUME_STORAGE_DIR = Path(settings.RESUME_STORAGE_DIR)
 RESUME_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 
-async def get_student_by_user_id(db: AsyncSession, user_id) -> Optional[Student]:
-    """Helper to get student by user_id"""
+async def get_student_for_current_user(db: AsyncSession, current_user: User) -> Optional[Student]:
+    """Helper to get student profile mapped to the authenticated user."""
+    if not current_user or not current_user.email:
+        return None
+
+    normalized_email = current_user.email.strip().lower()
     result = await db.execute(
-        select(Student).where(Student.user_id == user_id)
+        select(Student).where(func.lower(Student.email) == normalized_email)
     )
     return result.scalar_one_or_none()
 
@@ -121,21 +125,23 @@ def _calculate_profile_completeness(student: Student) -> int:
     Compute profile completeness based on the current Student model fields.
     Returns an int percentage (0-100).
     """
+    extra_detail = student.extra_detail if isinstance(getattr(student, 'extra_detail', None), dict) else {}
+
     checks = [
-        student.first_name,
-        student.last_name,
-        student.phone,
-        student.date_of_birth,
-        student.gender,
-        student.current_address,
-        student.highest_qualification,
-        student.college_name,
-        student.course,
-        student.branch,
-        student.passing_year,
-        student.technical_skills,
-        student.soft_skills,
-        student.resume_url,
+        getattr(student, 'first_name', None),
+        getattr(student, 'last_name', None),
+        getattr(student, 'phone', None),
+        getattr(student, 'date_of_birth', None),
+        getattr(student, 'gender', None),
+        getattr(student, 'current_address', None),
+        extra_detail.get("highest_qualification"),
+        getattr(student, 'college_name', None),
+        extra_detail.get("course"),
+        getattr(student, 'branch', None),
+        extra_detail.get("passing_year"),
+        getattr(student, 'technical_skills', None),
+        getattr(student, 'soft_skills', None),
+        getattr(student, 'resume_url', None),
     ]
     
     # Check preference JSONB for job preferences
@@ -162,8 +168,9 @@ def build_profile_response(student: Student, user: User) -> StudentProfileRespon
     
     # Serialize nested objects properly
     internship_details = []
-    if student.internship_details:
-        for intern in student.internship_details:
+    internship_items = getattr(student, 'internship_details', None) or []
+    if internship_items:
+        for intern in internship_items:
             if isinstance(intern, dict):
                 internship_details.append(intern)
             else:
@@ -171,16 +178,18 @@ def build_profile_response(student: Student, user: User) -> StudentProfileRespon
                 internship_details.append(intern.dict() if hasattr(intern, 'dict') else intern)
     
     projects = []
-    if student.projects:
-        for proj in student.projects:
+    project_items = getattr(student, 'projects', None) or []
+    if project_items:
+        for proj in project_items:
             if isinstance(proj, dict):
                 projects.append(proj)
             else:
                 projects.append(proj.dict() if hasattr(proj, 'dict') else proj)
     
     languages = []
-    if student.languages:
-        for lang in student.languages:
+    language_items = getattr(student, 'languages', None) or getattr(student, 'spoken_languages', None) or []
+    if language_items:
+        for lang in language_items:
             if isinstance(lang, dict):
                 languages.append(lang)
             else:
@@ -188,25 +197,27 @@ def build_profile_response(student: Student, user: User) -> StudentProfileRespon
     
     # Convert date_of_birth to string if it's a date object
     date_of_birth_str = None
-    if student.date_of_birth:
-        if isinstance(student.date_of_birth, str):
-            date_of_birth_str = student.date_of_birth
+    student_dob = getattr(student, 'date_of_birth', None)
+    if student_dob:
+        if isinstance(student_dob, str):
+            date_of_birth_str = student_dob
         else:
-            date_of_birth_str = student.date_of_birth.isoformat()
+            date_of_birth_str = student_dob.isoformat()
     
     # Handle preference JSONB field
     preference = None
     preferred_job_role = None
     job_category = None
-    if student.preference and isinstance(student.preference, dict):
+    student_preference = getattr(student, 'preference', None)
+    if student_preference and isinstance(student_preference, dict):
         # Ensure all fields in preference are properly formatted
         preference = {
-            "job_type": student.preference.get('job_type') or [],
-            "work_mode": student.preference.get('work_mode') or [],
-            "preferred_job_role": student.preference.get('preferred_job_role') or [],
-            "job_category": student.preference.get('job_category'),
-            "preferred_location": student.preference.get('preferred_location') or [],
-            "expected_salary": student.preference.get('expected_salary'),
+            "job_type": student_preference.get('job_type') or [],
+            "work_mode": student_preference.get('work_mode') or [],
+            "preferred_job_role": student_preference.get('preferred_job_role') or [],
+            "job_category": student_preference.get('job_category'),
+            "preferred_location": student_preference.get('preferred_location') or [],
+            "expected_salary": student_preference.get('expected_salary'),
         }
         preferred_job_role = preference.get("preferred_job_role") or None
         job_category = preference.get("job_category") or None
@@ -219,43 +230,49 @@ def build_profile_response(student: Student, user: User) -> StudentProfileRespon
             preference = None
     
     social_links = student.social_links if isinstance(getattr(student, 'social_links', None), dict) else {}
+    extra_detail = student.extra_detail if isinstance(getattr(student, 'extra_detail', None), dict) else {}
+
+    highest_qualification = extra_detail.get("highest_qualification")
+    course = extra_detail.get("course")
+    passing_year = extra_detail.get("passing_year")
 
     # Calculate profile completeness
     profile_completeness = _calculate_profile_completeness(student)
     
     return StudentProfileResponse(
-        first_name=student.first_name,
-        last_name=student.last_name,
-        full_name=student.full_name,
-        phone=student.phone,
+        first_name=getattr(student, 'first_name', None),
+        last_name=getattr(student, 'last_name', None),
+        full_name=getattr(student, 'full_name', None),
+        phone=getattr(student, 'phone', None),
         date_of_birth=date_of_birth_str,
-        gender=student.gender,
-        current_address=student.current_address,
-        highest_qualification=student.highest_qualification,
-        college_name=student.college_name,
-        college_id=student.college_id,
-        course=student.course,
-        branch=student.branch,
-        passing_year=student.passing_year,
-        percentage=student.percentage,
-        cgpa=student.cgpa,
-        skills=student.technical_skills or [],
-        technical_skills=student.technical_skills or [],
-        soft_skills=student.soft_skills or [],
-        experience_type=student.experience_type,
+        gender=getattr(student, 'gender', None),
+        extra_detail=extra_detail,
+        current_address=getattr(student, 'current_address', None),
+        highest_qualification=highest_qualification,
+        college_name=getattr(student, 'college_name', None),
+        college_id=getattr(student, 'college_id', None),
+        course=course,
+        branch=getattr(student, 'branch', None),
+        passing_year=passing_year,
+        percentage=getattr(student, 'percentage', None),
+        cgpa=getattr(student, 'cgpa', None),
+        skills=getattr(student, 'technical_skills', None) or [],
+        technical_skills=getattr(student, 'technical_skills', None) or [],
+        soft_skills=getattr(student, 'soft_skills', None) or [],
+        experience_type=getattr(student, 'experience_type', None),
         internship_details=internship_details,
         projects=projects,
         spoken_languages=languages,
-        email=student.email or getattr(user, 'email', None),
+        email=getattr(student, 'email', None) or getattr(user, 'email', None),
         preference=preference,
         preferred_job_role=preferred_job_role,
         job_category=job_category,
         social_links=social_links,
-        resume_url=student.resume_url,
+        resume_url=getattr(student, 'resume_url', None),
         id=student_id,
         is_active=user.is_active,
-        created_at=student.created_at,
-        updated_at=student.updated_at,
+        created_at=getattr(student, 'created_at', None),
+        updated_at=getattr(student, 'updated_at', None),
         profile_completeness=profile_completeness
     )
 
@@ -275,7 +292,7 @@ async def get_my_profile(
     Returns all profile fields matching the frontend schema exactly.
     """
     try:
-        student = await get_student_by_user_id(db, current_user.id)
+        student = await get_student_for_current_user(db, current_user)
         
         if not student:
             raise HTTPException(
@@ -313,7 +330,7 @@ async def update_my_profile(
     Handles nested objects (internships, projects, languages) properly.
     """
     try:
-        student = await get_student_by_user_id(db, current_user.id)
+        student = await get_student_for_current_user(db, current_user)
         
         # Get update data (only fields that are provided)
         update_data = profile_update.model_dump(exclude_unset=True, exclude_none=False)
@@ -377,6 +394,23 @@ async def update_my_profile(
         # Store consolidated preference data
         if preference_data:
             update_data['preference'] = preference_data
+
+        # Keep education values under extra_detail JSON as source of truth (while preserving existing columns)
+        incoming_extra_detail = update_data.pop('extra_detail', None)
+        extra_detail_payload = incoming_extra_detail.copy() if isinstance(incoming_extra_detail, dict) else {}
+
+        if 'highest_qualification' in update_data:
+            extra_detail_payload['highest_qualification'] = update_data.get('highest_qualification')
+        if 'course' in update_data:
+            extra_detail_payload['course'] = update_data.get('course')
+        if 'passing_year' in update_data:
+            extra_detail_payload['passing_year'] = update_data.get('passing_year')
+
+        if extra_detail_payload:
+            existing_extra_detail = {}
+            if student and isinstance(getattr(student, 'extra_detail', None), dict):
+                existing_extra_detail = student.extra_detail
+            update_data['extra_detail'] = {**existing_extra_detail, **extra_detail_payload}
         
         # Handle nested Pydantic models - convert to dicts
         if 'internship_details' in update_data and update_data['internship_details']:
@@ -445,7 +479,7 @@ async def update_my_profile(
             
             # Prepare student creation data
             student_data = {
-                'user_id': current_user.id,
+                'email': (update_data.get('email') or current_user.email),
                 'full_name': full_name
             }
             
@@ -465,8 +499,10 @@ async def update_my_profile(
             # Update existing student
             # Update full_name if first_name or last_name changed
             if 'first_name' in update_data or 'last_name' in update_data:
-                first = update_data.get('first_name', student.first_name) or student.first_name or ''
-                last = update_data.get('last_name', student.last_name) or student.last_name or ''
+                existing_first = getattr(student, 'first_name', None)
+                existing_last = getattr(student, 'last_name', None)
+                first = update_data.get('first_name', existing_first) or existing_first or ''
+                last = update_data.get('last_name', existing_last) or existing_last or ''
                 if first or last:
                     update_data['full_name'] = f"{first} {last}".strip()
             
@@ -546,13 +582,13 @@ async def upload_resume(
             )
         
         # Get student, create if doesn't exist
-        student = await get_student_by_user_id(db, current_user.id)
+        student = await get_student_for_current_user(db, current_user)
         
         if not student:
             # Create basic student profile if it doesn't exist
             full_name = current_user.email.split('@')[0] if current_user.email else 'Student'
             student = Student(
-                user_id=current_user.id,
+                email=current_user.email,
                 full_name=full_name
             )
             db.add(student)
@@ -598,7 +634,7 @@ async def delete_resume(
     **Auth**: Student (JWT required)
     """
     try:
-        student = await get_student_by_user_id(db, current_user.id)
+        student = await get_student_for_current_user(db, current_user)
         
         if not student:
             raise HTTPException(
@@ -651,7 +687,7 @@ async def get_profile_completeness(
     - is_complete: Boolean indicating if profile is complete (>=80%)
     """
     try:
-        student = await get_student_by_user_id(db, current_user.id)
+        student = await get_student_for_current_user(db, current_user)
         
         if not student:
             # If no profile exists, return 0% completeness
@@ -675,41 +711,41 @@ async def get_profile_completeness(
         # Define field categories with weights
         # Personal Details (20%)
         personal_fields = {
-            "first_name": (student.first_name, "First Name"),
-            "last_name": (student.last_name, "Last Name"),
-            "phone": (student.phone, "Mobile Number"),
-            "date_of_birth": (student.date_of_birth, "Date of Birth"),
-            "gender": (student.gender, "Gender"),
-            "current_address": (student.current_address, "Current Address"),
+            "first_name": (getattr(student, 'first_name', None), "First Name"),
+            "last_name": (getattr(student, 'last_name', None), "Last Name"),
+            "phone": (getattr(student, 'phone', None), "Mobile Number"),
+            "date_of_birth": (getattr(student, 'date_of_birth', None), "Date of Birth"),
+            "gender": (getattr(student, 'gender', None), "Gender"),
+            "current_address": (getattr(student, 'current_address', None), "Current Address"),
         }
         
         # Education Details (25%)
         education_fields = {
-            "highest_qualification": (student.highest_qualification, "Highest Qualification"),
-            "college_name": (student.college_name, "College/University Name"),
-            "course": (student.course, "Course"),
-            "branch": (student.branch, "Branch"),
-            "passing_year": (student.passing_year, "Year of Passing"),
-            "percentage": (student.percentage, "Percentage"),
-            "cgpa": (student.cgpa, "CGPA"),
+            "highest_qualification": ((student.extra_detail or {}).get("highest_qualification"), "Highest Qualification"),
+            "college_name": (getattr(student, 'college_name', None), "College/University Name"),
+            "course": ((student.extra_detail or {}).get("course"), "Course"),
+            "branch": (getattr(student, 'branch', None), "Branch"),
+            "passing_year": ((student.extra_detail or {}).get("passing_year"), "Year of Passing"),
+            "percentage": (getattr(student, 'percentage', None), "Percentage"),
+            "cgpa": (getattr(student, 'cgpa', None), "CGPA"),
         }
         
         # Skills (15%)
         skills_fields = {
-            "technical_skills": (student.technical_skills and len(student.technical_skills) > 0, "Technical Skills"),
-            "soft_skills": (student.soft_skills and len(student.soft_skills) > 0, "Soft Skills"),
+            "technical_skills": (getattr(student, 'technical_skills', None) and len(getattr(student, 'technical_skills', []) or []) > 0, "Technical Skills"),
+            "soft_skills": (getattr(student, 'soft_skills', None) and len(getattr(student, 'soft_skills', []) or []) > 0, "Soft Skills"),
         }
         
         # Experience (10%)
         experience_fields = {
-            "experience_type": (student.experience_type, "Experience Type"),
-            "internship_details": (student.internship_details and len(student.internship_details) > 0, "Internship Details"),
-            "projects": (student.projects and len(student.projects) > 0, "Projects"),
+            "experience_type": (getattr(student, 'experience_type', None), "Experience Type"),
+            "internship_details": (getattr(student, 'internship_details', None) and len(getattr(student, 'internship_details', []) or []) > 0, "Internship Details"),
+            "projects": (getattr(student, 'projects', None) and len(getattr(student, 'projects', []) or []) > 0, "Projects"),
         }
         
         # Languages (5%)
         languages_fields = {
-            "spoken_languages": (student.languages and len(student.languages) > 0, "Spoken Languages"),
+            "spoken_languages": ((getattr(student, 'languages', None) or getattr(student, 'spoken_languages', None)) and len((getattr(student, 'languages', None) or getattr(student, 'spoken_languages', None) or [])) > 0, "Spoken Languages"),
         }
         
         # Job Preferences (15%) - Use new preference JSONB column
@@ -719,7 +755,7 @@ async def get_profile_completeness(
                 "job_type": (student.preference.get('job_type') and len(student.preference.get('job_type', [])) > 0, "Job Type"),
                 "work_mode": (student.preference.get('work_mode') and len(student.preference.get('work_mode', [])) > 0, "Work Mode"),
                 "preferred_job_role": (student.preference.get('preferred_job_role') and len(student.preference.get('preferred_job_role', [])) > 0, "Preferred Job Role"),
-                "job_category": (student.job_category, "Job Category"),
+                "job_category": (getattr(student, 'job_category', None), "Job Category"),
                 "preferred_location": (student.preference.get('preferred_location') and len(student.preference.get('preferred_location', [])) > 0, "Preferred Location"),
             }
         else:
@@ -743,7 +779,7 @@ async def get_profile_completeness(
         
         # Resume (5%)
         resume_fields = {
-            "resume_url": (student.resume_url, "Resume"),
+            "resume_url": (getattr(student, 'resume_url', None), "Resume"),
         }
         
         # Calculate completeness for each category
@@ -797,21 +833,22 @@ async def get_profile_completeness(
         
         # Generate suggestions
         suggestions = []
-        if not check_field(student.first_name) or not check_field(student.last_name):
+        if not check_field(getattr(student, 'first_name', None)) or not check_field(getattr(student, 'last_name', None)):
             suggestions.append("Add your full name to personalize your profile")
-        if not check_field(student.phone):
+        if not check_field(getattr(student, 'phone', None)):
             suggestions.append("Add your mobile number for better communication")
-        if not check_field(student.date_of_birth):
+        if not check_field(getattr(student, 'date_of_birth', None)):
             suggestions.append("Add your date of birth")
-        if not check_field(student.college_name):
+        if not check_field(getattr(student, 'college_name', None)):
             suggestions.append("Add your college/university name")
-        if not check_field(student.course) or not check_field(student.branch):
+        student_course = (student.extra_detail or {}).get("course") if isinstance(getattr(student, 'extra_detail', None), dict) else None
+        if not check_field(student_course) or not check_field(getattr(student, 'branch', None)):
             suggestions.append("Complete your education details (course and branch)")
-        if not check_field(student.technical_skills):
+        if not check_field(getattr(student, 'technical_skills', None)):
             suggestions.append("Add your technical skills to improve job matching")
-        if not check_field(student.soft_skills):
+        if not check_field(getattr(student, 'soft_skills', None)):
             suggestions.append("Add your soft skills to showcase your strengths")
-        if not check_field(student.resume_url):
+        if not check_field(getattr(student, 'resume_url', None)):
             suggestions.append("Upload your resume to apply for jobs")
         
         # Check preference JSONB field for job roles
@@ -819,9 +856,10 @@ async def get_profile_completeness(
         if not check_field(preferred_roles):
             suggestions.append("Add preferred job roles to get better recommendations")
         
-        if not check_field(student.linkedin_profile):
+        social_links = getattr(student, 'social_links', None) or {}
+        if not check_field((social_links or {}).get('linkedin_profile')):
             suggestions.append("Add your LinkedIn profile to enhance your professional presence")
-        if not check_field(student.projects):
+        if not check_field(getattr(student, 'projects', None)):
             suggestions.append("Add your projects to showcase your work")
         
         # If profile is mostly complete, add encouraging message
@@ -866,7 +904,7 @@ async def get_resume_file(
     """
     try:
         # Verify student owns this resume
-        student = await get_student_by_user_id(db, current_user.id)
+        student = await get_student_for_current_user(db, current_user)
         if not student:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

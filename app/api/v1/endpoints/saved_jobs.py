@@ -25,6 +25,38 @@ from app.schemas.student import (
 router = APIRouter()
 
 
+def _job_payload(job: Job):
+    if not job:
+        return None
+    return {
+        "id": str(job.id),
+        "title": job.title,
+        "company_id": str(job.company_id) if job.company_id else None,
+        "company_name": job.company.name if job.company else "Unknown",
+        "description": job.description,
+        "skills_required": job.skills_required or [],
+        "experience_required": job.experience,
+        "salary_range": {"raw": job.salary} if job.salary else {},
+        "is_fresher": job.is_fresher,
+        "work_type": job.work_type,
+        "experience_min": None,
+        "experience_max": None,
+        "salary_min": None,
+        "salary_max": None,
+        "location": job.location,
+        "job_type": job.job_type,
+        "employment_type": job.employment_type,
+        "source": job.source,
+        "source_url": job.source_url,
+        "is_active": job.is_active,
+        "view_count": 0,
+        "application_count": 0,
+        "shared_count": job.shared_count,
+        "created_at": job.created_at.isoformat() if job.created_at else None,
+        "updated_at": job.updated_at.isoformat() if job.updated_at else None,
+    }
+
+
 @router.post("", response_model=SavedJobResponse, status_code=status.HTTP_201_CREATED)
 async def save_job(
     saved_job_in: SavedJobCreate,
@@ -88,32 +120,7 @@ async def save_job(
     await db.refresh(db_saved_job)
     
     # Format job data for response
-    job_data = {
-        "id": str(job.id),
-        "title": job.title,
-        "company_id": str(job.company_id) if job.company_id else None,
-        "company_name": job.company.name if job.company else "Unknown",
-        "description": job.description,
-        "skills_required": job.skills_required or [],
-        "experience_required": job.experience_required,
-        "salary_range": job.salary_range or {},
-        "is_fresher": job.is_fresher,
-        "work_type": job.work_type,
-        "experience_min": job.experience_min,
-        "experience_max": job.experience_max,
-        "salary_min": float(job.salary_min) if job.salary_min else None,
-        "salary_max": float(job.salary_max) if job.salary_max else None,
-        "location": job.location,
-        "job_type": job.job_type,
-        "employment_type": job.employment_type,
-        "source": job.source,
-        "source_url": job.source_url,
-        "is_active": job.is_active,
-        "view_count": job.view_count,
-        "application_count": job.application_count,
-        "created_at": job.created_at.isoformat() if job.created_at else None,
-        "updated_at": job.updated_at.isoformat() if job.updated_at else None,
-    }
+    job_data = _job_payload(job)
     
     return SavedJobResponse(
         id=str(db_saved_job.id),
@@ -174,35 +181,7 @@ async def list_saved_jobs(
         )
         job = job_result.scalar_one_or_none()
         
-        if job:
-            job_data = {
-                "id": str(job.id),
-                "title": job.title,
-                "company_id": str(job.company_id) if job.company_id else None,
-                "company_name": job.company.name if job.company else "Unknown",
-                "description": job.description,
-                "skills_required": job.skills_required or [],
-                "experience_required": job.experience_required,
-                "salary_range": job.salary_range or {},
-                "is_fresher": job.is_fresher,
-                "work_type": job.work_type,
-                "experience_min": job.experience_min,
-                "experience_max": job.experience_max,
-                "salary_min": float(job.salary_min) if job.salary_min else None,
-                "salary_max": float(job.salary_max) if job.salary_max else None,
-                "location": job.location,
-                "job_type": job.job_type,
-                "employment_type": job.employment_type,
-                "source": job.source,
-                "source_url": job.source_url,
-                "is_active": job.is_active,
-                "view_count": job.view_count,
-                "application_count": job.application_count,
-                "created_at": job.created_at.isoformat() if job.created_at else None,
-                "updated_at": job.updated_at.isoformat() if job.updated_at else None,
-            }
-        else:
-            job_data = None
+        job_data = _job_payload(job)
         
         saved_jobs_response.append(SavedJobResponse(
             id=str(saved_job.id),
@@ -274,35 +253,7 @@ async def update_saved_job(
     )
     job = job_result.scalar_one_or_none()
     
-    if job:
-        job_data = {
-            "id": str(job.id),
-            "title": job.title,
-            "company_id": str(job.company_id) if job.company_id else None,
-            "company_name": job.company.name if job.company else "Unknown",
-            "description": job.description,
-            "skills_required": job.skills_required or [],
-            "experience_required": job.experience_required,
-            "salary_range": job.salary_range or {},
-            "is_fresher": job.is_fresher,
-            "work_type": job.work_type,
-            "experience_min": job.experience_min,
-            "experience_max": job.experience_max,
-            "salary_min": float(job.salary_min) if job.salary_min else None,
-            "salary_max": float(job.salary_max) if job.salary_max else None,
-            "location": job.location,
-            "job_type": job.job_type,
-            "employment_type": job.employment_type,
-            "source": job.source,
-            "source_url": job.source_url,
-            "is_active": job.is_active,
-            "view_count": job.view_count,
-            "application_count": job.application_count,
-            "created_at": job.created_at.isoformat() if job.created_at else None,
-            "updated_at": job.updated_at.isoformat() if job.updated_at else None,
-        }
-    else:
-        job_data = None
+    job_data = _job_payload(job)
     
     return SavedJobResponse(
         id=str(saved_job.id),

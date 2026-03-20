@@ -137,7 +137,7 @@ def fetch_students(conn, limit: int) -> List[StudentRow]:
                 COALESCE(technical_skills, '[]'::jsonb) AS technical_skills,
                 COALESCE(preferred_job_role, '[]'::jsonb) AS preferred_job_role,
                 COALESCE(preference, '{{}}'::jsonb) AS preference,
-                COALESCE(job_category, '[]'::jsonb) AS job_category
+                COALESCE(job_category, '') AS job_category
             FROM students
             WHERE email IS NOT NULL
               AND btrim(email) <> ''
