@@ -1,7 +1,7 @@
 """
 Schemas for job scraping preferences
 """
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
@@ -18,17 +18,9 @@ class JobPreferencesBase(BaseModel):
         default=None,
         description="Job types to exclude"
     )
-    min_experience_years: Optional[int] = Field(
-        default=0,
-        ge=0,
-        le=50,
-        description="Minimum years of experience"
-    )
-    max_experience_years: Optional[int] = Field(
-        default=10,
-        ge=0,
-        le=50,
-        description="Maximum years of experience"
+    experience: Optional[str] = Field(
+        default=None,
+        description="Experience preference as text (e.g., '0-2 years', 'fresher')"
     )
     accept_unspecified_experience: Optional[bool] = Field(
         default=True,
@@ -62,15 +54,9 @@ class JobPreferencesBase(BaseModel):
         default=None,
         description="Skills to exclude"
     )
-    min_salary_lpa: Optional[float] = Field(
+    salary: Optional[str] = Field(
         default=None,
-        ge=0,
-        description="Minimum salary in LPA"
-    )
-    max_salary_lpa: Optional[float] = Field(
-        default=None,
-        ge=0,
-        description="Maximum salary in LPA"
+        description="Salary preference as text (e.g., '3-6 LPA')"
     )
     filter_by_salary: Optional[bool] = Field(
         default=False,
@@ -114,29 +100,11 @@ class JobPreferencesBase(BaseModel):
         description="Admin notes about these preferences"
     )
 
-    @validator('max_experience_years')
-    def validate_experience_range(cls, v, values):
-        """Ensure max experience is greater than min"""
-        if 'min_experience_years' in values and v is not None:
-            if v < values['min_experience_years']:
-                raise ValueError('max_experience_years must be >= min_experience_years')
-        return v
-    
-    @validator('max_salary_lpa')
-    def validate_salary_range(cls, v, values):
-        """Ensure max salary is greater than min"""
-        if 'min_salary_lpa' in values and v is not None and values['min_salary_lpa'] is not None:
-            if v < values['min_salary_lpa']:
-                raise ValueError('max_salary_lpa must be >= min_salary_lpa')
-        return v
-
-
 class JobPreferencesUpdate(BaseModel):
     """Schema for updating job preferences - all fields optional"""
     allowed_job_types: Optional[List[str]] = None
     excluded_job_types: Optional[List[str]] = None
-    min_experience_years: Optional[int] = Field(default=None, ge=0, le=50)
-    max_experience_years: Optional[int] = Field(default=None, ge=0, le=50)
+    experience: Optional[str] = None
     accept_unspecified_experience: Optional[bool] = None
     allowed_education_levels: Optional[List[str]] = None
     preferred_locations: Optional[List[str]] = None
@@ -145,8 +113,7 @@ class JobPreferencesUpdate(BaseModel):
     allowed_work_modes: Optional[List[str]] = None
     priority_skills: Optional[List[str]] = None
     excluded_skills: Optional[List[str]] = None
-    min_salary_lpa: Optional[float] = Field(default=None, ge=0)
-    max_salary_lpa: Optional[float] = Field(default=None, ge=0)
+    salary: Optional[str] = None
     filter_by_salary: Optional[bool] = None
     excluded_companies: Optional[List[str]] = None
     preferred_companies: Optional[List[str]] = None

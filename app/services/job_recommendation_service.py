@@ -297,13 +297,17 @@ class JobRecommendationService:
 
         # Saved-job IDs for the is_saved flag in the response.
         saved_job_ids: set = set()
+        student_user_id = getattr(student, "user_id", None)
         if not exclude_saved:
-            saved_result = await self.db.execute(
-                select(SavedJob.job_id).where(
-                    SavedJob.user_id == student.user_id
+            if student_user_id:
+                saved_result = await self.db.execute(
+                    select(SavedJob.job_id).where(
+                        SavedJob.user_id == student_user_id
+                    )
                 )
-            )
-            saved_job_ids = {row[0] for row in saved_result.all()}
+                saved_job_ids = {row[0] for row in saved_result.all()}
+            else:
+                logger.debug("student_user_mapping_missing student=%s", student.id)
 
         # Score each job (typically 50-150 iterations)
         scored: List[Dict] = []
@@ -369,13 +373,14 @@ class JobRecommendationService:
             )
 
             # SQL-level exclusions via NOT EXISTS
-            if exclude_saved:
+            student_user_id = getattr(student, "user_id", None)
+            if exclude_saved and student_user_id:
                 query = query.where(
                     ~exists(
                         select(1).where(
                             and_(
                                 SavedJob.job_id == Job.id,
-                                SavedJob.user_id == student.user_id,
+                                SavedJob.user_id == student_user_id,
                             )
                         )
                     )
@@ -621,15 +626,19 @@ class JobRecommendationService:
         Returns 7.5 (neutral) when experience is unspecified.
         Fresher roles score full points; roles requiring > 2 years score 0.
         """
-        if not job.experience_required:
-            return 7.5  # Neutral
-
-        exp_str = job.experience_required.lower()
-        if any(kw in exp_str for kw in ("fresher", "entry", "0-1", "0-2")):
+        if getattr(job, "is_fresher", None) is True:
             match_reasons.append("🎓 Freshers welcomed")
             return self.EXPERIENCE_WEIGHT * 100
 
-        numbers = re.findall(r"\d+", exp_str)
+        experience_text = (getattr(job, "experience", None) or "").strip().lower()
+        if not experience_text:
+            return 7.5  # Neutral fallback
+
+        if any(kw in experience_text for kw in ("fresher", "entry", "0-1", "0-2", "0 to 2", "0-3")):
+            match_reasons.append("🎓 Freshers welcomed")
+            return self.EXPERIENCE_WEIGHT * 100
+
+        numbers = re.findall(r"\d+", experience_text)
         if numbers:
             min_exp = int(numbers[0])
             if min_exp <= 2:
@@ -724,9 +733,15 @@ class JobRecommendationService:
                         "job_type": job.job_type,
                         "employment_type": job.employment_type,
                         "experience_required": (
-                            job.experience_required or "Not specified"
+                            "Fresher" if getattr(job, "is_fresher", None) is True
+                            else (getattr(job, "experience", None) or "Not specified")
                         ),
-                        "salary_range": job.salary_range or {},
+                        "salary_range": {
+                            "raw": getattr(job, "salary", None),
+                            "min": None,
+                            "max": None,
+                            "currency": "INR",
+                        },
                         "skills_required": job.skills_required or [],
                         "description": job.description,
                         "source_url": job.source_url,

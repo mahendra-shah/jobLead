@@ -2,7 +2,7 @@
 Job Scraping Preferences Model
 Controls what types of jobs to fetch and process
 """
-from sqlalchemy import Column, String, Integer, Boolean, ARRAY, DECIMAL, DateTime, Text
+from sqlalchemy import Column, String, Integer, Boolean, ARRAY, DateTime, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from uuid import uuid4
@@ -26,9 +26,8 @@ class JobScrapingPreferences(Base):
         default=['part-time']
     )
     
-    # Experience Range
-    min_experience_years = Column(Integer, default=0)  # Accept freshers
-    max_experience_years = Column(Integer, default=5)  # Don't fetch senior roles
+    # Experience (single field)
+    experience = Column(String(100), nullable=True)
     accept_unspecified_experience = Column(Boolean, default=True)
     
     # Education
@@ -58,9 +57,8 @@ class JobScrapingPreferences(Base):
     )
     excluded_skills = Column(ARRAY(String), default=[])
     
-    # Salary Range
-    min_salary_lpa = Column(DECIMAL(10, 2), nullable=True)
-    max_salary_lpa = Column(DECIMAL(10, 2), nullable=True)
+    # Salary (single field)
+    salary = Column(String(100), nullable=True)
     filter_by_salary = Column(Boolean, default=False)
     
     # Company Filters

@@ -8,7 +8,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from app.api.deps import get_current_user, get_db
 from app.models.user import User
@@ -25,6 +25,15 @@ def get_cache_manager():
     """Get cache manager without circular import."""
     from app.main import cache_manager
     return cache_manager
+
+
+async def _get_student_for_current_user(db: AsyncSession, current_user: User):
+    if not current_user or not current_user.email:
+        return None
+    result = await db.execute(
+        select(Student).where(func.lower(Student.email) == current_user.email.strip().lower())
+    )
+    return result.scalar_one_or_none()
 
 
 @router.get("/recommended-jobs", response_model=RecommendedJobsResponse)
@@ -70,11 +79,7 @@ async def get_recommended_jobs(
     GET /api/v1/students/me/recommended-jobs?limit=10&min_score=60&exclude_saved=true
     ```
     """
-    # Get student profile by user_id
-    result = await db.execute(
-        select(Student).where(Student.user_id == current_user.id)
-    )
-    student = result.scalar_one_or_none()
+    student = await _get_student_for_current_user(db, current_user)
     
     if not student:
         raise HTTPException(
@@ -211,10 +216,7 @@ async def get_recommendation_stats(
     - criteria_matches: skill-match count, fresher-friendly count
     - top_recommendations: first 5 items from the warmed cache
     """
-    result = await db.execute(
-        select(Student).where(Student.user_id == current_user.id)
-    )
-    student = result.scalar_one_or_none()
+    student = await _get_student_for_current_user(db, current_user)
 
     if not student:
         raise HTTPException(
