@@ -26,10 +26,6 @@ class PersonalDetailsMixin(BaseModel):
         max_length=50,
         description="Gender identity (e.g., Male, Female, Other, Prefer not to say)"
     )
-    extra_detail: Optional[Dict[str, Any]] = Field(
-        None,
-        description="Extra details object; includes highest_qualification, course, passing_year"
-    )
 
 
 class EducationDetailsMixin(BaseModel):
@@ -313,8 +309,8 @@ class StudentPreferencesUpdate(BaseModel):
     )
     preferred_job_types: Optional[List[str]] = None
     excluded_companies: Optional[List[str]] = None
-    min_salary: Optional[int] = Field(None, ge=0)
-    max_salary: Optional[int] = Field(None, ge=0)
+    salary: Optional[str] = Field(None, description="Preferred salary expectation as text")
+    experience: Optional[str] = Field(None, description="Preferred experience range as text")
 
 
 class StudentPreferencesResponse(BaseModel):
@@ -323,8 +319,8 @@ class StudentPreferencesResponse(BaseModel):
     preferred_locations: List[str]
     preferred_job_types: List[str]
     excluded_companies: List[str]
-    min_salary: Optional[int] = None
-    max_salary: Optional[int] = None
+    salary: Optional[str] = None
+    experience: Optional[str] = None
 
 
 # ==================== Job Recommendation Schemas ====================
