@@ -51,20 +51,20 @@ def _calculate_profile_completeness(student: Student) -> int:
     extra_detail = student.extra_detail if isinstance(getattr(student, 'extra_detail', None), dict) else {}
 
     checks = [
-        student.first_name,
-        student.last_name,
-        student.phone,
-        student.date_of_birth,
-        student.gender,
-        student.current_address,
+        getattr(student, 'first_name', None),
+        getattr(student, 'last_name', None),
+        getattr(student, 'phone', None),
+        getattr(student, 'date_of_birth', None),
+        getattr(student, 'gender', None),
+        getattr(student, 'current_address', None),
         extra_detail.get("highest_qualification"),
-        student.college_name,
+        getattr(student, 'college_name', None),
         extra_detail.get("course"),
-        student.branch,
+        getattr(student, 'branch', None),
         extra_detail.get("passing_year"),
-        student.technical_skills,
-        student.soft_skills,
-        student.resume_url,
+        getattr(student, 'technical_skills', None),
+        getattr(student, 'soft_skills', None),
+        getattr(student, 'resume_url', None),
     ]
     
     # Check preference JSONB for job preferences
@@ -89,18 +89,18 @@ def _student_profile_payload(student: Student, current_user: User) -> dict:
     Build a StudentProfile-like dict used by the frontend.
     (Most keys are optional; frontend types are permissive.)
     """
-    # Serialize nested JSON fields safely
-    internship_details = student.internship_details or []
-    projects = student.projects or []
-    languages = student.languages or []
+    internship_details = getattr(student, 'internship_details', None) or []
+    projects = getattr(student, 'projects', None) or []
+    languages = getattr(student, 'languages', None) or getattr(student, 'spoken_languages', None) or []
 
-    # date_of_birth -> ISO string
     dob = None
-    if student.date_of_birth:
-        dob = student.date_of_birth.isoformat() if hasattr(student.date_of_birth, "isoformat") else str(student.date_of_birth)
+    student_dob = getattr(student, 'date_of_birth', None)
+    if student_dob:
+        dob = student_dob.isoformat() if hasattr(student_dob, "isoformat") else str(student_dob)
 
     social_links = student.social_links if isinstance(getattr(student, 'social_links', None), dict) else {}
     extra_detail = student.extra_detail if isinstance(getattr(student, 'extra_detail', None), dict) else {}
+    preference = getattr(student, 'preference', None) or {}
 
     return {
         "id": str(student.id) if getattr(student, "id", None) else None,
@@ -109,50 +109,49 @@ def _student_profile_payload(student: Student, current_user: User) -> dict:
         "updated_at": getattr(student, "updated_at", None),
 
         # Personal
-        "first_name": student.first_name,
-        "last_name": student.last_name,
-        "full_name": student.full_name,
-        "phone": student.phone,
-        "email": getattr(current_user, "email", None),
+        "first_name": getattr(student, 'first_name', None),
+        "last_name": getattr(student, 'last_name', None),
+        "full_name": getattr(student, 'full_name', None),
+        "phone": getattr(student, 'phone', None),
+        "email": getattr(student, 'email', None) or getattr(current_user, "email", None),
         "date_of_birth": dob,
-        "gender": student.gender,
+        "gender": getattr(student, 'gender', None),
         "extra_detail": extra_detail,
-        "current_address": student.current_address,
+        "current_address": getattr(student, 'current_address', None),
 
         # Education
         "highest_qualification": extra_detail.get("highest_qualification"),
-        "college_name": student.college_name,
-        "college_id": student.college_id,
+        "college_name": getattr(student, 'college_name', None),
+        "college_id": getattr(student, 'college_id', None),
         "course": extra_detail.get("course"),
-        "branch": student.branch,
+        "branch": getattr(student, 'branch', None),
         "passing_year": extra_detail.get("passing_year"),
-        "percentage": student.percentage,
-        "cgpa": student.cgpa,
+        "percentage": getattr(student, 'percentage', None),
+        "cgpa": getattr(student, 'cgpa', None),
 
         # Skills
-        "skills": student.technical_skills or [],
-        "technical_skills": student.technical_skills or [],
-        "soft_skills": student.soft_skills or [],
+        "skills": getattr(student, 'technical_skills', None) or [],
+        "technical_skills": getattr(student, 'technical_skills', None) or [],
+        "soft_skills": getattr(student, 'soft_skills', None) or [],
 
         # Experience
-        "experience_type": student.experience_type,
+        "experience_type": getattr(student, 'experience_type', None),
         "internship_details": internship_details,
         "projects": projects,
 
         # Languages
         "spoken_languages": languages,
-        "email": student.email or getattr(current_user, "email", None),
 
-        # Preferences (from JSONB preference column)
-        "preference": student.preference or {},
-        "preferred_job_role": (student.preference or {}).get("preferred_job_role", []),
-        "job_category": student.job_category,
+        # Preferences
+        "preference": preference,
+        "preferred_job_role": preference.get("preferred_job_role", []),
+        "job_category": getattr(student, 'job_category', None),
 
         # Links
         "social_links": social_links,
 
         # Resume
-        "resume_url": student.resume_url,
+        "resume_url": getattr(student, 'resume_url', None),
     }
 
 
