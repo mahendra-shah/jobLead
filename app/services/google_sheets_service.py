@@ -40,25 +40,31 @@ class GoogleSheetsService:
         self.sheets = self.service.spreadsheets()
 
     def _build_export_row(self, job: Job):
-        sender_id = str(job.sender_id) if job.sender_id is not None else ''
-        account_used = (
-            f"Account {job.fetched_by_account}"
-            if job.fetched_by_account is not None
-            else (str(job.scraped_by_account_id) if job.scraped_by_account_id else '')
-        )
-        source_name = (job.source or '').strip()
-        source_value = 'telegram' if source_name.lower() == 'telegram' else source_name
+        company_name = job.company_name or 'Unknown'
+        channel_name = job.source_channel_name or ''
+        channel_url = f"https://t.me/{channel_name}" if channel_name else ''
+        channel_id = job.source_telegram_channel_id or ''
+        sender_id = str(job.sender_id) if job.sender_id else ''
+        account_used = f"Account {job.fetched_by_account}" if job.fetched_by_account else ''
 
         return [
             str(job.id),
             job.source_message_id or '',
             job.created_at.strftime('%Y-%m-%d'),
+            company_name,
+            job.title or '',
+            job.location or '',
             'Yes' if job.is_fresher else ('No' if job.is_fresher is not None else ''),
+            job.experience or '',
+            job.work_type or '',
             job.job_type or '',
             ', '.join(job.skills_required) if job.skills_required else '',
+            channel_name,
+            channel_url,
+            channel_id,
             sender_id,
             account_used,
-            source_value,
+            job.source or '',
             job.source_url or '',
             (job.description or '')[:1000],
         ]
@@ -156,12 +162,25 @@ class GoogleSheetsService:
             'ID',
             'Message ID',
             'Date',
+            # 'Time',  # Commented per user request
+            'Company',
+            'Job Title',
+            'Location',
+            # 'Experience Min',  # Commented per user request
+            # 'Experience Max',  # Commented per user request
             'Is Fresher',
+            'Experience Required',       # NEW — raw string, e.g. '1-2 years' or 'Fresher'
+            # 'Salary Min',  # Commented per user request
+            # 'Salary Max',  # Commented per user request
+            'Work Type',
             'Job Type',
             'Skills',
-            'Sender ID',
-            'Account Used',
-                'Sourece',
+            'Channel Name',           # NEW
+            'Channel URL',            # NEW
+            'Channel ID',             # Fixed - Now shows actual Telegram channel ID
+            'Sender ID',              # NEW - Telegram sender user ID
+            'Account Used',           # NEW
+            'Source Channel',         # OLD - keeping for backward compat
             'Apply Link',
             'Full Message Text'
         ]
@@ -172,7 +191,7 @@ class GoogleSheetsService:
         
         self.sheets.values().update(
             spreadsheetId=self.sheet_id,
-            range=f"{tab_name}!A1:K1",
+            range=f"{tab_name}!A1:S1",  # 19 columns (A-S) - added Experience Required
             valueInputOption='RAW',
             body=body
         ).execute()
@@ -266,7 +285,7 @@ class GoogleSheetsService:
                 and_(
                     Job.created_at >= start_time,
                     Job.created_at < end_time,
-                    Job.quality_score >= settings.JOB_QUALITY_MIN_SCORE,
+                    Job.quality_score >= 50,
                     Job.is_active.is_(True),
                 )
             )

@@ -342,6 +342,22 @@ class EnhancedJobExtractor:
         
         # No multiple jobs detected, return full text
         return [text]
+
+    @staticmethod
+    def _has_remote_jobboard_hint(text: str, links: Optional[List[str]]) -> bool:
+        """Return True when message/link suggests remote-first aggregator format."""
+        text_lower = (text or "").lower()
+        if "remotefirstjobs.com" in text_lower:
+            return True
+
+        for link in links or []:
+            lower_link = (link or "").lower()
+            if "remotefirstjobs.com" in lower_link:
+                return True
+            if "jobboardsearch.com/redirect" in lower_link and "remotefirstjobs.com" in lower_link:
+                return True
+
+        return False
     
     def _extract_single_job(self, text: str, links: List[str] = None) -> Optional[EnhancedJobExtraction]:
         """Extract all information from a single job posting"""
@@ -360,14 +376,21 @@ class EnhancedJobExtractor:
         
         # CRITICAL: Filter international jobs — this is an India placement dashboard.
         # Reject any job whose geographic_scope is confirmed 'international'.
-        # We do NOT require is_onsite_only because even international remote roles
-        # are posted on foreign company JDs and are not relevant for India freshers.
-        # Exception: if the post also mentions Indian cities it may be a global
-        # company with India openings — those already get geographic_scope='india'.
+        # Exception: some remote-first aggregators include global-company naming
+        # (e.g. "Denmark in USA") without actual onsite location constraints.
+        # For those, treat geographic scope as unspecified and continue extraction.
         if location_data.get('geographic_scope') == 'international':
-            logger.warning(f"Rejected international job: {text[:80]}...")
-            extraction.confidence = 0.0  # Mark as rejected
-            return extraction  # Return with 0 confidence to skip storage
+            remote_jobboard_hint = self._has_remote_jobboard_hint(text, links)
+            has_precise_location_signal = bool(location_data.get('raw_location')) or bool(location_data.get('cities'))
+
+            if remote_jobboard_hint and not has_precise_location_signal:
+                logger.info("Downgrading ambiguous international signal to unspecified for remote-first aggregator post")
+                location_data['geographic_scope'] = 'unspecified'
+                extraction.location_data = location_data
+            else:
+                logger.warning(f"Rejected international job: {text[:80]}...")
+                extraction.confidence = 0.0  # Mark as rejected
+                return extraction  # Return with 0 confidence to skip storage
         
         # Salary - Use NEW simplified extraction
         salary_monthly = self._extract_salary_simple(text)
@@ -1439,130 +1462,48 @@ class EnhancedJobExtractor:
     
     def _extract_skills(self, text: str) -> List[str]:
         """Extract skills and tools (tech + non-tech)"""
-        skill_aliases = {
-            # Programming
-            'Python': [r'python'],
-            'Java': [r'java'],
-            'JavaScript': [r'javascript', r'js'],
-            'TypeScript': [r'typescript', r'ts'],
-            'Go': [r'\bgo\b', r'golang'],
-            'Rust': [r'rust'],
-            'C++': [r'c\+\+'],
-            'C#': [r'c#', r'c\s*sharp'],
-            '.NET': [r'\.net', r'dotnet'],
-            'PHP': [r'php'],
-            'Ruby': [r'ruby'],
-            'Kotlin': [r'kotlin'],
-            'Swift': [r'swift'],
-            'Dart': [r'dart'],
-            'Scala': [r'scala'],
-            'R': [r'\br\b(?!\s*&\s*d)'],
-            # Web / App
-            'React': [r'react(?:\.js)?', r'reactjs'],
-            'React Native': [r'react\s+native'],
-            'Angular': [r'angular(?:\.js)?'],
-            'Vue': [r'vue(?:\.js)?', r'vuejs'],
-            'Next.js': [r'next(?:\.js)?', r'nextjs', r'next\s+js'],
-            'NestJS': [r'nest(?:\.js)?', r'nestjs', r'nest\s+js'],
-            'Node': [r'node(?:\.js)?', r'nodejs', r'node\s+js'],
-            'Express': [r'express(?:\.js)?', r'expressjs'],
-            'Django': [r'django'],
-            'Flask': [r'flask'],
-            'FastAPI': [r'fastapi', r'fast\s+api'],
-            'Spring Boot': [r'spring\s*boot'],
-            'Spring': [r'\bspring\b'],
-            'Flutter': [r'flutter'],
-            'Android': [r'android'],
-            'iOS': [r'ios'],
-            # Data / ML
-            'SQL': [r'\bsql\b'],
-            'PostgreSQL': [r'postgres(?:ql)?'],
-            'MySQL': [r'mysql'],
-            'MongoDB': [r'mongodb', r'mongo\s*db'],
-            'Redis': [r'redis'],
-            'Elasticsearch': [r'elastic\s*search', r'elasticsearch'],
-            'Machine Learning': [r'machine\s+learning', r'\bml\b'],
-            'Deep Learning': [r'deep\s+learning'],
-            'AI': [r'\bai\b', r'artificial\s+intelligence'],
-            'NLP': [r'\bnlp\b', r'natural\s+language\s+processing'],
-            'TensorFlow': [r'tensorflow'],
-            'PyTorch': [r'pytorch'],
-            'Keras': [r'keras'],
-            'Scikit-learn': [r'scikit\s*-?\s*learn', r'sklearn'],
-            'Pandas': [r'pandas'],
-            'NumPy': [r'numpy'],
-            'Spark': [r'\bspark\b'],
-            'Hadoop': [r'hadoop'],
-            'Airflow': [r'airflow'],
-            'dbt': [r'\bdbt\b'],
-            'Power BI': [r'power\s*bi'],
-            'Tableau': [r'tableau'],
-            # Cloud / DevOps
-            'AWS': [r'\baws\b', r'amazon\s+web\s+services'],
-            'Azure': [r'azure'],
-            'GCP': [r'\bgcp\b', r'google\s+cloud'],
-            'Docker': [r'docker'],
-            'Kubernetes': [r'kubernetes', r'\bk8s\b'],
-            'Terraform': [r'terraform'],
-            'Ansible': [r'ansible'],
-            'Jenkins': [r'jenkins'],
-            'GitHub Actions': [r'github\s+actions'],
-            'CI/CD': [r'ci\s*/\s*cd', r'cicd'],
-            'Git': [r'\bgit\b'],
-            'Linux': [r'linux'],
-            'Kafka': [r'kafka'],
-            'RabbitMQ': [r'rabbit\s*mq', r'rabbitmq'],
-            'GraphQL': [r'graphql'],
-            'gRPC': [r'grpc', r'g\s*rpc'],
-            'REST API': [r'rest\s*api', r'restful\s*api'],
-            # Design / Marketing / Office
-            'Figma': [r'figma'],
-            'Sketch': [r'sketch'],
-            'Adobe XD': [r'adobe\s*xd'],
-            'Photoshop': [r'photoshop'],
-            'Illustrator': [r'illustrator'],
-            'Canva': [r'canva'],
-            'SEO': [r'\bseo\b'],
-            'SEM': [r'\bsem\b'],
-            'Google Ads': [r'google\s+ads'],
-            'Facebook Ads': [r'facebook\s+ads'],
-            'Meta Ads': [r'meta\s+ads'],
-            'Google Analytics': [r'google\s+analytics'],
-            'HubSpot': [r'hubspot'],
-            'Mailchimp': [r'mailchimp'],
-            'WordPress': [r'wordpress'],
-            'Email Marketing': [r'email\s+marketing'],
-            'Content Writing': [r'content\s+writing'],
-            'Copywriting': [r'copywriting'],
-            'Excel': [r'\bexcel\b'],
-            'MS Office': [r'ms\s*office', r'microsoft\s*office'],
-            'PowerPoint': [r'power\s*point', r'powerpoint'],
-            'Word': [r'\bms\s*word\b', r'\bword\b'],
-            'Google Sheets': [r'google\s+sheets'],
-            'Tally': [r'\btally\b'],
-            'Tally ERP': [r'tally\s*erp'],
-            'SAP': [r'\bsap\b'],
-            'Salesforce': [r'salesforce'],
-            'Zoho CRM': [r'zoho\s*crm'],
-            'CRM': [r'\bcrm\b'],
-            'QuickBooks': [r'quickbooks'],
-            'Notion': [r'notion'],
-            'Jira': [r'jira'],
-            'Confluence': [r'confluence'],
-            'Slack': [r'slack'],
-        }
+        skill_keywords = [
+            # --- Programming languages ---
+            'Python', 'Java', 'JavaScript', 'TypeScript', 'Go', 'Golang',
+            'Rust', 'C++', 'C#', '.NET', 'PHP', 'Ruby', 'Kotlin', 'Swift', 'Dart', 'Scala', 'R',
+            # --- Web / Mobile ---
+            'React', 'React Native', 'Angular', 'Vue', 'Next.js', 'NestJS',
+            'Node', 'Express', 'Django', 'Flask', 'FastAPI', 'Spring Boot', 'Spring',
+            'Flutter', 'Android', 'iOS',
+            # --- Data / ML ---
+            'SQL', 'PostgreSQL', 'MySQL', 'MongoDB', 'Redis', 'Elasticsearch',
+            'Machine Learning', 'Deep Learning', 'AI', 'NLP', 'Computer Vision',
+            'TensorFlow', 'PyTorch', 'Keras', 'Scikit-learn', 'Pandas', 'NumPy',
+            'Spark', 'Hadoop', 'Airflow', 'dbt', 'BigQuery', 'Snowflake',
+            'Power BI', 'Tableau', 'Looker',
+            # --- Cloud / DevOps ---
+            'AWS', 'Azure', 'GCP', 'Docker', 'Kubernetes', 'Terraform', 'Ansible',
+            'Jenkins', 'GitHub Actions', 'CI/CD', 'Git', 'Linux',
+            'Kafka', 'RabbitMQ', 'GraphQL', 'gRPC', 'REST API',
+            # --- Design ---
+            'Figma', 'Sketch', 'Adobe XD', 'Photoshop', 'Illustrator', 'InDesign',
+            'Canva', 'After Effects', 'Premiere',
+            # --- Marketing ---
+            'SEO', 'SEM', 'Google Ads', 'Facebook Ads', 'Meta Ads',
+            'Google Analytics', 'HubSpot', 'Mailchimp', 'WordPress',
+            'Email Marketing', 'Content Writing', 'Copywriting',
+            # --- Non-tech / office tools ---
+            'Excel', 'MS Office', 'PowerPoint', 'Word', 'Google Sheets',
+            'Tally', 'Tally ERP', 'SAP', 'Salesforce', 'Zoho CRM', 'CRM',
+            'QuickBooks', 'Notion', 'Jira', 'Confluence', 'Slack',
+        ]
 
-        found_skills: List[str] = []
-        text_norm = text.lower().replace('/', ' / ')
+        found_skills = []
+        text_lower = text.lower()
 
-        for canonical, aliases in skill_aliases.items():
-            for alias_pattern in aliases:
-                pattern = r'(?<!\w)' + alias_pattern + r'(?!\w)'
-                if re.search(pattern, text_norm, flags=re.IGNORECASE):
-                    found_skills.append(canonical)
-                    break
+        for skill in skill_keywords:
+            # Use word-boundary matching to prevent "R" matching in "year",
+            # "AI" matching in "email", "Go" matching in "Google", etc.
+            pattern = r'\b' + re.escape(skill.lower()) + r'\b'
+            if re.search(pattern, text_lower):
+                found_skills.append(skill)
 
-        return list(dict.fromkeys(found_skills))[:20]  # preserve order, max 20
+        return list(dict.fromkeys(found_skills))[:15]  # preserve order, max 15
     
     def _calculate_extraction_confidence(self, extraction: EnhancedJobExtraction) -> float:
         """Calculate confidence score based on extracted fields"""

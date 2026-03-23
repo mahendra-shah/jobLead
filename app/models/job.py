@@ -1,6 +1,6 @@
 """Job model."""
 
-from sqlalchemy import Boolean, Column, Float, ForeignKey, Integer, String, Text, BigInteger
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, BigInteger
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
@@ -44,11 +44,9 @@ class Job(Base):
     telegram_group_id = Column(UUID(as_uuid=True), nullable=True)  # NO FK - telegram_groups table empty
     scraped_by_account_id = Column(UUID(as_uuid=True), nullable=True)  # NO FK - telegram_accounts table empty
     
-    # ML metadata
+    # ML Metadata
     source_message_id = Column(String(255))  # Link to raw messages (MongoDB message_id)
     ml_confidence = Column(String(10))  # Confidence score from ML classifier
-    
-    # Job Quality Scoring
     quality_score = Column(Float, nullable=True, index=True)  # Overall quality 0-100
     
     # Visibility & Recommendation Tracking

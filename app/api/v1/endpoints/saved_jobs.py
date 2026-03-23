@@ -9,6 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import joinedload
+from sqlalchemy.exc import SQLAlchemyError
+import logging
 
 from app.api.deps import get_current_user, get_db
 from app.models.user import User
@@ -23,6 +25,7 @@ from app.schemas.student import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _job_payload(job: Job):
@@ -149,26 +152,30 @@ async def list_saved_jobs(
     **Query Parameters**:
     - `folder`: Filter by folder name (optional)
     """
-    # Build query
-    query = select(SavedJob).where(SavedJob.user_id == current_user.id)
-    
-    if folder:
-        query = query.where(SavedJob.folder == folder)
-    
-    query = query.order_by(SavedJob.saved_at.desc())
-    
-    # Execute
-    result = await db.execute(query)
-    saved_jobs = result.scalars().all()
-    
-    # Get unique folders
-    folders_result = await db.execute(
-        select(SavedJob.folder).where(
-            SavedJob.user_id == current_user.id,
-            SavedJob.folder.isnot(None)
-        ).distinct()
-    )
-    folders = [row[0] for row in folders_result.fetchall()]
+    try:
+        # Build query
+        query = select(SavedJob).where(SavedJob.user_id == current_user.id)
+
+        if folder:
+            query = query.where(SavedJob.folder == folder)
+
+        query = query.order_by(SavedJob.saved_at.desc())
+
+        # Execute
+        result = await db.execute(query)
+        saved_jobs = result.scalars().all()
+
+        # Get unique folders
+        folders_result = await db.execute(
+            select(SavedJob.folder).where(
+                SavedJob.user_id == current_user.id,
+                SavedJob.folder.isnot(None)
+            ).distinct()
+        )
+        folders = [row[0] for row in folders_result.fetchall()]
+    except SQLAlchemyError:
+        logger.exception("saved_jobs_list_query_failed user_id=%s", current_user.id)
+        return SavedJobsResponse(total=0, saved_jobs=[], folders=[])
     
     # Format response with job details
     saved_jobs_response = []
@@ -379,14 +386,23 @@ async def check_if_saved(
             detail="Invalid job_id format. Must be a valid UUID."
         )
     
-    # Check if saved
-    result = await db.execute(
-        select(SavedJob).where(
-            SavedJob.user_id == current_user.id,
-            SavedJob.job_id == job_uuid
+    try:
+        # Check if saved
+        result = await db.execute(
+            select(SavedJob).where(
+                SavedJob.user_id == current_user.id,
+                SavedJob.job_id == job_uuid
+            )
         )
-    )
-    saved_job = result.scalar_one_or_none()
+        saved_job = result.scalar_one_or_none()
+    except SQLAlchemyError:
+        logger.exception("saved_jobs_check_query_failed user_id=%s", current_user.id)
+        return {
+            "job_id": job_id,
+            "is_saved": False,
+            "saved_job_id": None,
+            "folder": None,
+        }
     
     return {
         "job_id": job_id,

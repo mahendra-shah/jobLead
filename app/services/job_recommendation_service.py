@@ -30,6 +30,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import and_, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import SQLAlchemyError
 import logging
 
 from app.models.job import Job
@@ -300,12 +301,20 @@ class JobRecommendationService:
         student_user_id = getattr(student, "user_id", None)
         if not exclude_saved:
             if student_user_id:
-                saved_result = await self.db.execute(
-                    select(SavedJob.job_id).where(
-                        SavedJob.user_id == student_user_id
+                try:
+                    saved_result = await self.db.execute(
+                        select(SavedJob.job_id).where(
+                            SavedJob.user_id == student_user_id
+                        )
                     )
-                )
-                saved_job_ids = {row[0] for row in saved_result.all()}
+                    saved_job_ids = {row[0] for row in saved_result.all()}
+                except SQLAlchemyError:
+                    logger.exception(
+                        "saved_jobs_lookup_failed_for_recommendations student=%s user_id=%s",
+                        student.id,
+                        student_user_id,
+                    )
+                    saved_job_ids = set()
             else:
                 logger.debug("student_user_mapping_missing student=%s", student.id)
 
@@ -398,8 +407,32 @@ class JobRecommendationService:
                     )
                 )
 
-            result = await self.db.execute(query)
-            jobs = result.scalars().all()
+            try:
+                result = await self.db.execute(query)
+                jobs = result.scalars().all()
+            except SQLAlchemyError:
+                if exclude_saved:
+                    logger.exception(
+                        "exclude_saved_query_failed_falling_back student=%s window_days=%s",
+                        student.id,
+                        days,
+                    )
+                    fallback_query = (
+                        select(Job)
+                        .where(
+                            Job.is_active.is_(True),
+                            Job.created_at >= cutoff,
+                            Job.quality_score >= self.MIN_QUALITY_SCORE,
+                        )
+                        .order_by(
+                            Job.quality_score.desc(), Job.created_at.desc()
+                        )
+                        .limit(self.MAX_JOBS_TO_QUERY)
+                    )
+                    result = await self.db.execute(fallback_query)
+                    jobs = result.scalars().all()
+                else:
+                    raise
 
             if len(jobs) >= self.MIN_JOBS_THRESHOLD:
                 if days > 7:
