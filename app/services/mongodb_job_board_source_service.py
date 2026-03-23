@@ -13,6 +13,12 @@ from pymongo import ASCENDING, MongoClient
 
 from app.config import settings
 from app.services.job_board_source_health import check_source_health
+from app.utils.phase1_source_profile import (
+    build_phase1_metadata_extra,
+    classify_category,
+    infer_region_label,
+    student_pipeline_eligible,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,8 +66,11 @@ class MongoJobBoardSourcesService:
         uri_primary = settings.MONGODB_URI
         client = _try_connect(uri_primary)
 
-        if client is None and uri_primary.startswith("mongodb://localhost"):
-            # Atlas fallback (when local Mongo isn't started).
+        if (
+            client is None
+            and uri_primary.startswith("mongodb://localhost")
+            and settings.MONGODB_ATLAS_FALLBACK
+        ):
             if settings.MONGODB_USERNAME and settings.MONGODB_PASSWORD:
                 uri_atlas = (
                     f"mongodb+srv://{settings.MONGODB_USERNAME}:{settings.MONGODB_PASSWORD}@"
@@ -74,7 +83,11 @@ class MongoJobBoardSourcesService:
             client = _try_connect(uri_atlas)
 
         if client is None:
-            raise RuntimeError(f"MongoDB connection failed for primary uri: {uri_primary}")
+            hint = (
+                " Start mongod (e.g. sudo systemctl start mongod) or fix MONGODB_URI in .env. "
+                "Optional: MONGODB_ATLAS_FALLBACK=true if you use Atlas when local is down."
+            )
+            raise RuntimeError(f"MongoDB connection failed for uri: {uri_primary!r}.{hint}")
 
         self._client = client
         self._db = self._client[settings.MONGODB_DATABASE]
@@ -91,6 +104,7 @@ class MongoJobBoardSourcesService:
         # Query acceleration
         self._col.create_index([("crawl_ready", ASCENDING), ("status", ASCENDING)], background=True)
         self._col.create_index([("category", ASCENDING), ("region", ASCENDING)], background=True)
+        self._col.create_index("student_pipeline_eligible", background=True)
         self._col.create_index("domain", background=True)
         self._col.create_index("last_health_check_at", background=True)
 
@@ -111,6 +125,7 @@ class MongoJobBoardSourcesService:
         last_crawled_at: Optional[datetime] = None,
         metadata: Optional[Dict[str, Any]] = None,
         health_check: bool = False,
+        student_pipeline_eligible: Optional[bool] = None,
     ) -> None:
         self._ensure_indexes()
         assert self._col is not None
@@ -133,7 +148,7 @@ class MongoJobBoardSourcesService:
             # Keep existing health if present; otherwise set defaults.
             health_fields = {"health_score": 100.0, "last_health_check_at": now}
 
-        doc = {
+        doc: Dict[str, Any] = {
             "domain": domain,
             "url": url,
             "url_norm": url_norm,
@@ -151,6 +166,8 @@ class MongoJobBoardSourcesService:
             **health_fields,
             "updated_at": now,
         }
+        if student_pipeline_eligible is not None:
+            doc["student_pipeline_eligible"] = bool(student_pipeline_eligible)
 
         # created_at must not be overwritten on update.
         update_doc = {"$set": doc, "$setOnInsert": {"created_at": now}}
@@ -164,6 +181,7 @@ class MongoJobBoardSourcesService:
         health_check: bool = False,
         delete_non_crawl_ready: bool = True,
         limit: Optional[int] = None,
+        student_pipeline_only: bool = True,
     ) -> Dict[str, int]:
         """
         Upsert crawl-ready sources from the existing JSON artifact.
@@ -178,13 +196,14 @@ class MongoJobBoardSourcesService:
 
         upserted = 0
         skipped = 0
+        skipped_audience = 0
 
         ready_norms: List[str] = []
 
         for s in sources:
             if limit is not None and upserted >= int(limit):
                 break
-            m = s.get("metadata") or {}
+            m = dict(s.get("metadata") or {})
             strategy = m.get("crawl_strategy") or {}
             if not strategy.get("crawl_ready"):
                 skipped += 1
@@ -196,18 +215,19 @@ class MongoJobBoardSourcesService:
                 skipped += 1
                 continue
 
+            eligible = student_pipeline_eligible(s)
+            if student_pipeline_only and not eligible:
+                skipped_audience += 1
+                continue
+
             url_norm = _normalize_url(url)
             ready_norms.append(url_norm)
 
-            # Heuristic category/region defaults since crawler JSON doesn't always carry them.
-            name_l = (s.get("name") or "").lower()
-            domain_l = domain.lower()
-            nontech_markers = ("marketing", "sales", "hr", "recruit", "recruiter", "data entry", "customer support", "customer care", "finance", "accountant")
-            category = "non-tech" if any(x in name_l for x in nontech_markers) or any(x in domain_l for x in nontech_markers) else "tech"
+            phase1_extra = build_phase1_metadata_extra(s)
+            m.setdefault("phase1", {}).update(phase1_extra.get("phase1") or {})
 
-            # Region: only India is explicit in your artifacts; everything else becomes Global.
-            raw_country = (s.get("country") or "").strip()
-            region = "India" if raw_country == "India" else "Global"
+            category = classify_category(s)
+            region = infer_region_label(s)
 
             self.upsert_source(
                 domain=domain,
@@ -224,6 +244,7 @@ class MongoJobBoardSourcesService:
                 last_crawled_at=None,
                 metadata=m,
                 health_check=health_check,
+                student_pipeline_eligible=eligible,
             )
             upserted += 1
 
@@ -234,18 +255,26 @@ class MongoJobBoardSourcesService:
             # (This deletes stale sources that were crawl-ready earlier but are not in the latest JSON.)
             self._col.delete_many({"crawl_ready": True, "url_norm": {"$nin": ready_norms}})
 
-        return {"upserted": upserted, "skipped": skipped, "ready_total": len(ready_norms)}
+        return {
+            "upserted": upserted,
+            "skipped": skipped,
+            "skipped_audience": skipped_audience,
+            "ready_total": len(ready_norms),
+        }
 
     def get_crawl_ready_sources(
         self,
         *,
         limit: int = 30,
         region: Optional[str] = None,
+        student_pipeline_only: bool = True,
     ) -> List[Dict[str, Any]]:
         self._ensure_indexes()
         assert self._col is not None
 
         query: Dict[str, Any] = {"crawl_ready": True, "status": "active"}
+        if student_pipeline_only:
+            query["student_pipeline_eligible"] = True
         if region:
             query["region"] = region
 
@@ -255,4 +284,57 @@ class MongoJobBoardSourcesService:
             .limit(int(limit))
         )
         return list(docs)
+
+    @staticmethod
+    def mongo_doc_to_phase2_source(doc: Dict[str, Any]) -> Dict[str, Any]:
+        """Shape expected by scripts/crawl_jobs_from_sources.py (matches JSON export)."""
+        _id = doc.get("_id")
+        sid = str(_id) if _id is not None else ""
+        meta = dict(doc.get("metadata") or {})
+        # Preserve discovery country if it lived only at top level in older imports
+        if doc.get("city") and not meta.get("city"):
+            meta = {**meta, "city": doc.get("city")}
+        return {
+            "id": sid,
+            "domain": doc.get("domain") or "",
+            "url": doc.get("url") or "",
+            "name": doc.get("name") or "",
+            "city": doc.get("city"),
+            "country": meta.get("country") or ("India" if doc.get("region") == "India" else None),
+            "metadata": meta,
+            "status": doc.get("status") or "active",
+            "student_pipeline_eligible": doc.get("student_pipeline_eligible"),
+        }
+
+    def get_phase2_crawl_queue(
+        self,
+        *,
+        limit: int,
+        student_pipeline_priority: bool = True,
+        student_pipeline_only: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """
+        Sources for Phase 2 job crawl, ordered for your product defaults:
+        - student_pipeline_priority=True: India/remote boards first (student_pipeline_eligible),
+          then others, each bucket by health_score desc.
+        - student_pipeline_only=True: only eligible rows (no fallback).
+        """
+        self._ensure_indexes()
+        assert self._col is not None
+
+        q: Dict[str, Any] = {"crawl_ready": True, "status": "active"}
+        if student_pipeline_only:
+            q["student_pipeline_eligible"] = True
+
+        cursor = self._col.find(q).sort([("health_score", -1)])
+        all_docs = list(cursor)
+
+        if not student_pipeline_priority or student_pipeline_only:
+            out = all_docs[: int(limit)]
+            return [self.mongo_doc_to_phase2_source(d) for d in out]
+
+        eligible = [d for d in all_docs if d.get("student_pipeline_eligible") is True]
+        ineligible = [d for d in all_docs if d.get("student_pipeline_eligible") is not True]
+        ordered = eligible + ineligible
+        return [self.mongo_doc_to_phase2_source(d) for d in ordered[: int(limit)]]
 

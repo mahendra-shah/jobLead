@@ -402,7 +402,12 @@ def main() -> int:
     jobs_dir.mkdir(parents=True, exist_ok=True)
 
     parser = argparse.ArgumentParser(description="Merge job runs → jobs_master.json")
-    parser.add_argument("--max-master-jobs", type=int, default=60, help="Cap jobs_master size (<=0 = no cap)")
+    parser.add_argument(
+        "--max-master-jobs",
+        type=int,
+        default=0,
+        help="Cap jobs_master size after profile filter + tech/non-tech balance (default: 0 = no cap; use e.g. 60 for a small daily sample)",
+    )
     args = parser.parse_args()
 
     run_files = find_job_run_files(jobs_dir)
@@ -440,7 +445,7 @@ def main() -> int:
         job["segment"] = seg
         job["category"] = cat
 
-    all_jobs = _balance_ratio(all_jobs, max_master_jobs=int(getattr(args, "max_master_jobs", 60)))
+    all_jobs = _balance_ratio(all_jobs, max_master_jobs=int(args.max_master_jobs))
 
     # Per-source stats
     per_source = Counter(j.get("source_domain") or "unknown" for j in all_jobs)
@@ -450,7 +455,7 @@ def main() -> int:
         "meta": {
             "runs_merged": [f.name for f in run_files],
             "total_jobs_unique": len(all_jobs),
-            "max_master_jobs": int(getattr(args, "max_master_jobs", 60)),
+            "max_master_jobs": int(args.max_master_jobs),
         },
         "jobs": all_jobs,
     }
