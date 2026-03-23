@@ -174,7 +174,13 @@ class JobBoardSheetsService:
         return sheet_id
 
     def _format_data_cells(
-        self, tab_name: str, sheet_id: int, num_cols: int, num_rows: int
+        self,
+        tab_name: str,
+        sheet_id: int,
+        num_cols: int,
+        num_rows: int,
+        *,
+        data_start_row_0based: int = 1,
     ) -> None:
         """Apply text wrap and left alignment to data area for readability."""
         if num_rows == 0:
@@ -184,8 +190,8 @@ class JobBoardSheetsService:
                 "repeatCell": {
                     "range": {
                         "sheetId": sheet_id,
-                        "startRowIndex": 1,
-                        "endRowIndex": 1 + num_rows,
+                        "startRowIndex": data_start_row_0based,
+                        "endRowIndex": data_start_row_0based + num_rows,
                         "startColumnIndex": 0,
                         "endColumnIndex": num_cols,
                     },
@@ -202,15 +208,26 @@ class JobBoardSheetsService:
         ]
         self.sheets.batchUpdate(spreadsheetId=self.sheet_id, body={"requests": requests}).execute()
 
-    def _clear_data_rows(self, tab_name: str) -> None:
-        """Clear all rows except the header."""
+    def _clear_data_rows(self, tab_name: str, num_cols: int = 26) -> None:
+        """Clear all rows except the header (row 1)."""
         try:
+            end_col = chr(ord("A") + min(max(num_cols - 1, 0), 25))
             self.sheets.values().clear(
                 spreadsheetId=self.sheet_id,
-                range=f"{tab_name}!A2:Z10000",
+                range=f"{tab_name}!A2:{end_col}100000",
             ).execute()
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("Could not clear rows for tab '%s': %s", tab_name, exc)
+
+    def _next_append_row_1based(self, tab_name: str) -> int:
+        """First empty row below existing content in column A (1-based). Assumes row 1 is header."""
+        res = (
+            self.sheets.values()
+            .get(spreadsheetId=self.sheet_id, range=f"{tab_name}!A:A")
+            .execute()
+        )
+        vals = res.get("values") or []
+        return len(vals) + 1
 
     def _default_ist_date_str(self) -> str:
         _, _, ist_date_str = ist_today_utc_window()
@@ -445,9 +462,18 @@ class JobBoardSheetsService:
         }
 
     def export_jobs_from_json(
-        self, json_path: Path, date_str: Optional[str] = None
+        self,
+        json_path: Path,
+        date_str: Optional[str] = None,
+        *,
+        append: bool = False,
     ) -> Dict:
-        """Export crawled jobs from JSON to a <date>_jobs tab."""
+        """Export crawled jobs from JSON to a <date>_jobs tab.
+
+        If append=False (default), existing data rows are cleared and replaced (full refresh).
+        If append=True, new rows are written below existing data so the same IST date tab
+        accumulates all verified/export batches for that day without overwriting.
+        """
         if not date_str:
             date_str = self._default_ist_date_str()
         tab_name = f"{date_str}_jobs"
@@ -463,6 +489,7 @@ class JobBoardSheetsService:
                 "date": date_str,
                 "tab_name": tab_name,
                 "jobs_exported": 0,
+                "append": append,
             }
 
         headers = [
@@ -487,7 +514,14 @@ class JobBoardSheetsService:
             "Crawled At (UTC)",
         ]
         sheet_id = self._ensure_tab_with_headers(tab_name, headers, self.JOB_COLUMN_WIDTHS)
-        self._clear_data_rows(tab_name)
+        num_cols = len(headers)
+        if not append:
+            self._clear_data_rows(tab_name, num_cols=num_cols)
+            start_row_1based = 2
+        else:
+            start_row_1based = self._next_append_row_1based(tab_name)
+            if start_row_1based < 2:
+                start_row_1based = 2
 
         rows: List[List[str]] = []
         for job in jobs:
@@ -541,7 +575,8 @@ class JobBoardSheetsService:
             )
 
         end_col = chr(ord("A") + len(headers) - 1)
-        range_name = f"{tab_name}!A2:{end_col}{1 + len(rows)}"
+        end_row = start_row_1based + len(rows) - 1
+        range_name = f"{tab_name}!A{start_row_1based}:{end_col}{end_row}"
         self.sheets.values().update(
             spreadsheetId=self.sheet_id,
             range=range_name,
@@ -549,14 +584,28 @@ class JobBoardSheetsService:
             body={"values": rows},
         ).execute()
         if sheet_id is not None:
-            self._format_data_cells(tab_name, sheet_id, len(headers), len(rows))
+            self._format_data_cells(
+                tab_name,
+                sheet_id,
+                len(headers),
+                len(rows),
+                data_start_row_0based=start_row_1based - 1,
+            )
 
-        logger.info("Exported %d jobs to '%s'", len(rows), tab_name)
+        logger.info(
+            "Exported %d jobs to '%s' (append=%s, start_row=%s)",
+            len(rows),
+            tab_name,
+            append,
+            start_row_1based,
+        )
         return {
             "status": "success",
             "date": date_str,
             "tab_name": tab_name,
             "jobs_exported": len(rows),
+            "append": append,
+            "start_row": start_row_1based,
         }
 
 

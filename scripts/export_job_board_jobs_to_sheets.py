@@ -12,6 +12,7 @@ same service-account credentials.json as the Telegram exporter.
 Usage:
   python scripts/export_job_board_jobs_to_sheets.py
   python scripts/export_job_board_jobs_to_sheets.py --date 2026-03-16
+  python scripts/export_job_board_jobs_to_sheets.py --append-jobs   # same-day batches: add rows, do not wipe tab
 """
 
 import argparse
@@ -35,6 +36,11 @@ def main() -> int:
         default=None,
         help="IST date string for tab names (YYYY-MM-DD). Defaults to today's IST date.",
     )
+    parser.add_argument(
+        "--append-jobs",
+        action="store_true",
+        help="Append jobs to <date>_jobs without clearing existing rows (keeps all batches for that day).",
+    )
     args = parser.parse_args()
 
     if args.date:
@@ -49,7 +55,9 @@ def main() -> int:
     service = JobBoardSheetsService()
 
     sources_result = service.export_sources_from_json(sources_path, ist_date_str)
-    jobs_result = service.export_jobs_from_json(jobs_path, ist_date_str)
+    jobs_result = service.export_jobs_from_json(
+        jobs_path, ist_date_str, append=bool(args.append_jobs)
+    )
 
     print("Sources export:", sources_result)
     print("Jobs export   :", jobs_result)
