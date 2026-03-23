@@ -56,6 +56,7 @@ class StudentProfileUpdate(BaseModel):
     All fields are optional for partial updates
     """
     # Personal Details
+    full_name: Optional[str] = Field(None, max_length=255, description="Full name")
     phone: Optional[str] = Field(None, max_length=20, description="Mobile number (e.g., +91-9876543210)")
     date_of_birth: Optional[str] = Field(None, description="Date of birth (YYYY-MM-DD format as string)")
     gender: Optional[str] = Field(None, max_length=50, description="Gender (e.g., Male, Female, Other)")
