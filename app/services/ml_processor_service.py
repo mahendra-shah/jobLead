@@ -4,8 +4,10 @@ Processes unprocessed messages from MongoDB, classifies them, and stores jobs to
 """
 
 import logging
+import json
 import re as _re
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import List, Dict, Optional
 from pymongo import MongoClient
 from sqlalchemy import select, func, or_
@@ -16,6 +18,7 @@ from app.db.session import get_sync_db
 from app.db.base import Base  # Import Base to initialize all models
 # Import all models at once to ensure proper relationship initialization
 from app.models import Job, Company, Channel, Application, Student, User, TelegramGroup
+from app.models.job_scraping_preferences import JobScrapingPreferences
 from app.ml.sklearn_classifier import SklearnClassifier
 from app.ml.spacy_extractor import SpacyExtractor
 from app.ml.enhanced_extractor import get_enhanced_extractor
@@ -79,7 +82,44 @@ _NON_JOB_PATTERNS = [
             _re.IGNORECASE,
         ),
     ),
+    # Course / bootcamp / training promotions that look like jobs
+    (
+        "course_promo",
+        _re.compile(
+            r'\b(?:full\s*stack\s*development\s*program|bootcamp|register\s+now|'
+            r'learn\s+everything\s+from\s+scratch|perfect\s+for\s+beginners|'
+            r'career\s+switchers|course\s+details|admission\s+open)\b',
+            _re.IGNORECASE,
+        ),
+    ),
+    # Job-seeker / resume-help chatter (not job postings)
+    (
+        "job_seeker_post",
+        _re.compile(
+            r'\b(?:looking\s+for\s+job|need\s+a\s+job|job\s+seeker|job\s+search|'
+            r'anyone\s+hiring|please\s+refer|resume\s+tips|interview\s+questions)\b',
+            _re.IGNORECASE,
+        ),
+    ),
 ]
+
+_LEARNING_PROMO_CONTEXT = _re.compile(
+    r'\b(?:want\s+to\s+become|become\s+a|learn\s+from\s+scratch|'
+    r'program\s+helps\s+you\s+learn|perfect\s+for\s+beginners|'
+    r'students|career\s+switchers|register\s+now|bootcamp|course)\b',
+    _re.IGNORECASE,
+)
+
+_ENTRY_LEVEL_CONTEXT = _re.compile(
+    r'\b(?:fresher|freshers|intern|internship|entry\s*level|trainee|graduate\s+program|'
+    r'0\s*[-–]\s*1\s*(?:years?|yrs?)|0\s*[-–]\s*2\s*(?:years?|yrs?)|'
+    r'up\s*to\s*2\s*(?:years?|yrs?))\b',
+    _re.IGNORECASE,
+)
+
+_SOFT_NEGATIVE_KEYWORDS = {
+    "job alert",
+}
 
 
 def _is_non_job_spam(text: str) -> Optional[str]:
@@ -106,6 +146,50 @@ def _has_obfuscated_email(text: str) -> bool:
     return False
 
 
+def _normalize_text(text: str) -> str:
+    """Normalize text for keyword matching."""
+    return _re.sub(r"\s+", " ", (text or "").lower()).strip()
+
+
+def _keyword_present(text: str, keyword: str) -> bool:
+    """Word-boundary-aware keyword matching with phrase support."""
+    text_norm = _normalize_text(text)
+    keyword_norm = _normalize_text(keyword)
+    if not text_norm or not keyword_norm:
+        return False
+
+    pattern = r'(?<!\w)' + _re.escape(keyword_norm).replace(r'\ ', r'\s+') + r'(?!\w)'
+    return bool(_re.search(pattern, text_norm, flags=_re.IGNORECASE))
+
+
+def _find_first_keyword_match(text: str, keywords: List[str]) -> Optional[str]:
+    """Return first matching keyword (case-insensitive), else None."""
+    for keyword in keywords or []:
+        if _keyword_present(text, keyword):
+            return keyword
+    return None
+
+
+def _find_first_skill_overlap(extracted_skills: List[str], excluded_skills: List[str]) -> Optional[str]:
+    """Return first overlapping skill between extracted and excluded lists."""
+    if not extracted_skills or not excluded_skills:
+        return None
+
+    extracted_norm = {_normalize_text(skill) for skill in extracted_skills if skill}
+    for blocked in excluded_skills:
+        blocked_norm = _normalize_text(blocked)
+        if blocked_norm and blocked_norm in extracted_norm:
+            return blocked
+    return None
+
+
+def _has_standard_email(text: str) -> bool:
+    """Detect standard (non-obfuscated) email addresses."""
+    return bool(
+        _re.search(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", text or "")
+    )
+
+
 class MLProcessorService:
     """
     Service to process Telegram messages using ML classification
@@ -117,6 +201,7 @@ class MLProcessorService:
         self.extractor = SpacyExtractor()
         self.enhanced_extractor = get_enhanced_extractor()  # NEW: Enhanced extraction
         self.quality_scorer = get_quality_scorer()  # NEW: Quality scoring
+        self.senior_role_keywords = self._load_senior_role_keywords()
         
         # MongoDB connection
         self.mongo_client = MongoClient(settings.MONGODB_URI)
@@ -129,6 +214,88 @@ class MLProcessorService:
         logger.info(f"   spaCy extractor: {self.extractor.is_loaded}")
         logger.info("   Enhanced extractor: True")
         logger.info("   Quality scorer: True")
+        logger.info(f"   Senior keywords loaded: {len(self.senior_role_keywords)}")
+
+    def _load_senior_role_keywords(self) -> List[str]:
+        """Load senior role keywords from relevance config with safe fallback."""
+        try:
+            config_path = settings.JOB_RELEVANCE_CONFIG_PATH
+            path = Path(config_path)
+            if not path.is_absolute():
+                path = Path(__file__).resolve().parents[2] / config_path
+
+            with open(path, "r", encoding="utf-8") as file_obj:
+                cfg = json.load(file_obj)
+
+            senior_keywords = (cfg.get("excluded_keywords", {}) or {}).get("senior_roles", []) or []
+            return [item.strip() for item in senior_keywords if isinstance(item, str) and item.strip()]
+        except Exception as exc:
+            logger.warning(f"Could not load senior role keywords from config: {exc}")
+            return [
+                "10+ years", "15+ years", "senior architect", "vp of", "director of",
+                "chief", "cto", "ceo", "head of", "senior manager", "principal engineer",
+            ]
+
+    def _get_active_preferences(self, db: Session) -> Optional[JobScrapingPreferences]:
+        """Get active global scraping preferences if available."""
+        return db.execute(
+            select(JobScrapingPreferences)
+            .where(JobScrapingPreferences.is_active.is_(True))
+            .order_by(JobScrapingPreferences.updated_at.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+
+    def _is_senior_keyword_match(self, text: str) -> Optional[str]:
+        """Detect senior keyword while avoiding common learning-promo context false matches."""
+        matched_keyword = _find_first_keyword_match(text, self.senior_role_keywords)
+        if not matched_keyword:
+            return None
+
+        # Edge-case guard: content like "Want to become a ..." should be treated as promo/non-job.
+        # Do not use this as a senior-job signal in that context.
+        if _LEARNING_PROMO_CONTEXT.search(text):
+            return None
+
+        return matched_keyword
+
+    @staticmethod
+    def _experience_threshold(preferences: Optional[JobScrapingPreferences]) -> int:
+        """Resolve experience threshold from active preferences with settings fallback."""
+        if preferences and preferences.max_experience_years is not None:
+            return int(preferences.max_experience_years)
+        return int(settings.MAX_FRESHER_EXPERIENCE_YEARS)
+
+    @staticmethod
+    def _is_experience_over_threshold(extraction, threshold: int) -> bool:
+        """Return True if parsed min/max experience exceeds threshold."""
+        min_exp = extraction.experience_min
+        max_exp = extraction.experience_max
+        if min_exp is not None and min_exp > threshold:
+            return True
+        if max_exp is not None and max_exp > threshold:
+            return True
+        return False
+
+    @staticmethod
+    def _should_allow_soft_negative_keyword(
+        matched_keyword: str,
+        text: str,
+        links: List[str],
+    ) -> bool:
+        """
+        Allow specific soft negative keywords when strong entry-level job signals exist.
+
+        Example: "job alert" post that is a real fresher/intern opening with apply path.
+        """
+        keyword_norm = _normalize_text(matched_keyword)
+        if keyword_norm not in _SOFT_NEGATIVE_KEYWORDS:
+            return False
+
+        has_entry_level_signal = bool(_ENTRY_LEVEL_CONTEXT.search(text or ""))
+        has_apply_path = bool(links) or _has_standard_email(text) or _has_obfuscated_email(text)
+        has_non_job_promo = bool(_NON_JOB_PATTERNS[4][1].search(text or ""))  # course_promo pattern
+
+        return has_entry_level_signal and has_apply_path and not has_non_job_promo
     
     def process_unprocessed_messages(
         self,
@@ -199,6 +366,10 @@ class MLProcessorService:
         
         # Get DB session for PostgreSQL (synchronous)
         db = next(get_sync_db())
+        active_preferences = self._get_active_preferences(db)
+        excluded_keywords = (active_preferences.excluded_keywords or []) if active_preferences else []
+        if excluded_keywords:
+            logger.info(f"Loaded {len(excluded_keywords)} active excluded keywords from preferences")
         
         try:
             for idx, message in enumerate(messages, 1):
@@ -207,7 +378,12 @@ class MLProcessorService:
                     logger.info(f"   Channel: {message.get('channel_username', 'Unknown')}")  # Changed from channel_name
                     logger.info(f"   Message ID: {message.get('message_id')}")
                     
-                    result = self._process_single_message(message, db, min_confidence)
+                    result = self._process_single_message(
+                        message,
+                        db,
+                        min_confidence,
+                        active_preferences=active_preferences,
+                    )
                     
                     # Update stats with enhanced tracking
                     if result['is_job']:
@@ -297,7 +473,8 @@ class MLProcessorService:
         self,
         message: Dict,
         db: Session,
-        min_confidence: float
+        min_confidence: float,
+        active_preferences: Optional[JobScrapingPreferences] = None,
     ) -> Dict:
         """
         Process a single message: classify, extract, store
@@ -321,6 +498,27 @@ class MLProcessorService:
                 "quality_filtered": 0, "spam_rejected": 1, "relevant_jobs": 0,
                 "job_ids": [], "channel_id": None,
             }
+
+        # 0b. Preference-based excluded keyword gate (global active preferences)
+        excluded_keywords = (active_preferences.excluded_keywords or []) if active_preferences else []
+        excluded_keyword_match = _find_first_keyword_match(text, excluded_keywords)
+        if excluded_keyword_match:
+            if self._should_allow_soft_negative_keyword(excluded_keyword_match, text, links):
+                logger.info(
+                    f"   ✅ Soft negative keyword bypassed [{excluded_keyword_match}] due to entry-level signals"
+                )
+            else:
+                logger.info(
+                    f"   🚫 Rejected by preferences excluded keyword [{excluded_keyword_match}]: {text[:60]!r}"
+                )
+                return {
+                    "is_job": False, "confidence": 0.0,
+                    "reason": f"pre-filter:preferences_excluded_keyword:{excluded_keyword_match}",
+                    "low_confidence": False, "stored_to_postgres": False,
+                    "jobs_created": 0, "companies_created": 0,
+                    "quality_filtered": 0, "spam_rejected": 1, "relevant_jobs": 0,
+                    "job_ids": [], "channel_id": None,
+                }
 
         # 1. Classify the message
         classification = self.classifier.classify(text)
@@ -421,14 +619,25 @@ class MLProcessorService:
                         result["quality_filtered"] += 1
                         continue
 
-                    # Hard experience gate — driven by settings.MAX_FRESHER_EXPERIENCE_YEARS
-                    # To raise/lower the threshold change that single config value.
-                    # is_fresher_friendly is already normalised by the extractor override,
-                    # so we just check the flag here.
-                    if not extraction.is_fresher_friendly:
+                    # Hard senior gates (both):
+                    # 1) parsed experience exceeds threshold
+                    # 2) senior-role keyword appears in title/description/raw text
+                    threshold = self._experience_threshold(active_preferences)
+                    if self._is_experience_over_threshold(extraction, threshold):
                         logger.warning(
-                            f"      ⚠️  Job rejected: experience_min={extraction.experience_min} yrs "
-                            f"(gate: max {settings.MAX_FRESHER_EXPERIENCE_YEARS} yrs)"
+                            f"      ⚠️  Job rejected [senior_experience_gate]: "
+                            f"experience_min={extraction.experience_min}, experience_max={extraction.experience_max} "
+                            f"(gate: max {threshold} yrs)"
+                        )
+                        result['quality_filtered'] += 1
+                        continue
+
+                    senior_keyword_match = self._is_senior_keyword_match(
+                        f"{extraction.job_title or ''} {extraction.description or text}"
+                    )
+                    if senior_keyword_match:
+                        logger.warning(
+                            f"      ⚠️  Job rejected [senior_keyword_gate]: matched '{senior_keyword_match}'"
                         )
                         result['quality_filtered'] += 1
                         continue
@@ -438,6 +647,30 @@ class MLProcessorService:
                         logger.warning(f"      ⚠️  Job rejected: no title or company extractable")
                         result['quality_filtered'] += 1
                         continue
+
+                    # Preference gates: excluded companies and excluded skills
+                    if active_preferences:
+                        excluded_company_match = _find_first_keyword_match(
+                            extraction.company_name or "",
+                            active_preferences.excluded_companies or [],
+                        )
+                        if excluded_company_match:
+                            logger.warning(
+                                f"      ⚠️  Job rejected [preferences_excluded_company]: matched '{excluded_company_match}'"
+                            )
+                            result['quality_filtered'] += 1
+                            continue
+
+                        excluded_skill_match = _find_first_skill_overlap(
+                            extraction.skills or [],
+                            active_preferences.excluded_skills or [],
+                        )
+                        if excluded_skill_match:
+                            logger.warning(
+                                f"      ⚠️  Job rejected [preferences_excluded_skill]: matched '{excluded_skill_match}'"
+                            )
+                            result['quality_filtered'] += 1
+                            continue
 
                     # ── Deduplication guard ──────────────────────────────────────────
                     # Heuristic guard on (title, company, apply_link):

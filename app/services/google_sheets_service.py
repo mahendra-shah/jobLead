@@ -38,6 +38,36 @@ class GoogleSheetsService:
         # Build service
         self.service = build('sheets', 'v4', credentials=self.credentials)
         self.sheets = self.service.spreadsheets()
+
+    def _build_export_row(self, job: Job):
+        company_name = job.company_name or 'Unknown'
+        channel_name = job.source_channel_name or ''
+        channel_url = f"https://t.me/{channel_name}" if channel_name else ''
+        channel_id = job.source_telegram_channel_id or ''
+        sender_id = str(job.sender_id) if job.sender_id else ''
+        account_used = f"Account {job.fetched_by_account}" if job.fetched_by_account else ''
+
+        return [
+            str(job.id),
+            job.source_message_id or '',
+            job.created_at.strftime('%Y-%m-%d'),
+            company_name,
+            job.title or '',
+            job.location or '',
+            'Yes' if job.is_fresher else ('No' if job.is_fresher is not None else ''),
+            job.experience or '',
+            job.work_type or '',
+            job.job_type or '',
+            ', '.join(job.skills_required) if job.skills_required else '',
+            channel_name,
+            channel_url,
+            channel_id,
+            sender_id,
+            account_used,
+            job.source or '',
+            job.source_url or '',
+            (job.description or '')[:1000],
+        ]
     
     def create_daily_tab_by_date_str(self, date_str: str) -> str:
         """
@@ -255,6 +285,8 @@ class GoogleSheetsService:
                 and_(
                     Job.created_at >= start_time,
                     Job.created_at < end_time,
+                    Job.meets_relevance_criteria.is_(True),
+                    Job.is_active.is_(True),
                 )
             )
             .order_by(Job.created_at.desc())
@@ -286,38 +318,7 @@ class GoogleSheetsService:
         except Exception as e:
             logger.warning(f"Could not clear existing rows (non-fatal): {e}")
 
-        rows = []
-        for job in jobs:
-            # Use denormalized company_name — no extra DB query needed
-            company_name = job.company_name or 'Unknown'
-            channel_name = job.source_channel_name or ''
-            channel_url = f"https://t.me/{channel_name}" if channel_name else ''
-            channel_id = job.source_telegram_channel_id or ''
-            sender_id = str(job.sender_id) if job.sender_id else ''
-            account_used = f"Account {job.fetched_by_account}" if job.fetched_by_account else ''
-
-            row = [
-                str(job.id),
-                job.source_message_id or '',
-                job.created_at.strftime('%Y-%m-%d'),
-                company_name,
-                job.title or '',
-                job.location or '',
-                'Yes' if job.is_fresher else ('No' if job.is_fresher is not None else ''),
-                job.experience_required or '',
-                job.work_type or '',
-                job.job_type or '',
-                ', '.join(job.skills_required) if job.skills_required else '',
-                channel_name,
-                channel_url,
-                channel_id,
-                sender_id,
-                account_used,
-                job.source or '',
-                job.source_url or '',
-                (job.raw_text or '')[:1000],
-            ]
-            rows.append(row)
+        rows = [self._build_export_row(job) for job in jobs]
 
         if rows:
             end_col = chr(ord('A') + len(rows[0]) - 1)
