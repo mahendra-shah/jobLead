@@ -46,6 +46,11 @@ def main() -> int:
         default=None,
         help="Import only first N sources (for testing)",
     )
+    parser.add_argument(
+        "--include-all-audience",
+        action="store_true",
+        help="Import all analyzer crawl-ready sources (skip India/remote student-pipeline filter)",
+    )
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parent.parent.parent
@@ -59,6 +64,7 @@ def main() -> int:
         health_check=bool(args.health_check),
         delete_non_crawl_ready=not bool(args.keep_stale),
         limit=args.limit,
+        student_pipeline_only=not bool(args.include_all_audience),
     )
     print("Import result:", result)
     return 0

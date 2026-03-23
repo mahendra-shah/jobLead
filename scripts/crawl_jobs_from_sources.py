@@ -45,6 +45,22 @@ def load_crawl_ready_sources(path: Path) -> list[dict]:
     return data.get("sources") or []
 
 
+def load_crawl_ready_sources_from_mongo(
+    *,
+    limit: int,
+    student_pipeline_priority: bool,
+    student_pipeline_only: bool,
+) -> list[dict]:
+    from app.services.mongodb_job_board_source_service import MongoJobBoardSourcesService
+
+    svc = MongoJobBoardSourcesService()
+    return svc.get_phase2_crawl_queue(
+        limit=limit,
+        student_pipeline_priority=student_pipeline_priority,
+        student_pipeline_only=student_pipeline_only,
+    )
+
+
 def iso_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -477,18 +493,51 @@ def main() -> int:
         default=None,
         help="Output jobs JSON (default: app/data/jobs/jobs_run_<timestamp>.json)",
     )
+    parser.add_argument(
+        "--from-mongo",
+        action="store_true",
+        help="Load sources from MongoDB job_board_sources (Phase 1 import). Recommended for Phase 2.",
+    )
+    parser.add_argument(
+        "--no-student-pipeline-priority",
+        action="store_true",
+        help="With --from-mongo: do not put India/remote (student_pipeline_eligible) sources first",
+    )
+    parser.add_argument(
+        "--student-pipeline-only",
+        action="store_true",
+        help="With --from-mongo: only student_pipeline_eligible sources (India/remote boards)",
+    )
     args = parser.parse_args()
 
-    sources_file = args.sources_file
-    if not sources_file.is_absolute():
-        sources_file = JOBLEAD_ROOT / sources_file
-    sources = load_crawl_ready_sources(sources_file)
+    if args.from_mongo:
+        try:
+            sources = load_crawl_ready_sources_from_mongo(
+                limit=args.max_sources,
+                student_pipeline_priority=not args.no_student_pipeline_priority,
+                student_pipeline_only=bool(args.student_pipeline_only),
+            )
+        except Exception as e:
+            print(f"Mongo load failed ({e}). Falling back to JSON file.")
+            sources_file = args.sources_file
+            if not sources_file.is_absolute():
+                sources_file = JOBLEAD_ROOT / sources_file
+            sources = load_crawl_ready_sources(sources_file)[: args.max_sources]
+    else:
+        sources_file = args.sources_file
+        if not sources_file.is_absolute():
+            sources_file = JOBLEAD_ROOT / sources_file
+        sources = load_crawl_ready_sources(sources_file)
+
     if not sources:
-        print(f"No sources in {sources_file}")
+        print("No sources to crawl (empty list or missing file).")
         return 0
 
     to_crawl = sources[: args.max_sources]
-    print(f"Crawling {len(to_crawl)} sources (of {len(sources)} total crawl-ready).")
+    src_note = "MongoDB (student_pipeline first)" if args.from_mongo and not args.no_student_pipeline_priority else (
+        "MongoDB" if args.from_mongo else str(sources_file)
+    )
+    print(f"Crawling {len(to_crawl)} sources from {src_note} (max_sources={args.max_sources}).")
 
     run_ts = iso_now().replace(":", "").replace("-", "")
     default_out = Path(f"app/data/jobs/jobs_run_{run_ts}.json")

@@ -39,6 +39,8 @@ class JobBoardSourceBase(BaseModel):
 
     # Crawl state
     crawl_ready: bool = False
+    # Phase 1: India or remote-audience boards only (see phase1_source_profile)
+    student_pipeline_eligible: Optional[bool] = None
     status: str = "active"
     last_crawled_at: Optional[datetime] = None
 
