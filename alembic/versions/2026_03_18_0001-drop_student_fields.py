@@ -32,47 +32,50 @@ def upgrade() -> None:
     - last_name (removed from requirements)
     - branch (removed from requirements)
     """
-    legacy_tech_link_updates = [
-        (
-            'github_profile',
-            """
-            UPDATE students
-            SET tech_links = COALESCE(tech_links, '{}'::jsonb) || jsonb_build_object('github_profile', github_profile)
-            WHERE github_profile IS NOT NULL AND btrim(github_profile) <> ''
-            """
-        ),
-        (
-            'linkedin_profile',
-            """
-            UPDATE students
-            SET tech_links = COALESCE(tech_links, '{}'::jsonb) || jsonb_build_object('linkedin_profile', linkedin_profile)
-            WHERE linkedin_profile IS NOT NULL AND btrim(linkedin_profile) <> ''
-            """
-        ),
-        (
-            'portfolio_url',
-            """
-            UPDATE students
-            SET tech_links = COALESCE(tech_links, '{}'::jsonb) || jsonb_build_object('portfolio_url', portfolio_url)
-            WHERE portfolio_url IS NOT NULL AND btrim(portfolio_url) <> ''
-            """
-        ),
-        (
-            'coding_platforms',
-            """
-            UPDATE students
-            SET tech_links = COALESCE(tech_links, '{}'::jsonb) || jsonb_build_object('coding_platforms', coding_platforms)
-            WHERE coding_platforms IS NOT NULL AND coding_platforms <> '{}'::jsonb
-            """
-        ),
-    ]
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    existing_columns = {
+        column["name"] for column in inspector.get_columns("students")
+    }
 
-    for field, sql in legacy_tech_link_updates:
-        try:
-            op.execute(sa.text(sql))
-            print(f"✓ Backfilled tech_links from: {field}")
-        except Exception as e:
-            print(f"Note: Could not backfill {field} into tech_links: {str(e)}")
+    links_target_column = None
+    if "social_links" in existing_columns:
+        links_target_column = "social_links"
+    elif "tech_links" in existing_columns:
+        links_target_column = "tech_links"
+
+    if links_target_column is not None:
+        legacy_tech_link_updates = [
+            "github_profile",
+            "linkedin_profile",
+            "portfolio_url",
+            "coding_platforms",
+        ]
+
+        for field in legacy_tech_link_updates:
+            if field not in existing_columns:
+                continue
+
+            if field == "coding_platforms":
+                where_clause = (
+                    f"{field} IS NOT NULL AND {field} <> '{{}}'::jsonb"
+                )
+            else:
+                where_clause = (
+                    f"{field} IS NOT NULL AND btrim({field}) <> ''"
+                )
+
+            op.execute(
+                sa.text(
+                    f"""
+                    UPDATE students
+                    SET {links_target_column} =
+                        COALESCE({links_target_column}, '{{}}'::jsonb)
+                        || jsonb_build_object('{field}', {field})
+                    WHERE {where_clause}
+                    """
+                )
+            )
 
     fields_to_drop = [
         'user_id',
@@ -94,11 +97,8 @@ def upgrade() -> None:
     ]
     
     for field in fields_to_drop:
-        try:
+        if field in existing_columns:
             op.drop_column('students', field)
-            print(f"✓ Dropped column: {field}")
-        except Exception as e:
-            print(f"Note: Could not drop {field}: {str(e)}")
 
 
 def downgrade() -> None:
