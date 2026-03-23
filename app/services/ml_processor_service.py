@@ -866,18 +866,8 @@ class MLProcessorService:
                     
                     quality_result = self.quality_scorer.score_job(job_data, extraction.confidence)
                     
-                    # Set quality scoring fields
+                    # Set persisted quality scoring field
                     job.quality_score = quality_result.quality_score
-                    job.relevance_score = quality_result.relevance_score
-                    job.meets_relevance_criteria = quality_result.meets_criteria
-                    job.quality_breakdown = quality_result.breakdown
-                    job.relevance_reasons = quality_result.reasons
-                    job.extraction_completeness_score = quality_result.breakdown.get("completeness", 0)
-                    job.quality_factors = {
-                        "experience_match": quality_result.breakdown.get("experience_match", 0),
-                        "completeness": quality_result.breakdown.get("completeness", 0),
-                        "skills_value": quality_result.breakdown.get("skills_value", 0)
-                    }
                     
                     logger.info(f"      🎯 Quality Score: {quality_result.quality_score:.2f}/100")
                     logger.info(f"      📊 Relevance: {quality_result.relevance_score:.2f}/100")

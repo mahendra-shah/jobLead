@@ -1,6 +1,6 @@
 """Job model."""
 
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, BigInteger
+from sqlalchemy import Boolean, Column, Float, ForeignKey, Integer, String, Text, BigInteger
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
@@ -44,22 +44,12 @@ class Job(Base):
     telegram_group_id = Column(UUID(as_uuid=True), nullable=True)  # NO FK - telegram_groups table empty
     scraped_by_account_id = Column(UUID(as_uuid=True), nullable=True)  # NO FK - telegram_accounts table empty
     
-    # ML & Deduplication
-    embedding = Column(String, nullable=True)  # Stored as text in current schema
-    duplicate_of_id = Column(UUID(as_uuid=True), ForeignKey("jobs.id"), nullable=True)  # Made nullable
+    # ML metadata
     source_message_id = Column(String(255))  # Link to raw messages (MongoDB message_id)
     ml_confidence = Column(String(10))  # Confidence score from ML classifier
     
-    # Job Quality Scoring (NEW - Feb 2026)
+    # Job Quality Scoring
     quality_score = Column(Float, nullable=True, index=True)  # Overall quality 0-100
-    relevance_score = Column(Float, nullable=True)  # Relevance to criteria 0-100
-    extraction_completeness_score = Column(Float, nullable=True)  # Field completeness 0-100
-    meets_relevance_criteria = Column(Boolean, default=False, index=True)  # Passes relevance filters
-    quality_breakdown = Column(JSONB, default=dict)  # Detailed scoring breakdown
-    # Example: {"experience_match": 85, "field_completeness": 70, "skill_relevance": 90}
-    relevance_reasons = Column(JSONB, default=list)  # List of match/mismatch reasons
-    quality_factors = Column(JSONB, default=dict)
-    quality_scored_at = Column(DateTime(timezone=True), nullable=True)
     
     # Visibility & Recommendation Tracking
     students_shown_to = Column(JSONB, default=list)  # List of student IDs who saw this job
