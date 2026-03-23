@@ -1,4 +1,7 @@
-"""Add missing extraction_completeness_score column"""
+"""Legacy script retained for compatibility.
+
+This column is intentionally removed from the schema.
+"""
 import sys
 from pathlib import Path
 project_root = Path(__file__).parent
@@ -9,11 +12,20 @@ from sqlalchemy import text
 
 db = next(get_sync_db())
 try:
-    db.execute(text("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS extraction_completeness_score FLOAT"))
-    db.commit()
-    print("✅ Added extraction_completeness_score column")
-except Exception as e:
-    print(f"Error: {e}")
-    db.rollback()
+    result = db.execute(
+        text(
+            """
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_name = 'jobs'
+              AND column_name = 'extraction_completeness_score'
+            LIMIT 1
+            """
+        )
+    ).fetchone()
+    if result:
+        print("⚠️ extraction_completeness_score exists, but this field is deprecated and should be removed via migration.")
+    else:
+        print("✅ extraction_completeness_score is not present (expected).")
 finally:
     db.close()

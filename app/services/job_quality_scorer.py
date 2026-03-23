@@ -10,6 +10,7 @@ Date: 2026-02-13
 
 import json
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
@@ -507,12 +508,13 @@ class JobQualityScorer:
         
         for category, keywords in self.excluded_keywords.items():
             for keyword in keywords:
-                if keyword.lower() in text_to_check:
+                if self._keyword_present(text_to_check, keyword):
                     fail_reasons.append(f"✗ Contains excluded keyword: {keyword} ({category})")
                     return False, fail_reasons
         
         # Check location compatibility (REJECT international onsite jobs)
         location_data = job_data.get('location_data') or {}
+        geo_scope = 'unspecified'
         if location_data:
             geo_scope = location_data.get('geographic_scope', 'unspecified')
             is_remote = location_data.get('is_remote', False)
@@ -527,6 +529,25 @@ class JobQualityScorer:
             if is_onsite and 'relocation' in text_to_check:
                 fail_reasons.append("✗ Strict onsite with relocation requirement")
                 return False, fail_reasons
+
+        # Fallback guard: if extractor misses geography but text clearly indicates an
+        # international onsite/non-remote post, reject.
+        remote_signals = ["remote", "work from home", "wfh", "hybrid", "anywhere"]
+        onsite_signals = self.location_filters.get('onsite_only_indicators', []) + [
+            "islandwide", "onsite", "on-site", "office", "work from office", "wfo"
+        ]
+        international_keywords = self.location_filters.get('international_keywords', [])
+
+        has_international_keyword = any(
+            self._keyword_present(text_to_check, keyword)
+            for keyword in international_keywords
+        )
+        has_remote_signal = any(self._keyword_present(text_to_check, signal) for signal in remote_signals)
+        has_onsite_signal = any(self._keyword_present(text_to_check, signal) for signal in onsite_signals)
+
+        if geo_scope == 'unspecified' and has_international_keyword and (has_onsite_signal or not has_remote_signal):
+            fail_reasons.append("✗ International onsite/non-remote posting (fallback excluded)")
+            return False, fail_reasons
         
         # Minimum location score threshold
         if scores.get('location_compatibility', 100) < 10:
@@ -549,6 +570,22 @@ class JobQualityScorer:
             return False, fail_reasons
         
         return True, []
+
+    @staticmethod
+    def _keyword_present(text: str, keyword: str) -> bool:
+        """Case-insensitive keyword match with boundary-safe behavior for simple terms."""
+        if not text or not keyword:
+            return False
+
+        normalized_keyword = keyword.strip().lower()
+        if not normalized_keyword:
+            return False
+
+        if re.match(r"^[a-z0-9][a-z0-9\s\-/]*[a-z0-9]$", normalized_keyword):
+            body = re.escape(normalized_keyword).replace(r"\ ", r"\s+")
+            return bool(re.search(rf"\b{body}\b", text, flags=re.IGNORECASE))
+
+        return normalized_keyword in text.lower()
 
 
 # Global instance (singleton pattern)

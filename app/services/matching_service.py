@@ -290,13 +290,14 @@ class HybridMatchingService:
         """Convert Student model to dictionary."""
         # Combine technical and soft skills
         all_skills = (student.technical_skills or []) + (student.soft_skills or [])
+        extra_detail = student.extra_detail if isinstance(getattr(student, 'extra_detail', None), dict) else {}
         
         return {
             "id": str(student.id),
             "full_name": student.full_name,
             "skills": all_skills,
             "bio": getattr(student, 'bio', ''),
-            "education": [student.highest_qualification] if student.highest_qualification else [],
+            "education": [extra_detail.get("highest_qualification")] if extra_detail.get("highest_qualification") else [],
             "experience": [student.experience_type] if student.experience_type else [],
             "preferences": student.preference or {},
         }

@@ -66,8 +66,8 @@ class JobBase(BaseModel):
                 'company_name': getattr(data, 'company_name', 'Unknown'),
                 'description': getattr(data, 'description', None),
                 'skills_required': getattr(data, 'skills_required', []) or [],
-                'experience_required': getattr(data, 'experience_required', None),
-                'salary_range': getattr(data, 'salary_range', {}) or {},
+                'experience_required': getattr(data, 'experience_required', None) or getattr(data, 'experience', None),
+                'salary_range': getattr(data, 'salary_range', None) or ({'raw': getattr(data, 'salary', None)} if getattr(data, 'salary', None) else {}),
                 'is_fresher': getattr(data, 'is_fresher', None),
                 'work_type': getattr(data, 'work_type', None),
                 'experience_min': getattr(data, 'experience_min', None),
@@ -82,6 +82,7 @@ class JobBase(BaseModel):
                 'is_active': getattr(data, 'is_active', True),
                 'view_count': getattr(data, 'view_count', 0),
                 'application_count': getattr(data, 'application_count', 0),
+                'shared_count': getattr(data, 'shared_count', 0),
                 'created_at': getattr(data, 'created_at', None),
                 'updated_at': getattr(data, 'updated_at', None),
             }
@@ -115,6 +116,7 @@ class JobBase(BaseModel):
     is_active: bool = True
     view_count: int = 0
     application_count: int = 0
+    shared_count: int = 0
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

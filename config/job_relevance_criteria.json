@@ -69,6 +69,7 @@
       "europe", "european", "germany", "berlin", "france", "paris",
       "netherlands", "amsterdam", "ireland", "dublin", "switzerland",
       "japan", "china", "israel",
+      "ethiopia", "addis ababa", "africa",
       "overseas", "international", "gulf", "abroad"
     ],
     "onsite_only_indicators": [
@@ -148,8 +149,12 @@
       "no experience needed easy money", "click here to earn"
     ],
     "senior_roles": [
-      "10+ years", "15+ years", "senior architect", "vp of", "director of",
-      "chief", "cto", "ceo", "head of", "senior manager", "principal engineer"
+      "10+ years", "15+ years", "8+ years", "senior architect", "vp of", "director of",
+      "chief", "cto", "ceo", "coo", "cfo", "cio", "cmo", "head of",
+      "senior manager", "lead manager", "engineering manager", "principal engineer",
+      "staff engineer", "principal architect", "senior lead", "team lead (senior)",
+      "senior consultant", "delivery manager", "program manager", "lead product manager",
+      "product manager", "manager", "director", "senior", "staff", "principal", "lead"
     ],
     "non_job": [
       "looking for job", "job seeker", "resume tips", "interview questions",
@@ -157,7 +162,18 @@
     ],
     "irrelevant": [
       "only for ladies", "only females", "age above 30", "mba required",
-      "phd required", "govt job", "government job", "bank job"
+      "phd required", "govt job", "government job", "bank job",
+      "finance officer", "finance officer - commercial", "finance officer – commercial",
+      "account reconciliation", "billing"
+    ],
+    "blocked_domains": [
+      "construction", "civil construction", "site engineer", "site supervisor",
+      "pharma", "pharmaceutical", "medical representative", "drug sales",
+      "metal", "steel fabrication", "welding", "fabrication engineer",
+      "architecture", "architectural designer", "interior architect", "interior designer", "interior design",
+      "mechanical", "mechanical engineer", "trainee mechanical engineer",
+      "machinery service engineer", "machinery manufacturing industry",
+      "field service engineer", "installation engineer", "maintenance engineer"
     ],
     "international_onsite": [
       "must relocate to usa", "must be in singapore", "must be based in uk",
