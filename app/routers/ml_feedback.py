@@ -109,13 +109,13 @@ async def submit_job_feedback(
         },
         'notes': feedback.notes,
         'original_ml_output': {
-            'classification': job.job_title,  # ML classified title
+            'classification': job.title,
             'confidence': job.ml_confidence if hasattr(job, 'ml_confidence') else None,
-            'extracted_company': job.company,
-            'extracted_salary': job.salary_range,
-            'extracted_experience': job.experience_level,
+            'extracted_company': job.company_name,
+            'extracted_salary': job.salary,
+            'extracted_experience': job.experience,
             'extracted_location': job.location,
-            'extracted_skills': job.required_skills
+            'extracted_skills': job.skills_required
         }
     }
     
@@ -211,17 +211,17 @@ async def get_pending_review_jobs(
         
         results.append(PendingReviewJob(
             job_id=job.id,
-            title=job.job_title or "Untitled",
-            company=job.company,
+            title=job.title or "Untitled",
+            company=job.company_name,
             source_text=source_text,
-            ml_classification=job.job_title or "unclassified",
+            ml_classification=job.title or "unclassified",
             ml_confidence=job.ml_confidence if hasattr(job, 'ml_confidence') else 0.5,
             extracted_data={
-                'company': job.company,
-                'salary': job.salary_range,
-                'experience': job.experience_level,
+                'company': job.company_name,
+                'salary': job.salary,
+                'experience': job.experience,
                 'location': job.location,
-                'skills': job.required_skills
+                'skills': job.skills_required
             },
             created_at=job.created_at
         ))

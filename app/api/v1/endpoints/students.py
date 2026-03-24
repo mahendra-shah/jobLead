@@ -6,10 +6,10 @@ Student Management API - CRUD with RBAC
 """
 
 from typing import Optional
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, cast, Integer
-from sqlalchemy.orm import joinedload
 
 from app.api.deps import (
     require_admin_role,
@@ -37,13 +37,35 @@ def _merge_extra_detail_with_passing_year(existing: Optional[dict], passing_year
     return extra_detail
 
 
+def _get_personal_details(student: Student) -> dict:
+    if isinstance(getattr(student, "extra_detail", None), dict):
+        return student.extra_detail
+    if isinstance(getattr(student, "personal_details", None), dict):
+        return student.personal_details
+    return {}
+
+
 def _get_passing_year(student: Student) -> Optional[int]:
-    extra_detail = student.extra_detail if isinstance(getattr(student, 'extra_detail', None), dict) else {}
-    passing_year = extra_detail.get("passing_year")
+    details = _get_personal_details(student)
+    passing_year = details.get("passing_year")
     try:
         return int(passing_year) if passing_year is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def _normalize_status(is_active: Optional[bool] = None, status_value: Optional[str] = None) -> Optional[str]:
+    if status_value is not None:
+        cleaned = status_value.strip().lower()
+        if cleaned in {"active", "inactive", "placed"}:
+            return cleaned
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="status must be one of: active, inactive, placed"
+        )
+    if is_active is None:
+        return None
+    return "active" if is_active else "inactive"
 
 
 # ==================== Student CRUD (Admin/Placement) ====================
@@ -71,17 +93,17 @@ async def create_student(
             detail=f"Student with email {student_in.email} already exists"
         )
     
-    # Create student (password is None - using Google OAuth)
+    normalized_status = _normalize_status(status_value=student_in.status)
+
+    # Create student
     db_student = Student(
+        full_name=student_in.full_name,
         email=student_in.email,
-        password=None,  # No password - Google OAuth only
-        first_name=student_in.first_name,
-        last_name=student_in.last_name,
         phone=student_in.phone,
-        degree=student_in.degree,
-        branch=student_in.branch,
+        job_category=student_in.job_category,
+        status=normalized_status or "active",
         extra_detail=_merge_extra_detail_with_passing_year(None, student_in.passing_year),
-        is_active=True
+        personal_details=_merge_extra_detail_with_passing_year(None, student_in.passing_year),
     )
     
     db.add(db_student)
@@ -95,12 +117,13 @@ async def create_student(
 async def list_students(
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
-    branch: Optional[str] = None,
+    job_category: Optional[str] = None,
     passing_year: Optional[int] = None,
     is_active: Optional[bool] = None,
+    status_filter: Optional[str] = Query(None, alias="status"),
     search: Optional[str] = None,
-    sort_by: str = Query("created_at", regex="^(name|created_at|updated_at)$"),
-    sort_order: str = Query("desc", regex="^(asc|desc)$"),
+    sort_by: str = Query("created_at", pattern="^(name|created_at|updated_at)$"),
+    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     current_user: User = Depends(require_placement_or_admin),
     db: AsyncSession = Depends(get_db)
 ):
@@ -110,50 +133,51 @@ async def list_students(
     **RBAC**: SuperAdmin, Admin, Placement
     
     **Filters**:
-    - `branch`: Filter by branch
+    - `job_category`: Filter by job category
     - `passing_year`: Filter by passing year
-    - `is_active`: Active status
+    - `is_active`: Backward-compatible active flag (maps to status)
+    - `status`: active/inactive/placed
     - `search`: Search in name or email
     - `sort_by`: Sort field (name, created_at, updated_at)
     - `sort_order`: asc or desc
     """
+    normalized_status = _normalize_status(is_active=is_active, status_value=status_filter)
+
     # Build query
     query = select(Student)
     
     # Apply filters
-    if branch:
-        query = query.where(Student.branch == branch)
+    if job_category:
+        query = query.where(Student.job_category == job_category)
     
     if passing_year:
         query = query.where(cast(Student.extra_detail['passing_year'].astext, Integer) == passing_year)
     
-    if is_active is not None:
-        query = query.where(Student.is_active == is_active)
+    if normalized_status is not None:
+        query = query.where(Student.status == normalized_status)
     
     if search:
         search_term = f"%{search}%"
         query = query.where(
             or_(
-                Student.first_name.ilike(search_term),
-                Student.last_name.ilike(search_term),
+                Student.full_name.ilike(search_term),
                 Student.email.ilike(search_term)
             )
         )
     
     # Count total
     count_query = select(func.count()).select_from(Student)
-    if branch:
-        count_query = count_query.where(Student.branch == branch)
+    if job_category:
+        count_query = count_query.where(Student.job_category == job_category)
     if passing_year:
         count_query = count_query.where(cast(Student.extra_detail['passing_year'].astext, Integer) == passing_year)
-    if is_active is not None:
-        count_query = count_query.where(Student.is_active == is_active)
+    if normalized_status is not None:
+        count_query = count_query.where(Student.status == normalized_status)
     if search:
         search_term = f"%{search}%"
         count_query = count_query.where(
             or_(
-                Student.first_name.ilike(search_term),
-                Student.last_name.ilike(search_term),
+                Student.full_name.ilike(search_term),
                 Student.email.ilike(search_term)
             )
         )
@@ -163,7 +187,7 @@ async def list_students(
     
     # Apply sorting
     if sort_by == "name":
-        order_column = Student.first_name
+        order_column = Student.full_name
     elif sort_by == "updated_at":
         order_column = Student.updated_at
     else:
@@ -193,7 +217,7 @@ async def list_students(
 
 @router.get("/students/{student_id}", response_model=StudentResponse)
 async def get_student(
-    student_id: int,
+    student_id: UUID,
     current_user: User = Depends(require_placement_or_admin),
     db: AsyncSession = Depends(get_db)
 ):
@@ -203,9 +227,7 @@ async def get_student(
     **RBAC**: SuperAdmin, Admin, Placement
     """
     result = await db.execute(
-        select(Student)
-        .options(joinedload(Student.college))
-        .where(Student.id == student_id)
+        select(Student).where(Student.id == student_id)
     )
     student = result.scalar_one_or_none()
     
@@ -220,7 +242,7 @@ async def get_student(
 
 @router.put("/students/{student_id}", response_model=StudentResponse)
 async def update_student(
-    student_id: int,
+    student_id: UUID,
     student_in: StudentUpdate,
     current_user: User = Depends(require_placement_or_admin),
     db: AsyncSession = Depends(get_db)
@@ -242,11 +264,18 @@ async def update_student(
         )
     
     # Update fields
-    update_data = student_in.dict(exclude_unset=True)
+    update_data = student_in.model_dump(exclude_unset=True)
+    if "status" in update_data and update_data["status"] is not None:
+        update_data["status"] = _normalize_status(status_value=update_data["status"])
     if "passing_year" in update_data:
+        passing_year = update_data.pop("passing_year")
         student.extra_detail = _merge_extra_detail_with_passing_year(
             student.extra_detail,
-            update_data.pop("passing_year")
+            passing_year
+        )
+        student.personal_details = _merge_extra_detail_with_passing_year(
+            student.personal_details,
+            passing_year
         )
     for field, value in update_data.items():
         setattr(student, field, value)
@@ -259,7 +288,7 @@ async def update_student(
 
 @router.delete("/students/{student_id}", response_model=StudentResponse)
 async def delete_student(
-    student_id: int,
+    student_id: UUID,
     current_user: User = Depends(require_admin_role),  # Only SuperAdmin/Admin
     db: AsyncSession = Depends(get_db)
 ):
@@ -309,7 +338,7 @@ async def delete_student(
 
 @router.patch("/students/{student_id}/status", response_model=StudentResponse)
 async def update_student_status(
-    student_id: int,
+    student_id: UUID,
     is_active: bool,
     current_user: User = Depends(require_placement_or_admin),
     db: AsyncSession = Depends(get_db)
@@ -330,7 +359,7 @@ async def update_student_status(
             detail=f"Student with id {student_id} not found"
         )
     
-    student.is_active = is_active
+    student.status = "active" if is_active else "inactive"
     await db.commit()
     await db.refresh(student)
     
@@ -369,17 +398,17 @@ async def bulk_create_students(
                 })
                 continue
             
-            # Create student (password is None - using Google OAuth)
+            normalized_status = _normalize_status(status_value=student_data.status)
+
+            # Create student
             db_student = Student(
+                full_name=student_data.full_name,
                 email=student_data.email,
-                password=None,  # No password - Google OAuth only
-                first_name=student_data.first_name,
-                last_name=student_data.last_name,
                 phone=student_data.phone,
-                degree=student_data.degree,
-                branch=student_data.branch,
+                job_category=student_data.job_category,
+                status=normalized_status or "active",
                 extra_detail=_merge_extra_detail_with_passing_year(None, student_data.passing_year),
-                is_active=True
+                personal_details=_merge_extra_detail_with_passing_year(None, student_data.passing_year),
             )
             db.add(db_student)
             success += 1
@@ -404,7 +433,7 @@ async def bulk_create_students(
 
 @router.get("/students/export")
 async def export_students(
-    format: str = Query("csv", regex="^(csv|json)$"),
+    format: str = Query("csv", pattern="^(csv|json)$"),
     current_user: User = Depends(require_placement_or_admin),
     db: AsyncSession = Depends(get_db)
 ):
@@ -414,7 +443,7 @@ async def export_students(
     **RBAC**: SuperAdmin, Admin, Placement
     """
     result = await db.execute(
-        select(Student).options(joinedload(Student.college))
+        select(Student)
     )
     students = result.scalars().all()
     
@@ -425,13 +454,11 @@ async def export_students(
                 {
                     "id": s.id,
                     "email": s.email,
-                    "first_name": s.first_name,
-                    "last_name": s.last_name,
+                    "full_name": s.full_name,
                     "phone": s.phone,
-                    "degree": s.degree,
-                    "branch": s.branch,
+                    "job_category": s.job_category,
                     "passing_year": _get_passing_year(s),
-                    "is_active": s.is_active
+                    "status": s.status
                 }
                 for s in students
             ]
@@ -444,8 +471,8 @@ async def export_students(
     
     output = StringIO()
     writer = csv.DictWriter(output, fieldnames=[
-        "id", "email", "first_name", "last_name", "phone",
-        "degree", "branch", "passing_year", "is_active"
+        "id", "email", "full_name", "phone",
+        "job_category", "passing_year", "status"
     ])
     writer.writeheader()
     
@@ -453,13 +480,11 @@ async def export_students(
         writer.writerow({
             "id": s.id,
             "email": s.email,
-            "first_name": s.first_name,
-            "last_name": s.last_name,
+            "full_name": s.full_name,
             "phone": s.phone,
-            "degree": s.degree or "",
-            "branch": s.branch or "",
+            "job_category": s.job_category or "",
             "passing_year": _get_passing_year(s) or "",
-            "is_active": s.is_active
+            "status": s.status or ""
         })
     
     output.seek(0)

@@ -16,6 +16,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from app.models.job import Job
 from app.models.student import Student
 from app.models.company import Company
+from app.utils.job_parser import extract_salary_from_text, parse_experience
 
 logger = logging.getLogger(__name__)
 
@@ -218,12 +219,11 @@ class RecommendationService:
             # Salary matching
             student_min_salary = prefs.get('expected_salary_min', 0)
             student_max_salary = prefs.get('expected_salary_max', 0)
-            job_salary_range = job.salary_range or {}
+            parsed_salary = extract_salary_from_text(job.salary)
+            job_min = parsed_salary.get('min', 0)
+            job_max = parsed_salary.get('max', 0)
             
-            if student_min_salary and job_salary_range:
-                job_min = job_salary_range.get('min', 0)
-                job_max = job_salary_range.get('max', 0)
-                
+            if student_min_salary and (job_min or job_max):
                 if job_min and job_min >= student_min_salary * 0.8:  # Within 80%
                     scores['salary'] = 1.0
                 elif job_max and job_max >= student_min_salary:
@@ -235,14 +235,13 @@ class RecommendationService:
             
             # Experience matching
             student_experience = prefs.get('experience_years', 0) or 0
-            job_experience = job.experience_required or ""
+            job_experience = job.experience or ""
             
             if job_experience:
-                # Parse experience (e.g., "2-3 years", "3+ years")
-                import re
-                exp_match = re.search(r'(\d+)', job_experience)
-                if exp_match:
-                    required_exp = int(exp_match.group(1))
+                parsed_exp = parse_experience(job_experience)
+                required_exp = parsed_exp.get('min')
+                if required_exp is not None:
+                    required_exp = int(required_exp)
                     if student_experience >= required_exp:
                         scores['experience'] = 1.0
                     elif student_experience >= required_exp - 1:
@@ -295,8 +294,9 @@ class RecommendationService:
         
         # Salary
         student_min = prefs.get('expected_salary_min', 0)
-        if student_min and job.salary_range:
-            job_min = job.salary_range.get('min', 0)
+        parsed_salary = extract_salary_from_text(job.salary)
+        job_min = parsed_salary.get('min', 0)
+        if student_min and job_min:
             if job_min and job_min >= student_min:
                 reasons.append(f"Salary meets expectations")
         
@@ -339,7 +339,6 @@ class RecommendationService:
             if student_id_str not in students_shown:
                 students_shown.append(student_id_str)
                 job.students_shown_to = students_shown
-                job.view_count = (job.view_count or 0) + 1
                 
                 await self.db.commit()
                 logger.info(f"Marked job {job_id} as shown to student {student_id}")

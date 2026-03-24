@@ -149,27 +149,7 @@ class DeduplicationService:
             # Calculate cutoff date
             cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_back)
             
-            # Strategy 1: Exact hash match (fastest)
-            content_hash = self.compute_content_hash(job_text)
-            exact_match = db_session.query(Job).filter(
-                and_(
-                    Job.content_hash == content_hash,
-                    Job.created_at >= cutoff_date,
-                    Job.is_active == True
-                )
-            ).first()
-            
-            if exact_match:
-                logger.info(f"Found exact duplicate by hash: {exact_match.id}")
-                return {
-                    'id': str(exact_match.id),
-                    'title': exact_match.title,
-                    'company_id': str(exact_match.company_id),
-                    'match_type': 'exact_hash',
-                    'similarity': 1.0
-                }
-            
-            # Strategy 2: Field-based matching
+            # Strategy 1: Field-based matching
             # Get recent jobs from same company
             company_name = job_data.get('company', '').lower().strip()
             if company_name:
@@ -198,29 +178,6 @@ class DeduplicationService:
                             'company_id': str(existing_job.company_id),
                             'match_type': 'field_match',
                             'similarity': field_score
-                        }
-            
-            # Strategy 3: TF-IDF similarity (slowest, most accurate)
-            # Only check top 50 most recent jobs for performance
-            recent_jobs = db_session.query(Job).filter(
-                and_(
-                    Job.created_at >= cutoff_date,
-                    Job.is_active == True
-                )
-            ).order_by(Job.created_at.desc()).limit(50).all()
-            
-            for existing_job in recent_jobs:
-                if existing_job.raw_text:
-                    similarity = self.compute_similarity(job_text, existing_job.raw_text)
-                    
-                    if similarity >= self.similarity_threshold:
-                        logger.info(f"Found TF-IDF duplicate: {existing_job.id} (similarity: {similarity:.2f})")
-                        return {
-                            'id': str(existing_job.id),
-                            'title': existing_job.title,
-                            'company_id': str(existing_job.company_id),
-                            'match_type': 'tfidf_similarity',
-                            'similarity': similarity
                         }
             
             # No duplicate found

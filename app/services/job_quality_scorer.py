@@ -17,6 +17,7 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 
 from app.config import settings
+from app.utils.job_parser import extract_salary_from_text, parse_experience
 
 logger = logging.getLogger(__name__)
 
@@ -185,9 +186,9 @@ class JobQualityScorer:
         reasons = []
         
         # 1. Experience Match
+        parsed_experience = parse_experience(job_data.get('experience'))
         scores['experience_match'], exp_reasons = self._score_experience(
-            job_data.get('experience_min'),
-            job_data.get('experience_max'),
+            parsed_experience,
             job_data.get('is_fresher', False)
         )
         reasons.extend(exp_reasons)
@@ -209,9 +210,9 @@ class JobQualityScorer:
         reasons.extend(location_reasons)
         
         # 5. Salary Range
+        parsed_salary = extract_salary_from_text(job_data.get('salary'))
         scores['salary_score'], salary_reasons = self._score_salary(
-            job_data.get('salary_min'),
-            job_data.get('salary_max')
+            parsed_salary
         )
         reasons.extend(salary_reasons)
         
@@ -239,12 +240,14 @@ class JobQualityScorer:
             reasons=reasons
         )
     
-    def _score_experience(self, min_exp: Optional[int], max_exp: Optional[int], 
+    def _score_experience(self, parsed_experience: Dict[str, Any], 
                           is_fresher: bool) -> tuple[float, List[str]]:
         """Score based on experience match with criteria"""
         criteria = self.experience_criteria
         scoring = criteria.get('scoring', {})
         reasons = []
+        min_exp = parsed_experience.get('min') if parsed_experience else None
+        max_exp = parsed_experience.get('max') if parsed_experience else None
         
         # Fresher jobs get top score
         if is_fresher:
@@ -431,14 +434,15 @@ class JobQualityScorer:
                 reasons.append("○ Location unspecified")
                 return scoring.get('unspecified', 60.0), reasons
     
-    def _score_salary(self, min_salary: Optional[float], 
-                      max_salary: Optional[float]) -> tuple[float, List[str]]:
+    def _score_salary(self, parsed_salary: Dict[str, Any]) -> tuple[float, List[str]]:
         """Score based on salary range alignment"""
         criteria = self.config['salary_criteria']
         min_expected = criteria.get('min_expected_inr', 15000)
         max_expected = criteria.get('max_expected_inr', 100000)
         modifiers = criteria.get('score_modifier', {})
         reasons = []
+        min_salary = parsed_salary.get('min') if parsed_salary else None
+        max_salary = parsed_salary.get('max') if parsed_salary else None
         
         if not min_salary and not max_salary:
             reasons.append("○ Salary not specified")
@@ -469,7 +473,8 @@ class JobQualityScorer:
             score += factors.get('has_apply_link', 20)
         
         # Has salary
-        if job_data.get('salary_min') or job_data.get('salary_max'):
+        parsed_salary = extract_salary_from_text(job_data.get('salary'))
+        if parsed_salary.get('min') or parsed_salary.get('max'):
             score += factors.get('has_salary', 15)
         
         # Has skills
@@ -477,7 +482,9 @@ class JobQualityScorer:
             score += factors.get('has_skills', 10)
         
         # Fresher-friendly
-        if job_data.get('is_fresher') or ((job_data.get('experience_max') or 99) <= 2):
+        parsed_experience = parse_experience(job_data.get('experience'))
+        max_experience = parsed_experience.get('max')
+        if job_data.get('is_fresher') or ((max_experience or 99) <= 2):
             score += factors.get('freshers_welcome', 20)
         
         # Remote work
