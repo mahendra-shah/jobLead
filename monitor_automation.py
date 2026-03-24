@@ -115,7 +115,7 @@ async def get_recent_stats(minutes_ago: int = 30):
                 for i, job in enumerate(recent_job_samples, 1):
                     logger.info(f"      {i}. {job.title}")
                     logger.info(f"          Location: {job.location or 'N/A'}")
-                    logger.info(f"          Quality Score: {job.quality_score:.1f}")
+                    logger.info(f"          Quality Score: {(job.quality_score or 0):.1f}")
                     logger.info(f"          Created: {job.created_at.strftime('%H:%M:%S')}")
             
             logger.info("")
@@ -141,23 +141,23 @@ async def get_recent_stats(minutes_ago: int = 30):
                 unspecified = 0
                 
                 for job in recent_jobs_list:
-                    if job.quality_breakdown:
-                        import json
-                        breakdown = json.loads(job.quality_breakdown)
-                        loc_score = breakdown.get('location_compatibility', 60)
-                        
-                        if loc_score == 100:
+                    work_type = (job.work_type or '').lower()
+                    location = (job.location or '').lower()
+
+                    if work_type == 'remote':
+                        if any(token in location for token in ['india', 'bangalore', 'bengaluru', 'hyderabad', 'pune', 'mumbai', 'delhi', 'gurgaon', 'noida', 'chennai', 'kolkata', 'ahmedabad']):
                             india_remote += 1
-                        elif loc_score == 95:
-                            india_hybrid += 1
-                        elif loc_score == 90:
-                            intl_remote += 1
-                        elif loc_score == 70:
-                            india_office += 1
-                        elif loc_score == 0:
-                            intl_onsite += 1
                         else:
-                            unspecified += 1
+                            intl_remote += 1
+                    elif work_type == 'hybrid':
+                        india_hybrid += 1
+                    elif work_type in {'onsite', 'office'}:
+                        if any(token in location for token in ['india', 'bangalore', 'bengaluru', 'hyderabad', 'pune', 'mumbai', 'delhi', 'gurgaon', 'noida', 'chennai', 'kolkata', 'ahmedabad']):
+                            india_office += 1
+                        else:
+                            intl_onsite += 1
+                    else:
+                        unspecified += 1
                 
                 logger.info(f"   ✅ India Remote: {india_remote} jobs (score: 100)")
                 logger.info(f"   ✅ India Hybrid: {india_hybrid} jobs (score: 95)")
@@ -171,14 +171,15 @@ async def get_recent_stats(minutes_ago: int = 30):
                     logger.info(f"\n   Filtered International Onsite Jobs:")
                     filtered_count = 0
                     for job in recent_jobs_list:
-                        if job.quality_breakdown:
-                            breakdown = json.loads(job.quality_breakdown)
-                            if breakdown.get('location_compatibility') == 0:
-                                filtered_count += 1
-                                if filtered_count <= 3:
-                                    logger.info(f"      • {job.title}")
-                                    logger.info(f"        Location: {job.location}")
-                                    logger.info(f"        Quality: {job.quality_score:.1f}")
+                        work_type = (job.work_type or '').lower()
+                        location = (job.location or '').lower()
+                        is_india_location = any(token in location for token in ['india', 'bangalore', 'bengaluru', 'hyderabad', 'pune', 'mumbai', 'delhi', 'gurgaon', 'noida', 'chennai', 'kolkata', 'ahmedabad'])
+                        if work_type in {'onsite', 'office'} and not is_india_location:
+                            filtered_count += 1
+                            if filtered_count <= 3:
+                                logger.info(f"      • {job.title}")
+                                logger.info(f"        Location: {job.location}")
+                                logger.info(f"        Quality: {(job.quality_score or 0):.1f}")
             else:
                 logger.info(f"   No jobs created in last {minutes_ago} minutes")
             
@@ -196,8 +197,8 @@ async def get_recent_stats(minutes_ago: int = 30):
                 )
                 avg_ml, avg_quality = result.one()
                 
-                logger.info(f"   Average ML Confidence: {avg_ml:.1f}%")
-                logger.info(f"   Average Quality Score: {avg_quality:.1f}")
+                logger.info(f"   Average ML Confidence: {(avg_ml or 0):.1f}%")
+                logger.info(f"   Average Quality Score: {(avg_quality or 0):.1f}")
             else:
                 logger.info(f"   No recent jobs to analyze")
             

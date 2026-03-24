@@ -9,6 +9,8 @@ Date: 2026-02-10
 """
 
 import logging
+import os
+import fcntl
 from datetime import datetime
 import pytz
 
@@ -21,6 +23,56 @@ from app.config import settings
 from app.utils.timezone import now_ist
 
 logger = logging.getLogger(__name__)
+
+# Scheduler lock state (prevents duplicate scheduler start across Gunicorn workers)
+_scheduler_lock_fd = None
+_scheduler_lock_acquired = False
+
+
+def _acquire_scheduler_lock() -> bool:
+    """
+    Acquire non-blocking process lock for scheduler startup.
+
+    Returns:
+        True if this process should run scheduler, False otherwise.
+    """
+    global _scheduler_lock_fd, _scheduler_lock_acquired
+
+    if _scheduler_lock_acquired:
+        return True
+
+    lock_file_path = os.getenv("SCHEDULER_LOCK_FILE", "/tmp/placement_scheduler.lock")
+
+    try:
+        _scheduler_lock_fd = open(lock_file_path, "w")
+        fcntl.flock(_scheduler_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _scheduler_lock_fd.write(str(os.getpid()))
+        _scheduler_lock_fd.flush()
+        _scheduler_lock_acquired = True
+        logger.info(f"🔐 Scheduler lock acquired: {lock_file_path} (pid={os.getpid()})")
+        return True
+    except OSError:
+        logger.info(f"⏭️  Scheduler lock already held; skipping scheduler start in pid={os.getpid()}")
+        if _scheduler_lock_fd:
+            _scheduler_lock_fd.close()
+            _scheduler_lock_fd = None
+        return False
+
+
+def _release_scheduler_lock() -> None:
+    """Release scheduler process lock if held by this process."""
+    global _scheduler_lock_fd, _scheduler_lock_acquired
+
+    if not _scheduler_lock_acquired or _scheduler_lock_fd is None:
+        return
+
+    try:
+        fcntl.flock(_scheduler_lock_fd, fcntl.LOCK_UN)
+    finally:
+        _scheduler_lock_fd.close()
+        _scheduler_lock_fd = None
+        _scheduler_lock_acquired = False
+        logger.info("🔓 Scheduler lock released")
 
 # Global scheduler instance
 scheduler = AsyncIOScheduler(
@@ -350,6 +402,15 @@ def start_scheduler():
     
     Called during application startup (in lifespan).
     """
+    # Optional hard switch to disable scheduler in this process/container
+    if os.getenv("ENABLE_SCHEDULER", "true").lower() not in {"1", "true", "yes"}:
+        logger.info("⏸️  Scheduler disabled via ENABLE_SCHEDULER env var")
+        return
+
+    # Ensure only one process (e.g., one Gunicorn worker) starts APScheduler
+    if not _acquire_scheduler_lock():
+        return
+
     if not scheduler.running:
         setup_jobs()
         scheduler.start()
@@ -381,6 +442,8 @@ def stop_scheduler():
         logger.info("🛑 Scheduler stopped")
     else:
         logger.warning("⚠️  Scheduler not running")
+
+    _release_scheduler_lock()
 
 
 def get_scheduler_status() -> dict:

@@ -427,9 +427,15 @@ class SlackNotifier:
             from app.models.job import Job
             from app.services.telegram_scraper_service import get_scraper_service
             
-            # Get yesterday's date range
-            today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+            # Get yesterday's date range.
+            # PostgreSQL jobs.created_at / telegram_groups.last_scraped_at are TIMESTAMP WITHOUT TIME ZONE,
+            # so these SQL filters must use naive datetimes.
+            today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
             yesterday = today - timedelta(days=1)
+
+            # Mongo fetched_at uses UTC-aware datetimes
+            today_utc = today.replace(tzinfo=timezone.utc)
+            yesterday_utc = yesterday.replace(tzinfo=timezone.utc)
             
             # Account health
             result = await db.execute(select(TelegramAccount))
@@ -481,7 +487,7 @@ class SlackNotifier:
                 if scraper._initialized:
                     mongo_db = scraper.mongo_client[settings.MONGODB_DATABASE]
                     messages_yesterday = mongo_db.raw_messages.count_documents({
-                        "fetched_at": {"$gte": yesterday, "$lt": today}
+                        "fetched_at": {"$gte": yesterday_utc, "$lt": today_utc}
                     })
             except Exception as e:
                 logger.warning("failed_to_get_mongodb_stats", error=str(e))
