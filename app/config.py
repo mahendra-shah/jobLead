@@ -33,11 +33,17 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
     ENVIRONMENT: str = "development"
+    ENABLE_API_DOCS: bool = False
+    ENFORCE_PRODUCTION_CHECKS: bool = True
 
     # Server
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     RELOAD: bool = True
+    CORS_ORIGINS: Union[str, List[str]] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
 
     # Database
     DATABASE_URL: str = Field(
@@ -191,6 +197,14 @@ class Settings(BaseSettings):
         """Parse comma-separated extensions."""
         if isinstance(v, str):
             return [ext.strip() for ext in v.split(",")]
+        return v
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v):
+        """Parse comma-separated CORS origins."""
+        if isinstance(v, str):
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
         return v
 
 

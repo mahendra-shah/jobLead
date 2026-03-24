@@ -37,6 +37,11 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - PYTHONUNBUFFERED=1
       - ENVIRONMENT=production
+      - DEBUG=false
+      - RELOAD=false
+      - ENABLE_API_DOCS=false
+      - ENFORCE_PRODUCTION_CHECKS=true
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://your-frontend-domain.com}
     depends_on:
       redis:
         condition: service_healthy

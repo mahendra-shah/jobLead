@@ -3,7 +3,7 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_, and_, desc, case
+from sqlalchemy import select, func, or_, and_, desc
 from sqlalchemy.orm import joinedload
 
 from app.api.deps import get_db
@@ -63,7 +63,7 @@ async def list_jobs(
     - `is_active`: Show only active jobs (default: true)
     
     **Sorting:**
-    - `sort_by`: created_at, title, location, view_count
+    - `sort_by`: created_at, title, location
     - `sort_order`: asc, desc (default: desc)
     
     **Pagination:**
@@ -233,22 +233,16 @@ async def list_jobs(
             "company_name": row.company_name or "Unknown",
             "description": row.description,
             "skills_required": row.skills_required or [],
-            "experience_required": row.experience,
-            "salary_range": {"raw": row.salary} if row.salary else {},
+            "experience": row.experience,
+            "salary": row.salary,
             "is_fresher": row.is_fresher,
             "work_type": row.work_type,
-            "experience_min": None,
-            "experience_max": None,
-            "salary_min": None,
-            "salary_max": None,
             "location": row.location,
             "job_type": row.job_type,
             "employment_type": row.employment_type,
             "source": row.source,
             "source_url": row.source_url,
             "is_active": row.is_active,
-            "view_count": 0,
-            "application_count": 0,
             "shared_count": row.shared_count,
             "created_at": row.created_at.isoformat() if row.created_at else None,
             "updated_at": row.updated_at.isoformat() if row.updated_at else None,
@@ -298,19 +292,10 @@ async def get_job(
         company=CompanyBrief.model_validate(job.company) if job.company else None,
         description=job.description,
         skills_required=job.skills_required or [],
-        
-        # Legacy fields
-        experience_required=job.experience,
-        salary_range={"raw": job.salary} if job.salary else {},
-        
-        # New structured fields
+        experience=job.experience,
+        salary=job.salary,
         is_fresher=job.is_fresher,
         work_type=job.work_type,
-        experience_min=None,
-        experience_max=None,
-        salary_min=None,
-        salary_max=None,
-        
         location=job.location,
         job_type=job.job_type,
         employment_type=job.employment_type,
@@ -319,8 +304,6 @@ async def get_job(
         raw_text=None,
         is_active=job.is_active,
         is_verified=job.is_verified,
-        view_count=0,
-        application_count=0,
         shared_count=job.shared_count,
         created_at=job.created_at,
         updated_at=job.updated_at,

@@ -123,9 +123,16 @@ class TelegramAccount(Base):
         # Update health status based on error count
         if self.consecutive_errors >= 3:
             self.health_status = HealthStatus.DEGRADED
+
+        normalized_error = (error_message or "").strip().lower()
+
+        # Session/auth expiry should deactivate account for manual re-login.
+        if any(term in normalized_error for term in ["session expired", "not authorized", "unauthorized"]):
+            self.health_status = HealthStatus.DEGRADED
+            self.is_active = False
         
         # If it's an AuthKey error, mark as banned
-        if "AuthKeyError" in error_message or "auth key" in error_message.lower():
+        if "authkeyerror" in normalized_error or "auth key" in normalized_error:
             self.health_status = HealthStatus.BANNED
             self.is_banned = True
             self.is_active = False
@@ -136,7 +143,13 @@ class TelegramAccount(Base):
         
         self.consecutive_errors = 0
         self.last_successful_fetch_at = datetime.now(timezone.utc)
+        self.last_error_message = None
+        self.last_error_at = None
         
         # Only reset to healthy if not banned
         if not self.is_banned and self.is_active:
             self.health_status = HealthStatus.HEALTHY
+
+    def has_unresolved_error(self) -> bool:
+        """Return True when the account still has a pending error state."""
+        return bool(self.last_error_message or self.last_error_at)

@@ -235,11 +235,19 @@ class HybridMatchingService:
     
     def _prepare_student_text(self, student: Dict) -> str:
         """Prepare student profile text for embedding."""
+        education_parts = [
+            f"{e.get('degree')} from {e.get('institution')}"
+            for e in student.get('education', [])
+        ]
+        experience_parts = [
+            f"{e.get('role')} at {e.get('company')} - {e.get('description', '')}"
+            for e in student.get('experience', [])
+        ]
         parts = [
             f"Skills: {', '.join(student.get('skills', []))}",
             f"Bio: {student.get('bio', '')}",
-            f"Education: {' | '.join([f"{e.get('degree')} from {e.get('institution')}" for e in student.get('education', [])])}",
-            f"Experience: {' | '.join([f"{e.get('role')} at {e.get('company')} - {e.get('description', '')}" for e in student.get('experience', [])])}",
+            f"Education: {' | '.join(education_parts)}",
+            f"Experience: {' | '.join(experience_parts)}",
             f"Preferences: {student.get('preferences', {})}",
         ]
         return " ".join(filter(None, parts))
@@ -309,13 +317,13 @@ class HybridMatchingService:
             "title": job.title,
             "company_name": job.company_name,
             "description": job.description,
-            "requirements": job.requirements,
-            "skills": job.skills or [],
+            "requirements": job.description,
+            "skills": job.skills_required or [],
             "location": job.location,
             "job_type": job.job_type,
-            "experience_level": job.experience_level,
-            "salary_range": job.salary_range,
-            "status": job.status,
+            "experience": job.experience,
+            "salary": job.salary,
+            "status": "active" if job.is_active else "inactive",
         }
 
 

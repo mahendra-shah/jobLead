@@ -56,6 +56,7 @@ class JobRecommendationService:
 
     # --- Cache ---
     CACHE_RECOMMENDATIONS_TTL = 1800  # 30 minutes
+    CACHE_KEY_VERSION = "v2"
 
     # --- Fallback windows: widen date range when too few jobs found ---
     DATE_WINDOWS = [7, 14, 30]    # days
@@ -226,7 +227,7 @@ class JobRecommendationService:
         """
         if not self.cache_manager or not self.cache_manager.enabled:
             return 0
-        pattern = f"rec:student_{student_id}:*"
+        pattern = f"rec:{self.CACHE_KEY_VERSION}:student_{student_id}:*"
         deleted = self.cache_manager.delete_pattern(pattern)
         logger.info(
             "recommendation_cache_invalidated student=%s keys=%s",
@@ -253,7 +254,7 @@ class JobRecommendationService:
         cached full list is reused for every page.
         """
         return (
-            f"rec:student_{student_id}:"
+            f"rec:{self.CACHE_KEY_VERSION}:student_{student_id}:"
             f"min_{min_score}:"
             f"saved_{exclude_saved}:"
             f"viewed_{exclude_viewed}"
@@ -791,7 +792,7 @@ class JobRecommendationService:
                     "missing_skills": score_data["missing_skills"],
                     "is_saved": rec["is_saved"],
                     "score_breakdown": score_data["breakdown"],
-                    "view_count": getattr(job, "view_count", 0),
+                    "view_count": 0,
                     "similar_jobs_count": 0,
                 }
             )

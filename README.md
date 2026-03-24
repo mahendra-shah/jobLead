@@ -118,6 +118,24 @@ ruff check app/
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for AWS deployment instructions.
 
+### Minimum Production Environment Settings
+
+Set these values before starting the API in production:
+
+```bash
+ENVIRONMENT=production
+DEBUG=false
+RELOAD=false
+SECRET_KEY=<strong-random-secret>
+CORS_ORIGINS=https://your-frontend-domain.com
+ENABLE_API_DOCS=false
+ENFORCE_PRODUCTION_CHECKS=true
+```
+
+Notes:
+- The app now blocks startup in production if `DEBUG=true`, `RELOAD=true`, default `SECRET_KEY` is used, or `CORS_ORIGINS` contains `*`.
+- API docs (`/docs`, `/redoc`, `/openapi.json`) are disabled automatically in production unless `ENABLE_API_DOCS=true`.
+
 ## License
 
 MIT

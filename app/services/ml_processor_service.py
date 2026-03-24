@@ -21,7 +21,7 @@ from app.ml.sklearn_classifier import SklearnClassifier
 from app.ml.spacy_extractor import SpacyExtractor
 from app.ml.enhanced_extractor import get_enhanced_extractor
 from app.services.job_quality_scorer import get_quality_scorer
-from app.services.deduplication_service import deduplication_service
+from app.utils.job_parser import parse_experience
 
 # Load settings
 settings = Settings()
@@ -370,9 +370,15 @@ class MLProcessorService:
 
     @staticmethod
     def _is_experience_over_threshold(extraction, max_years: int) -> bool:
-        """Return True if extraction's min/max experience exceeds configured threshold."""
-        min_exp = getattr(extraction, "experience_min", None)
-        max_exp = getattr(extraction, "experience_max", None)
+        """Return True if parsed experience text exceeds configured threshold."""
+        parsed = parse_experience(getattr(extraction, "experience_raw", None))
+        min_exp = parsed.get("min")
+        max_exp = parsed.get("max")
+
+        if min_exp is None:
+            min_exp = getattr(extraction, "experience_min", None)
+        if max_exp is None:
+            max_exp = getattr(extraction, "experience_max", None)
 
         min_val = int(min_exp) if isinstance(min_exp, (int, float)) else None
         max_val = int(max_exp) if isinstance(max_exp, (int, float)) else None
@@ -638,24 +644,6 @@ class MLProcessorService:
                     )
                     return result
 
-            # Exact message text deduplication guard:
-            # Normalize message text, hash it, and check if exact same text already exists.
-            # This catches cases where the same message is posted with different message_id.
-            if text and len(text.strip()) > 20:  # Only check meaningful messages
-                # Use deduplication service to compute hash (matches how content_hash is stored)
-                text_hash = deduplication_service.compute_content_hash(text)
-                
-                # Check if this hash already exists
-                existing_by_hash = db.execute(
-                    select(Job.id).where(Job.content_hash == text_hash)
-                ).first()
-                
-                if existing_by_hash:
-                    logger.info(
-                        f"   ⏭️  Duplicate exact message text (hash={text_hash[:8]}...) already stored, skipping message"
-                    )
-                    return result
-            
             # Check confidence threshold
             if classification.confidence < min_confidence:
                 logger.warning(f"   ⚠️  Low confidence ({classification.confidence:.2f}), "
@@ -709,8 +697,10 @@ class MLProcessorService:
                             extraction, settings.MAX_FRESHER_EXPERIENCE_YEARS
                         )
                     ):
+                        parsed_exp = parse_experience(extraction.experience_raw)
+                        exp_display = parsed_exp.get("max") or parsed_exp.get("min")
                         logger.warning(
-                            f"      ⚠️  Job rejected: experience_min={extraction.experience_min} yrs "
+                            f"      ⚠️  Job rejected: experience={exp_display} yrs "
                             f"(gate: max {settings.MAX_FRESHER_EXPERIENCE_YEARS} yrs)"
                         )
                         result['quality_filtered'] += 1
@@ -836,22 +826,10 @@ class MLProcessorService:
                         
                         # Job details with NEW simplified extraction
                         skills_required=extraction.skills if extraction.skills else [],
-                        experience_required=extraction.experience_raw,  # NEW: String format "2-4 years"
-                        
-                        # Numeric experience fields (for filtering)
-                        experience_min=extraction.experience_min,
-                        experience_max=extraction.experience_max,
+                        experience=extraction.experience_raw,
                         is_fresher=extraction.is_fresher_friendly,
                         
-                        # Salary fields (NEW: simplified monthly value)
-                        salary_min=extraction.salary_min,  # Monthly INR from new method
-                        salary_max=extraction.salary_max,
-                        salary_range={  # Legacy JSONB field
-                            "min": extraction.salary_min,
-                            "max": extraction.salary_max,
-                            "currency": extraction.salary_currency or "INR",
-                            "raw": extraction.salary_raw
-                        } if extraction.salary_raw else {},
+                        salary=extraction.salary_raw,
                         
                         job_type="fulltime",  # Default
                         employment_type="fulltime",  # Default
@@ -859,7 +837,6 @@ class MLProcessorService:
                         # Source information
                         source="telegram",
                         source_url=extraction.apply_link,
-                        raw_text=text,  # Full original message text
                         source_message_id=str(message.get("message_id")),
                         source_telegram_channel_id=channel_id_value,  # NEW - Actual Telegram channel ID
                         sender_id=sender_id_value,  # NEW - Sender user ID
@@ -873,14 +850,7 @@ class MLProcessorService:
                         # Status
                         is_active=classification.confidence >= min_confidence,
                         is_verified=False,
-                        
-                        # Stats
-                        view_count=0,
-                        application_count=0
                     )
-                    
-                    # Generate content hash for deduplication
-                    job.content_hash = deduplication_service.compute_content_hash(text)
                     
                     # Derive work_type from location intelligence
                     _loc = extraction.location_data or {}
@@ -900,14 +870,10 @@ class MLProcessorService:
                         "description": job.description,
                         "skills": job.skills_required or [],
                         "skills_required": job.skills_required or [],
-                        "experience": job.experience_required,
-                        "experience_min": job.experience_min,
-                        "experience_max": job.experience_max,
+                        "experience": job.experience,
                         "is_fresher": job.is_fresher,
                         "work_type": _work_type,
-                        "salary_min": job.salary_min,
-                        "salary_max": job.salary_max,
-                        "salary": job.salary_range.get("raw") if job.salary_range else None,
+                        "salary": job.salary,
                         "location": job.location,
                         "source_url": job.source_url,
                         "apply_link": job.source_url,
@@ -918,16 +884,6 @@ class MLProcessorService:
                     
                     # Set quality scoring fields
                     job.quality_score = quality_result.quality_score
-                    job.relevance_score = quality_result.relevance_score
-                    job.meets_relevance_criteria = quality_result.meets_criteria
-                    job.quality_breakdown = quality_result.breakdown
-                    job.relevance_reasons = quality_result.reasons
-                    job.extraction_completeness_score = quality_result.breakdown.get("completeness", 0)
-                    job.quality_factors = {
-                        "experience_match": quality_result.breakdown.get("experience_match", 0),
-                        "completeness": quality_result.breakdown.get("completeness", 0),
-                        "skills_value": quality_result.breakdown.get("skills_value", 0)
-                    }
                     
                     logger.info(f"      🎯 Quality Score: {quality_result.quality_score:.2f}/100")
                     logger.info(f"      📊 Relevance: {quality_result.relevance_score:.2f}/100")

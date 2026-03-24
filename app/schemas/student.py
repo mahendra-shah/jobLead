@@ -72,9 +72,11 @@ class LanguageProficiency(BaseModel):
 
 class StudentBase(BaseModel):
     """Base student fields for admin operations"""
-    email: EmailStr
+    full_name: str = Field(..., min_length=1, max_length=255)
+    email: Optional[EmailStr] = None
     phone: Optional[str] = Field(None, max_length=20)
-    degree: Optional[str] = Field(None, max_length=100)
+    job_category: Optional[str] = Field(None, max_length=100)
+    status: Optional[str] = Field(None, max_length=20)
     passing_year: Optional[int] = Field(None, ge=2000, le=2030)
     
     @validator('passing_year')
@@ -86,22 +88,24 @@ class StudentBase(BaseModel):
 
 class StudentCreate(StudentBase):
     """Create student (admin/placement)"""
-    password: str = Field(..., min_length=8)
+    email: EmailStr
 
 
 class StudentUpdate(PersonalDetailsMixin, EducationDetailsMixin):
     """Update student (admin/placement)"""
-    is_active: Optional[bool] = None
+    full_name: Optional[str] = Field(None, min_length=1, max_length=255)
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = Field(None, max_length=20)
+    job_category: Optional[str] = Field(None, max_length=100)
+    status: Optional[str] = Field(None, max_length=20)
 
 
 class StudentResponse(StudentBase):
     """Student response for admin/placement operations"""
-    id: int
-    full_name: str
-    resume_url: Optional[str]
-    is_active: bool
+    id: str
+    resume_url: Optional[str] = None
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
     profile_completeness: Optional[int] = Field(None, ge=0, le=100)
     saved_jobs_count: Optional[int] = None
     
@@ -335,12 +339,12 @@ class RecommendedJobResponse(BaseModel):
     """A recommended job with score and reasons"""
     job: Dict[str, Any]
     recommendation_score: float = Field(..., ge=0, le=100)
-    match_reasons: List[str]
-    missing_skills: List[str]
-    is_saved: bool
-    view_count: int
-    similar_jobs_count: int
-    score_breakdown: Dict[str, float] = {}
+    match_reasons: List[str] = Field(default_factory=list)
+    missing_skills: List[str] = Field(default_factory=list)
+    is_saved: bool = False
+    view_count: int = 0
+    similar_jobs_count: int = 0
+    score_breakdown: Dict[str, float] = Field(default_factory=dict)
 
 
 class RecommendedJobsResponse(BaseModel):
@@ -486,11 +490,9 @@ class BulkUploadResponse(BaseModel):
 
 class StudentFilters(BaseModel):
     """Student list filters"""
-    college_id: Optional[int] = None
+    job_category: Optional[str] = None
     passing_year: Optional[int] = None
-    cgpa_min: Optional[float] = Field(None, ge=0)
-    cgpa_max: Optional[float] = Field(None, ge=0)
-    is_active: Optional[bool] = None
+    status: Optional[str] = Field(None, pattern="^(active|inactive|placed)$")
     search: Optional[str] = None
-    sort_by: Optional[str] = Field(default="created_at", pattern="^(name|cgpa|created_at|updated_at)$")
+    sort_by: Optional[str] = Field(default="created_at", pattern="^(name|created_at|updated_at)$")
     sort_order: Optional[str] = Field(default="desc", pattern="^(asc|desc)$")

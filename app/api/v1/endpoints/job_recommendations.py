@@ -21,6 +21,16 @@ from app.schemas.job import CompanyBrief
 router = APIRouter()
 
 
+def _as_string_list(value) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if item is not None and str(item).strip()]
+    if isinstance(value, str) and value.strip():
+        if "," in value:
+            return [part.strip() for part in value.split(",") if part.strip()]
+        return [value.strip()]
+    return []
+
+
 def get_cache_manager():
     """Get cache manager without circular import."""
     from app.main import cache_manager
@@ -87,9 +97,13 @@ async def get_recommended_jobs(
             detail="Student profile not found. Please complete your profile first."
         )
     
+    # Normalize possible legacy/malformed skill shapes from DB
+    student.technical_skills = _as_string_list(getattr(student, "technical_skills", None))
+    student.soft_skills = _as_string_list(getattr(student, "soft_skills", None))
+
     # Check if student has set skills (technical_skills or soft_skills)
-    has_technical_skills = student.technical_skills and len(student.technical_skills) > 0
-    has_soft_skills = student.soft_skills and len(student.soft_skills) > 0
+    has_technical_skills = len(student.technical_skills) > 0
+    has_soft_skills = len(student.soft_skills) > 0
     
     if not (has_technical_skills or has_soft_skills):
         raise HTTPException(

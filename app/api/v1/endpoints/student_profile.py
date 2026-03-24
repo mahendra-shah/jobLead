@@ -70,9 +70,9 @@ def save_resume(file_content: bytes, filename: str, student_id: str) -> str:
         )
 
 
-def delete_resume(resume_url: str):
+def delete_resume_file(resume_url: str):
     """Delete resume from storage (local or S3)"""
-    storage_type = settings.RESUME_STORAGE_TYPE.lower()
+    storage_type = getattr(settings, "RESUME_STORAGE_TYPE", "local").lower()
     
     if storage_type == "s3":
         delete_resume_from_s3(resume_url)
@@ -120,12 +120,38 @@ def _has_value(v) -> bool:
     return True
 
 
+def _normalize_spoken_languages(value) -> list:
+    """Normalize spoken languages to list of objects expected by response schema."""
+    if not isinstance(value, list):
+        return []
+
+    normalized = []
+    for item in value:
+        if isinstance(item, dict):
+            language = str(item.get("language", "")).strip()
+            proficiency = str(item.get("proficiency_level", "proficient")).strip().lower() or "proficient"
+            if language:
+                normalized.append({"language": language, "proficiency_level": proficiency})
+            continue
+        if isinstance(item, str) and item.strip():
+            normalized.append({"language": item.strip(), "proficiency_level": "proficient"})
+    return normalized
+
+
+def _get_extra_detail(student: Student) -> dict:
+    if isinstance(getattr(student, 'extra_detail', None), dict):
+        return student.extra_detail
+    if isinstance(getattr(student, 'personal_details', None), dict):
+        return student.personal_details
+    return {}
+
+
 def _calculate_profile_completeness(student: Student) -> int:
     """
     Compute profile completeness based on the current Student model fields.
     Returns an int percentage (0-100).
     """
-    extra_detail = student.extra_detail if isinstance(getattr(student, 'extra_detail', None), dict) else {}
+    extra_detail = _get_extra_detail(student)
 
     checks = [
         getattr(student, 'first_name', None),
@@ -186,14 +212,8 @@ def build_profile_response(student: Student, user: User) -> StudentProfileRespon
             else:
                 projects.append(proj.dict() if hasattr(proj, 'dict') else proj)
     
-    languages = []
-    language_items = getattr(student, 'languages', None) or getattr(student, 'spoken_languages', None) or []
-    if language_items:
-        for lang in language_items:
-            if isinstance(lang, dict):
-                languages.append(lang)
-            else:
-                languages.append(lang.dict() if hasattr(lang, 'dict') else lang)
+    language_items = getattr(student, 'spoken_languages', None) or getattr(student, 'languages', None) or []
+    languages = _normalize_spoken_languages(language_items)
     
     # Convert date_of_birth to string if it's a date object
     date_of_birth_str = None
@@ -230,7 +250,7 @@ def build_profile_response(student: Student, user: User) -> StudentProfileRespon
             preference = None
     
     social_links = student.social_links if isinstance(getattr(student, 'social_links', None), dict) else {}
-    extra_detail = student.extra_detail if isinstance(getattr(student, 'extra_detail', None), dict) else {}
+    extra_detail = _get_extra_detail(student)
 
     highest_qualification = extra_detail.get("highest_qualification")
     course = extra_detail.get("course")
@@ -375,9 +395,9 @@ async def update_my_profile(
         if 'email' in update_data and isinstance(update_data['email'], str):
             update_data['email'] = update_data['email'].strip() or None
 
-        # Map schema field spoken_languages -> DB field languages
+        # Map schema field spoken_languages -> DB field spoken_languages
         if 'spoken_languages' in update_data:
-            update_data['languages'] = update_data.pop('spoken_languages')
+            update_data['spoken_languages'] = _normalize_spoken_languages(update_data.pop('spoken_languages'))
 
         # Map generic skills -> technical_skills for storage
         if 'skills' in update_data and 'technical_skills' not in update_data:
@@ -411,6 +431,7 @@ async def update_my_profile(
             if student and isinstance(getattr(student, 'extra_detail', None), dict):
                 existing_extra_detail = student.extra_detail
             update_data['extra_detail'] = {**existing_extra_detail, **extra_detail_payload}
+            update_data['personal_details'] = update_data['extra_detail']
         
         # Handle nested Pydantic models - convert to dicts
         if 'internship_details' in update_data and update_data['internship_details']:
@@ -439,9 +460,9 @@ async def update_my_profile(
                     project_list.append(proj)
             update_data['projects'] = project_list
         
-        if 'languages' in update_data and update_data['languages']:
+        if 'spoken_languages' in update_data and update_data['spoken_languages']:
             language_list = []
-            for lang in update_data['languages']:
+            for lang in update_data['spoken_languages']:
                 if isinstance(lang, dict):
                     language_list.append(lang)
                 elif hasattr(lang, 'model_dump'):
@@ -450,7 +471,7 @@ async def update_my_profile(
                     language_list.append(lang.dict())
                 else:
                     language_list.append(lang)
-            update_data['languages'] = language_list
+            update_data['spoken_languages'] = _normalize_spoken_languages(language_list)
         
         # Process date_of_birth conversion before creating/updating
         if 'date_of_birth' in update_data and update_data['date_of_birth']:
@@ -514,7 +535,7 @@ async def update_my_profile(
                         setattr(student, field, None)
                     elif value is not None:
                         # Ensure arrays are properly set (for JSONB fields)
-                        if field in ['technical_skills', 'soft_skills', 'internship_details', 'projects', 'languages']:
+                        if field in ['technical_skills', 'soft_skills', 'internship_details', 'projects', 'spoken_languages']:
                             # Ensure value is a list
                             if isinstance(value, list):
                                 setattr(student, field, value)
@@ -596,7 +617,7 @@ async def upload_resume(
         
         # Delete old resume if exists
         if student.resume_url:
-            delete_resume(student.resume_url)
+            delete_resume_file(student.resume_url)
         
         # Upload new resume
         student_id = str(student.id) if hasattr(student, 'id') and student.id else str(current_user.id)
@@ -649,7 +670,7 @@ async def delete_resume(
             )
         
         # Delete resume
-        delete_resume(student.resume_url)
+        delete_resume_file(student.resume_url)
         
         # Update student record
         student.resume_url = None

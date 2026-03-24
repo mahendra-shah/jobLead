@@ -15,6 +15,7 @@ from app.config import settings
 from app.core.logging import setup_logging
 from app.core.scheduler import start_scheduler, stop_scheduler
 from app.core.cache import CacheManager
+from app.core.startup_checks import validate_production_configuration
 from app.db.session import engine, init_db
 
 # Setup logging
@@ -52,6 +53,8 @@ else:
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
     # Startup
+    if settings.ENFORCE_PRODUCTION_CHECKS:
+        validate_production_configuration(settings)
     await init_db()
     cache_manager.connect()  # Initialize Redis cache
     start_scheduler()  # Start APScheduler for background tasks
@@ -68,9 +71,9 @@ app = FastAPI(
     version=settings.APP_VERSION,
     description="Job aggregation and matching platform for placement management",
     lifespan=lifespan,
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
+    docs_url="/docs" if settings.ENVIRONMENT.lower() != "production" or settings.ENABLE_API_DOCS else None,
+    redoc_url="/redoc" if settings.ENVIRONMENT.lower() != "production" or settings.ENABLE_API_DOCS else None,
+    openapi_url="/openapi.json" if settings.ENVIRONMENT.lower() != "production" or settings.ENABLE_API_DOCS else None,
     # Add HTTP and HTTPS schemes for production SSL support
     servers=[
         {"url": "https://api.pd.navgurukul.org", "description": "Dev Server (HTTP)"},
@@ -84,7 +87,7 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure properly in production
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
