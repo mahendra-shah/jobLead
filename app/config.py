@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     RELOAD: bool = True
     CORS_ORIGINS: Union[str, List[str]] = [
         "https://placement-dashboard-fe.vercel.app",
-        "https://api.pd.navgurukul.org,
+        "https://api.pd.navgurukul.org",
     ]
 
     # Database
