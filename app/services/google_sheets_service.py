@@ -41,30 +41,19 @@ class GoogleSheetsService:
 
     def _build_export_row(self, job: Job):
         company_name = job.company_name or 'Unknown'
-        channel_name = job.source_channel_name or ''
-        channel_url = f"https://t.me/{channel_name}" if channel_name else ''
-        channel_id = job.source_telegram_channel_id or ''
         sender_id = str(job.sender_id) if job.sender_id else ''
         account_used = f"Account {job.fetched_by_account}" if job.fetched_by_account else ''
-
+        source_platform = job.source if job.source else 'telegram'
         return [
             str(job.id),
             job.source_message_id or '',
             job.created_at.strftime('%Y-%m-%d'),
             company_name,
-            job.title or '',
-            job.location or '',
-            'Yes' if job.is_fresher else ('No' if job.is_fresher is not None else ''),
-            job.experience or '',
-            job.work_type or '',
             job.job_type or '',
             ', '.join(job.skills_required) if job.skills_required else '',
-            channel_name,
-            channel_url,
-            channel_id,
             sender_id,
             account_used,
-            job.source or '',
+            source_platform,
             job.source_url or '',
             (job.description or '')[:1000],
         ]
@@ -162,40 +151,24 @@ class GoogleSheetsService:
             'ID',
             'Message ID',
             'Date',
-            # 'Time',  # Commented per user request
             'Company',
-            'Job Title',
-            'Location',
-            # 'Experience Min',  # Commented per user request
-            # 'Experience Max',  # Commented per user request
-            'Is Fresher',
-            'Experience Required',       # NEW — raw string, e.g. '1-2 years' or 'Fresher'
-            # 'Salary Min',  # Commented per user request
-            # 'Salary Max',  # Commented per user request
-            'Work Type',
             'Job Type',
             'Skills',
-            'Channel Name',           # NEW
-            'Channel URL',            # NEW
-            'Channel ID',             # Fixed - Now shows actual Telegram channel ID
-            'Sender ID',              # NEW - Telegram sender user ID
-            'Account Used',           # NEW
-            'Source Channel',         # OLD - keeping for backward compat
+            'Sender ID',
+            'Account Used',
+            'Source',
             'Apply Link',
             'Full Message Text'
         ]
-        
         body = {
             'values': [headers]
         }
-        
         self.sheets.values().update(
             spreadsheetId=self.sheet_id,
-            range=f"{tab_name}!A1:S1",  # 19 columns (A-S) - added Experience Required
+            range=f"{tab_name}!A1:K1",  # 11 columns (A-K)
             valueInputOption='RAW',
             body=body
         ).execute()
-        
         # Format header row (bold, background color)
         self._format_header_row(tab_name)
     
