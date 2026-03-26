@@ -1,7 +1,7 @@
 """API v1 routes."""
 
 from fastapi import APIRouter
-
+from app.api.v1.job_trigger import router as job_trigger_router
 from app.api.v1 import auth, students, jobs, companies, channels, applications, admin
 from app.api.v1.endpoints import (
     students as student_crud, 
@@ -21,6 +21,7 @@ api_router.include_router(companies.router, prefix="/companies", tags=["Companie
 api_router.include_router(channels.router, prefix="/channels", tags=["Channels"])
 api_router.include_router(applications.router, prefix="/applications", tags=["Applications"])
 api_router.include_router(admin.router, prefix="/admin", tags=["Admin"])
+api_router.include_router(job_trigger_router, prefix="/job-trigger", tags=["Job Trigger"])
 
 # Student Management System - New endpoints
 api_router.include_router(student_crud.router, prefix="/admin/students", tags=["Admin - Student Management"])

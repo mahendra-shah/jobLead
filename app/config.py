@@ -41,8 +41,8 @@ class Settings(BaseSettings):
     PORT: int = 8000
     RELOAD: bool = True
     CORS_ORIGINS: Union[str, List[str]] = [
-        "https://placement-dashboard-fe.vercel.app",
-         "https://api.pd.navgurukul.org"
+        "https://placement-dashboard-fe.vercel.app", "http://localhost:3000",
+        "https://api.pd.navgurukul.org","http://localhost:8000/docs"
     ]
 
     # Database
