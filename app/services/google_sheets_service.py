@@ -231,7 +231,7 @@ class GoogleSheetsService:
             body={'requests': requests}
         ).execute()
 
-    def export_daily_jobs(self, db: Session, date: Optional[datetime] = None, tab_name_override: Optional[str] = None) -> Dict:
+    def export_daily_jobs(self, db: Session, date: Optional[datetime] = None) -> Dict:
         """
         Export jobs processed on the given date to Google Sheets.
 
@@ -250,13 +250,7 @@ class GoogleSheetsService:
         # can pass a specific IST date (e.g. yesterday) for historical exports.
         start_time, end_time, ist_date_str = ist_today_utc_window(date)
 
-        # Use override for tab name if provided
-        if tab_name_override:
-            tab_name = f"{tab_name_override}_v2"
-        else:
-            tab_name = self.create_daily_tab_by_date_str(ist_date_str)
-
-        logger.info(f"📊 Exporting jobs {start_time} → {end_time} UTC (IST date: {ist_date_str}, tab name: {tab_name})")
+        logger.info(f"📊 Exporting jobs {start_time} → {end_time} UTC (IST date: {ist_date_str})")
 
         query = (
             select(Job)
@@ -279,16 +273,13 @@ class GoogleSheetsService:
             return {
                 'status': 'no_jobs',
                 'date': ist_date_str,
-                'tab_name': tab_name,
                 'jobs_exported': 0,
-                'sheet_url': f"https://docs.google.com/spreadsheets/d/{self.sheet_id}",
             }
 
         logger.info(f"Found {len(jobs)} jobs to export")
 
-        # Create or reuse the tab (if not already done by override)
-        if not tab_name_override:
-            tab_name = self.create_daily_tab_by_date_str(ist_date_str)
+        # Use IST date string so the tab is named after the Indian calendar day
+        tab_name = self.create_daily_tab_by_date_str(ist_date_str)
 
         # Clear all data rows (keep header in row 1) — prevents duplicates on repeated runs
         try:

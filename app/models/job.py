@@ -58,9 +58,6 @@ class Job(Base):
     # Status
     is_active = Column(Boolean, default=True)
     is_verified = Column(Boolean, default=False)
-
-    # Timestamps
-    created_at = Column(DateTime, nullable=False)
     expires_at = Column(String)  # Job expiration date
     
     # Stats
