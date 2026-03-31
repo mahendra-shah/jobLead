@@ -68,8 +68,14 @@ def main() -> int:
 
     if not args.skip_crawl:
         if not run(
-            [py, "scripts/crawl_jobs_from_sources.py", "--max-sources", str(args.max_sources)],
-            "Step 3: Crawl jobs from sources",
+            [
+                py,
+                "scripts/crawl_jobs_from_sources.py",
+                "--from-mongo",
+                "--max-sources",
+                str(args.max_sources),
+            ],
+            "Step 3: Crawl jobs from sources (Mongo: India/remote boards first)",
         ):
             return 1
     else:

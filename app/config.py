@@ -70,6 +70,8 @@ class Settings(BaseSettings):
     MONGODB_COLLECTION: str = "raw_messages"
     MONGODB_DB_NAME: str = "placement_db"  # Alias for database name
     STORAGE_TYPE: str = "mongodb"  # "local" or "mongodb" for raw message storage
+    # When True and localhost fails, try Atlas (can hang if network/credentials wrong). Default: off.
+    MONGODB_ATLAS_FALLBACK: bool = False
     
     @property
     def MONGODB_URI(self) -> str:
