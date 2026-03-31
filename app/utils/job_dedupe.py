@@ -1,0 +1,67 @@
+"""Dedupe keys for job_ingest: URL normalization + composite hash across sources."""
+
+from __future__ import annotations
+
+import hashlib
+import re
+from typing import Any, Dict
+from urllib.parse import urlparse, urlunparse
+
+
+def normalize_url(url: str) -> str:
+    if not url or not isinstance(url, str):
+        return ""
+    u = url.strip()
+    if not u:
+        return ""
+    u = u.lower()
+    u = u.split("#", 1)[0]
+    parsed = urlparse(u)
+    # Strip query on common tracking params only — keep path
+    path = (parsed.path or "").rstrip("/") or "/"
+    netloc = (parsed.netloc or "").lower()
+    if netloc.startswith("www."):
+        netloc = netloc[4:]
+    clean = urlunparse((parsed.scheme or "https", netloc, path, "", "", ""))
+    return clean.rstrip("/") if clean.endswith("/") and len(path) > 1 else clean
+
+
+_WS = re.compile(r"\s+")
+
+
+def _norm_text(s: Any, max_len: int = 400) -> str:
+    if s is None:
+        return ""
+    t = _WS.sub(" ", str(s).strip().lower())
+    return t[:max_len]
+
+
+def compute_dedupe_key(job: Dict[str, Any]) -> str:
+    """
+    Cross-board identity: stable hash of normalized title + company + location + apply URL.
+    Falls back to url_norm if everything else empty.
+    """
+    title = _norm_text(job.get("title"), 300)
+    company = _norm_text(job.get("company"), 200)
+    loc = _norm_text(
+        job.get("location_detail") or job.get("location"),
+        200,
+    )
+    apply_u = normalize_url(
+        str(job.get("apply_url") or job.get("url") or ""),
+    )
+    blob = f"{title}|{company}|{loc}|{apply_u}"
+    if blob.strip("|") == "":
+        apply_u = normalize_url(str(job.get("url") or ""))
+        blob = apply_u or "empty"
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def build_text_for_ml(job: Dict[str, Any]) -> str:
+    parts = [
+        job.get("title") or "",
+        job.get("company") or "",
+        job.get("location") or job.get("location_detail") or "",
+        (job.get("description") or "")[:4000],
+    ]
+    return _WS.sub(" ", " ".join(str(p) for p in parts if p)).strip()

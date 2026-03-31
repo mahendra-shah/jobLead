@@ -13,11 +13,13 @@ before scaling.
 """
 import argparse
 import json
+import random
 import re
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 JOBLEAD_ROOT = SCRIPT_DIR.parent
@@ -28,6 +30,7 @@ import httpx
 from bs4 import BeautifulSoup  # not heavily used here but available for future refinements
 
 from app.utils.job_parser import parse_experience
+from app.utils.source_classifier import classify_source
 from scripts.discovery.domain_rate_limiter import rate_limit_before_request
 from scripts.discovery.base import load_pilot_cities
 from scripts.discovery.proxy_pool import get_next_proxy
@@ -55,6 +58,24 @@ def load_crawl_ready_sources_from_mongo(
 
     svc = MongoJobBoardSourcesService()
     return svc.get_phase2_crawl_queue(
+        limit=limit,
+        student_pipeline_priority=student_pipeline_priority,
+        student_pipeline_only=student_pipeline_only,
+    )
+
+
+def load_crawl_ready_sources_from_mongo_slice(
+    *,
+    offset: int,
+    limit: int,
+    student_pipeline_priority: bool,
+    student_pipeline_only: bool,
+) -> list[dict]:
+    from app.services.mongodb_job_board_source_service import MongoJobBoardSourcesService
+
+    svc = MongoJobBoardSourcesService()
+    return svc.get_phase2_crawl_queue_slice(
+        offset=offset,
         limit=limit,
         student_pipeline_priority=student_pipeline_priority,
         student_pipeline_only=student_pipeline_only,
@@ -145,6 +166,82 @@ JOB_KEYS = [
     "description", "apply_url",
 ]
 
+DIGITAL_MARKETING_TERMS = (
+    "digital marketing",
+    "marketing",
+    "seo",
+    "sem",
+    "ppc",
+    "google ads",
+    "meta ads",
+    "social media",
+    "performance marketing",
+    "content marketing",
+    "growth marketing",
+    "brand marketing",
+)
+
+ALWAYS_EXCLUDED_SOURCE_TOKENS = (
+    "internshala.com",
+)
+
+
+def _to_absolute_url(value: str, base_url: str) -> str:
+    v = (value or "").strip()
+    if not v:
+        return ""
+    if v.startswith(("http://", "https://")):
+        return v
+    return urljoin(base_url, v)
+
+
+def _is_popular_source_domain(domain: str, url: str = "", name: str = "") -> bool:
+    return classify_source(domain=domain, url=url, name=name).is_popular
+
+
+def _is_always_excluded_source(domain: str, url: str = "", name: str = "") -> bool:
+    hay = " ".join(
+        [
+            (domain or "").strip().lower(),
+            (url or "").strip().lower(),
+            (name or "").strip().lower(),
+        ]
+    )
+    return any(tok in hay for tok in ALWAYS_EXCLUDED_SOURCE_TOKENS)
+
+
+def _is_digital_marketing_job(job: dict) -> bool:
+    text = " ".join(
+        [
+            str(job.get("title") or ""),
+            str(job.get("description") or ""),
+            str(job.get("category") or ""),
+        ]
+    ).lower()
+    return any(k in text for k in DIGITAL_MARKETING_TERMS)
+
+
+def _sleep_source_delay(base_delay: float, jitter_max: float) -> None:
+    """Slow down requests inside a single source crawl (anti-ban pacing)."""
+    d = max(0.0, float(base_delay))
+    j = max(0.0, float(jitter_max))
+    if d <= 0 and j <= 0:
+        return
+    time.sleep(d + (random.uniform(0.0, j) if j > 0 else 0.0))
+
+
+def _normalize_company_name(raw_company: str, title: str, source_domain: str) -> str:
+    c = (raw_company or "").strip()
+    if c and c.lower() not in {"n/a", "na", "unknown", "none"}:
+        return c
+    t = (title or "").strip()
+    m = re.search(r"\b(?:at|@\s*)\s+([A-Za-z0-9][A-Za-z0-9 .,&()\-]{1,70})$", t, re.IGNORECASE)
+    if m:
+        guess = m.group(1).strip(" -")
+        if len(guess) >= 2:
+            return guess
+    return (source_domain or "").replace("www.", "")
+
 
 def _derive_segment_category(title: str, source_domain: str) -> tuple[str, str]:
     """Derive Segment (Tech/Non-tech) and Category from title and domain."""
@@ -196,10 +293,18 @@ def _derive_location_work_seniority(job: dict) -> dict:
     out["location_type"] = "Remote" if "remote" in combined else ("Hybrid" if "hybrid" in combined else ("Onsite" if location else ""))
     out["location_detail"] = location
     out["country"] = ""
-    for c in ["india", "usa", "united states", "uk", "germany", "canada", "australia"]:
-        if c in combined:
-            out["country"] = c.title()
-            break
+    if re.search(r"\bindia\b", combined):
+        out["country"] = "India"
+    elif re.search(r"\b(united states|usa|u\.s\.a?)\b", combined):
+        out["country"] = "United States"
+    elif re.search(r"\b(united kingdom|uk|u\.k\.)\b", combined):
+        out["country"] = "United Kingdom"
+    elif re.search(r"\bgermany\b", combined):
+        out["country"] = "Germany"
+    elif re.search(r"\bcanada\b", combined):
+        out["country"] = "Canada"
+    elif re.search(r"\baustralia\b", combined):
+        out["country"] = "Australia"
     if any(w in title for w in ["intern", "internship"]): out["work_type"] = "Internship"
     elif "part-time" in desc or "part time" in desc: out["work_type"] = "Part-time"
     elif "contract" in desc: out["work_type"] = "Contract"
@@ -242,6 +347,12 @@ def _is_non_job_or_spam(title: str, url: str, combined_text: str) -> bool:
     t = (title or "").strip().lower()
     u = (url or "").strip().lower()
     if not t or len(t) < 6:
+        # Many job cards have short titles; avoid killing all jobs on short text alone.
+        # Prefer URL-based signals when title is short/empty.
+        if not t:
+            return True
+        if any(k in u for k in ("/job/", "/jobs/", "/career", "/careers", "apply")):
+            return False
         return True
 
     # Non-job listings / chrome that many boards expose as "job cards".
@@ -305,13 +416,37 @@ def _is_non_job_or_spam(title: str, url: str, combined_text: str) -> bool:
         return True
 
     # Some sources expose listing/search hubs as "job-like" URLs; skip them.
-    if any(h in u for h in ("/jobs/search", "/jobs/all", "/jobs?")) and "/job/" not in u:
+    # Keep this conservative: many real job URLs do not include "/job/" in the path.
+    if any(h in u for h in ("/jobs/search", "/jobs/all", "/jobs?")):
+        return True
+    if any(
+        token in u
+        for token in (
+            "/blog",
+            "/blogs",
+            "/category/",
+            "/categories/",
+            "/resources/",
+            "/events",
+            "/about",
+            "/contact",
+            "/privacy",
+            "/terms",
+            "/pricing",
+            "/login",
+            "/signup",
+            "/register",
+            "/auth",
+            "/candidate/login",
+            "/employer/login",
+        )
+    ):
         return True
 
     return False
 
 
-def _filter_jobs_for_target_profile(jobs: list[dict]) -> list[dict]:
+def _filter_jobs_for_target_profile(jobs: list[dict], *, focus_digital_marketing: bool = False) -> list[dict]:
     """
     Keep only jobs suitable for:
     - Remote/Hybrid (global) OR India + pilot cities
@@ -448,6 +583,8 @@ def _filter_jobs_for_target_profile(jobs: list[dict]) -> list[dict]:
         text = f"{title} {desc}".lower()
         if not (any(w in text for w in TECH_WORDS) or any(w in text for w in NONTECH_WORDS)):
             continue
+        if focus_digital_marketing and not any(k in text for k in DIGITAL_MARKETING_TERMS):
+            continue
         if not location_ok(job):
             continue
         if not work_ok(job):
@@ -496,7 +633,12 @@ def main() -> int:
     parser.add_argument(
         "--from-mongo",
         action="store_true",
-        help="Load sources from MongoDB job_board_sources (Phase 1 import). Recommended for Phase 2.",
+        help="Load sources from MongoDB job_board_sources. If Mongo is down, the run fails unless --mongo-fallback-json.",
+    )
+    parser.add_argument(
+        "--mongo-fallback-json",
+        action="store_true",
+        help="If --from-mongo fails, fall back to --sources-file (default crawl_ready_sources.json).",
     )
     parser.add_argument(
         "--no-student-pipeline-priority",
@@ -508,36 +650,172 @@ def main() -> int:
         action="store_true",
         help="With --from-mongo: only student_pipeline_eligible sources (India/remote boards)",
     )
+    parser.add_argument(
+        "--source-offset",
+        type=int,
+        default=0,
+        help="With --from-mongo: skip this many sources in the ordered queue (batched daily crawl)",
+    )
+    parser.add_argument(
+        "--write-job-ingest",
+        action="store_true",
+        help="Upsert each crawled job into Mongo job_ingest (before profile filter, for ML pipeline)",
+    )
+    parser.add_argument(
+        "--crawl-batch-id",
+        type=str,
+        default=None,
+        help="Tag for job_ingest.source_ref.crawl_batch_id (default: auto timestamp)",
+    )
+    parser.add_argument(
+        "--ingest-source-platform",
+        type=str,
+        default="job_board",
+        help="job_ingest.source_platform value (default: job_board)",
+    )
+    parser.add_argument(
+        "--prefer-less-known-sources",
+        action="store_true",
+        help="Reorder selected sources so less-known domains are crawled first.",
+    )
+    parser.add_argument(
+        "--exclude-popular-sources",
+        action="store_true",
+        help="Skip major/common boards (Internshala/LinkedIn/Naukri/Foundit/AmbitionBox/Jobsora/Cutshort).",
+    )
+    parser.add_argument(
+        "--focus-digital-marketing",
+        action="store_true",
+        help="Keep only digital-marketing oriented roles in profile filter step.",
+    )
+    parser.add_argument(
+        "--popular-source-max-jobs",
+        type=int,
+        default=10,
+        help="Per-source cap for popular domains (used unless --exclude-popular-sources).",
+    )
+    parser.add_argument(
+        "--source-request-delay",
+        type=float,
+        default=0.0,
+        help="Extra delay (seconds) before each request within a source crawl (entry + detail pages).",
+    )
+    parser.add_argument(
+        "--source-request-jitter",
+        type=float,
+        default=0.0,
+        help="Random extra delay 0..N seconds added to --source-request-delay for each request.",
+    )
     args = parser.parse_args()
+
+    run_ts_compact = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    crawl_batch_id = args.crawl_batch_id or f"crawl_{run_ts_compact}"
 
     if args.from_mongo:
         try:
-            sources = load_crawl_ready_sources_from_mongo(
-                limit=args.max_sources,
-                student_pipeline_priority=not args.no_student_pipeline_priority,
-                student_pipeline_only=bool(args.student_pipeline_only),
-            )
+            if int(args.source_offset or 0) > 0:
+                sources = load_crawl_ready_sources_from_mongo_slice(
+                    offset=int(args.source_offset),
+                    limit=args.max_sources,
+                    student_pipeline_priority=not args.no_student_pipeline_priority,
+                    student_pipeline_only=bool(args.student_pipeline_only),
+                )
+            else:
+                sources = load_crawl_ready_sources_from_mongo(
+                    limit=args.max_sources,
+                    student_pipeline_priority=not args.no_student_pipeline_priority,
+                    student_pipeline_only=bool(args.student_pipeline_only),
+                )
         except Exception as e:
-            print(f"Mongo load failed ({e}). Falling back to JSON file.")
-            sources_file = args.sources_file
-            if not sources_file.is_absolute():
-                sources_file = JOBLEAD_ROOT / sources_file
-            sources = load_crawl_ready_sources(sources_file)[: args.max_sources]
+            if args.mongo_fallback_json:
+                print(f"Mongo load failed ({e}). Falling back to JSON file.")
+                sources_file = args.sources_file
+                if not sources_file.is_absolute():
+                    sources_file = JOBLEAD_ROOT / sources_file
+                sources_all = load_crawl_ready_sources(sources_file)
+                off = int(args.source_offset or 0)
+                if off > 0:
+                    sources = sources_all[off : off + args.max_sources]
+                else:
+                    sources = sources_all[: args.max_sources]
+            else:
+                print(
+                    f"Mongo load failed ({e}).\n"
+                    "  JSON-only workflow: run without --from-mongo (uses app/data/crawl_ready_sources.json).\n"
+                    "  Or pass --mongo-fallback-json to use JSON when Mongo is unavailable.",
+                    file=sys.stderr,
+                )
+                return 1
     else:
         sources_file = args.sources_file
         if not sources_file.is_absolute():
             sources_file = JOBLEAD_ROOT / sources_file
-        sources = load_crawl_ready_sources(sources_file)
+        sources_all = load_crawl_ready_sources(sources_file)
+        off = int(args.source_offset or 0)
+        if off > 0:
+            sources = sources_all[off : off + args.max_sources]
+        else:
+            sources = sources_all
 
     if not sources:
         print("No sources to crawl (empty list or missing file).")
         return 0
 
+    # Always remove blocked sources regardless of flags.
+    before_block = len(sources)
+    sources = [
+        s
+        for s in sources
+        if not _is_always_excluded_source(
+            str(s.get("domain") or ""),
+            str(s.get("url") or ""),
+            str(s.get("name") or ""),
+        )
+    ]
+    blocked_count = before_block - len(sources)
+
+    if args.exclude_popular_sources:
+        sources = [
+            s
+            for s in sources
+            if not _is_popular_source_domain(
+                str(s.get("domain") or ""),
+                str(s.get("url") or ""),
+                str(s.get("name") or ""),
+            )
+        ]
+    if args.prefer_less_known_sources:
+        sources = sorted(
+            sources,
+            key=lambda s: (
+                1
+                if _is_popular_source_domain(
+                    str(s.get("domain") or ""),
+                    str(s.get("url") or ""),
+                    str(s.get("name") or ""),
+                )
+                else 0,
+                str(s.get("domain") or ""),
+            ),
+        )
+
     to_crawl = sources[: args.max_sources]
+    popular_cnt = 0
+    for s in to_crawl:
+        if _is_popular_source_domain(
+            str(s.get("domain") or ""),
+            str(s.get("url") or ""),
+            str(s.get("name") or ""),
+        ):
+            popular_cnt += 1
+    niche_cnt = len(to_crawl) - popular_cnt
     src_note = "MongoDB (student_pipeline first)" if args.from_mongo and not args.no_student_pipeline_priority else (
         "MongoDB" if args.from_mongo else str(sources_file)
     )
-    print(f"Crawling {len(to_crawl)} sources from {src_note} (max_sources={args.max_sources}).")
+    print(
+        f"Crawling {len(to_crawl)} sources from {src_note} (max_sources={args.max_sources}). "
+        f"[niche={niche_cnt}, popular={popular_cnt}, popular_cap={args.popular_source_max_jobs}, blocked={blocked_count}]"
+    )
 
     run_ts = iso_now().replace(":", "").replace("-", "")
     default_out = Path(f"app/data/jobs/jobs_run_{run_ts}.json")
@@ -556,20 +834,42 @@ def main() -> int:
         for idx, source in enumerate(to_crawl, 1):
             m = source.get("metadata") or {}
             strategy = m.get("crawl_strategy") or {}
-            entry_urls = strategy.get("entry_urls") or [source.get("url")]
+            entry_urls = strategy.get("entry_urls")
+            if not entry_urls:
+                # Some sources don't have a crawl_strategy entry_urls in the exported JSON,
+                # but they do include discovered job page URLs.
+                entry_urls = m.get("job_page_urls")
+            if not entry_urls:
+                entry_urls = [source.get("url")]
+
             source_domain = source.get("domain") or (urlparse(source.get("url") or "").netloc or "")
             source_discovered_date = m.get("discovered_date")
+            src_class = classify_source(
+                domain=str(source_domain or ""),
+                url=str(source.get("url") or ""),
+                name=str(source.get("name") or ""),
+            )
+            source_job_cap = (
+                min(int(args.max_jobs_per_source), int(args.popular_source_max_jobs))
+                if src_class.is_popular
+                else int(args.max_jobs_per_source)
+            )
 
             print(f"[{idx}/{len(to_crawl)}] {source_domain} ... ", end="", flush=True)
             source_jobs_before = len(jobs)
 
-            for entry_url in entry_urls:
-                if len(jobs) - source_jobs_before >= args.max_jobs_per_source:
+            base_for_abs = source.get("url") or ""
+            normalized_entry_urls = [
+                _to_absolute_url(u, base_for_abs) for u in (entry_urls or []) if u
+            ]
+            for entry_url in normalized_entry_urls:
+                if len(jobs) - source_jobs_before >= source_job_cap:
                     break
                 if not entry_url:
                     continue
 
                 try:
+                    _sleep_source_delay(args.source_request_delay, args.source_request_jitter)
                     rate_limit_before_request(entry_url)
                     resp = client.get(entry_url)
                     resp.raise_for_status()
@@ -585,13 +885,26 @@ def main() -> int:
                 )
                 crawled_at = iso_now()
                 for j in raw_jobs:
-                    url = j.get("url")
+                    url = _to_absolute_url(j.get("url") or "", entry_url)
                     if not url or url in seen_urls:
+                        continue
+                    title = (j.get("title") or "").strip()
+                    company = _normalize_company_name(j.get("company") or "", title, source_domain)
+                    early_combined = " ".join(
+                        [
+                            title,
+                            company,
+                            (j.get("location") or "").strip(),
+                            url,
+                        ]
+                    )
+                    if _is_non_job_or_spam(title, url, early_combined):
                         continue
                     seen_urls.add(url)
                     # Fetch job detail page for richer fields (best-effort, but skip on error)
                     extra: dict = {}
                     try:
+                        _sleep_source_delay(args.source_request_delay, args.source_request_jitter)
                         rate_limit_before_request(url)
                         detail_resp = client.get(url)
                         detail_resp.raise_for_status()
@@ -599,8 +912,8 @@ def main() -> int:
                     except Exception:
                         extra = {}
                     job = {
-                        "title": j.get("title"),
-                        "company": j.get("company"),
+                        "title": title,
+                        "company": company,
                         "location": j.get("location"),
                         "url": url,
                         "source_domain": source_domain,
@@ -609,20 +922,39 @@ def main() -> int:
                         "crawled_at_utc": crawled_at,
                     }
                     job.update(extra)
-                    if not job.get("apply_url"):
-                        job["apply_url"] = url
+                    job["apply_url"] = _to_absolute_url(job.get("apply_url") or "", url) or url
                     job = _normalize_job(job)
                     jobs.append(job)
-                    if len(jobs) - source_jobs_before >= args.max_jobs_per_source:
+                    if len(jobs) - source_jobs_before >= source_job_cap:
                         break
 
             print(f"{len(jobs) - source_jobs_before} jobs")
     finally:
         client.close()
 
+    if args.write_job_ingest:
+        from app.services.mongodb_job_ingest_service import MongoJobIngestService
+
+        ingest = MongoJobIngestService()
+        ing_ok = 0
+        for j in jobs:
+            try:
+                ingest.upsert_from_crawl(
+                    j,
+                    crawl_batch_id=crawl_batch_id,
+                    source_platform=str(args.ingest_source_platform or "job_board"),
+                )
+                ing_ok += 1
+            except Exception as ex:
+                print(f"  job_ingest upsert failed: {ex}")
+        print(f"Mongo job_ingest: upserted {ing_ok}/{len(jobs)} jobs (batch={crawl_batch_id}).")
+
     if not args.no_profile_filter:
         before = len(jobs)
-        jobs = _filter_jobs_for_target_profile(jobs)
+        jobs = _filter_jobs_for_target_profile(
+            jobs,
+            focus_digital_marketing=bool(args.focus_digital_marketing),
+        )
         print(f"Target profile filter: {len(jobs)}/{before} jobs kept.")
 
     payload = {

@@ -1,5 +1,6 @@
 """Alembic environment configuration."""
 
+import os
 import sys
 from pathlib import Path
 from logging.config import fileConfig
@@ -68,7 +69,7 @@ def _config_safe_url(database_url: str) -> str:
 config = context.config
 
 # Set database URL from settings
-config.set_main_option("sqlalchemy.url", _config_safe_url(_get_sync_migration_url(str(settings.DATABASE_URL))))
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL.replace("+asyncpg", ""))
 
 # Interpret the config file for Python logging
 if config.config_file_name is not None:
@@ -94,10 +95,22 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
-    database_url = _get_sync_migration_url(str(settings.DATABASE_URL))
+    # Get the database URL from settings
+    database_url = str(settings.DATABASE_URL)
+    
+    # Convert asyncpg URL to psycopg2 URL for Alembic (synchronous migrations)
+    if database_url.startswith("postgresql+asyncpg://"):
+        database_url = database_url.replace("postgresql+asyncpg://", "postgresql://")
+        # asyncpg uses 'ssl=false/true/require', psycopg2 uses 'sslmode=disable/require'
+        database_url = database_url.replace("?ssl=false", "?sslmode=disable")
+        database_url = database_url.replace("?ssl=true", "?sslmode=require")
+        database_url = database_url.replace("?ssl=require", "?sslmode=require")
+        database_url = database_url.replace("&ssl=false", "&sslmode=disable")
+        database_url = database_url.replace("&ssl=true", "&sslmode=require")
+        database_url = database_url.replace("&ssl=require", "&sslmode=require")
     
     # Update the sqlalchemy.url in the config
-    config.set_main_option("sqlalchemy.url", _config_safe_url(database_url))
+    config.set_main_option("sqlalchemy.url", database_url)
     
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),

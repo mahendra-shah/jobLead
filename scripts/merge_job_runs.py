@@ -403,6 +403,13 @@ def main() -> int:
 
     parser = argparse.ArgumentParser(description="Merge job runs → jobs_master.json")
     parser.add_argument(
+        "--jobs-run-files",
+        nargs="*",
+        type=Path,
+        default=None,
+        help="Optional explicit jobs_run JSON files to merge. If omitted, merges all app/data/jobs/jobs_run_*.json.",
+    )
+    parser.add_argument(
         "--max-master-jobs",
         type=int,
         default=0,
@@ -410,7 +417,11 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    run_files = find_job_run_files(jobs_dir)
+    run_files: list[Path]
+    if args.jobs_run_files:
+        run_files = [p for p in (Path(x) for x in args.jobs_run_files) if p.exists()]
+    else:
+        run_files = find_job_run_files(jobs_dir)
     if not run_files:
         print("No jobs_run_*.json files found.")
         return 0

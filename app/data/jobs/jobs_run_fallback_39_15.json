@@ -1,0 +1,31 @@
+{
+  "meta": {
+    "generated_at_utc": "2026-03-25T08:53:19Z",
+    "sources_used": 15,
+    "total_jobs": 1
+  },
+  "jobs": [
+    {
+      "title": "Software Engineer, React & Angular (Broker Web Platform) 1W Full Time Bitpanda Spain",
+      "company": "javascript.jobs",
+      "location": null,
+      "url": "https://javascript.jobs/job/software-engineer-react-angular-broker-web-platform",
+      "source_domain": "javascript.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-25T08:46:01Z",
+      "segment": "Tech",
+      "category": "Software / Engineering",
+      "location_type": "",
+      "location_detail": "",
+      "country": "",
+      "work_type": "",
+      "seniority": "",
+      "salary": "",
+      "skills": [],
+      "degree": "",
+      "description": "",
+      "apply_url": "https://javascript.jobs/job/software-engineer-react-angular-broker-web-platform"
+    }
+  ]
+}
