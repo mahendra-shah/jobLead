@@ -117,6 +117,11 @@ class MLProcessorService:
         self.extractor = SpacyExtractor()
         self.enhanced_extractor = get_enhanced_extractor()  # NEW: Enhanced extraction
         self.quality_scorer = get_quality_scorer()  # NEW: Quality scoring
+        self.senior_role_keywords = (
+            self.quality_scorer.excluded_keywords.get("senior_roles", [])
+            if self.quality_scorer and self.quality_scorer.excluded_keywords
+            else []
+        )
         
         # MongoDB connection
         self.mongo_client = MongoClient(settings.MONGODB_URI)
@@ -129,6 +134,64 @@ class MLProcessorService:
         logger.info(f"   spaCy extractor: {self.extractor.is_loaded}")
         logger.info("   Enhanced extractor: True")
         logger.info("   Quality scorer: True")
+
+    def _is_senior_keyword_match(self, text: str) -> Optional[str]:
+        """
+        Detect senior-role keyword unless text is clearly a learning/training context.
+        """
+        if not text:
+            return None
+
+        if any(_keyword_present(text, term) for term in _LEARNING_CONTEXT_TERMS):
+            return None
+
+        return _find_first_keyword_match(text, self.senior_role_keywords)
+
+    @staticmethod
+    def _is_experience_over_threshold(extraction, max_years: int) -> bool:
+        """Return True if parsed experience text exceeds configured threshold."""
+        parsed = parse_experience(getattr(extraction, "experience_raw", None))
+        min_exp = parsed.get("min")
+        max_exp = parsed.get("max")
+
+        if min_exp is None:
+            min_exp = getattr(extraction, "experience_min", None)
+        if max_exp is None:
+            max_exp = getattr(extraction, "experience_max", None)
+
+        min_val = int(min_exp) if isinstance(min_exp, (int, float)) else None
+        max_val = int(max_exp) if isinstance(max_exp, (int, float)) else None
+
+        if max_val is not None and max_val > max_years:
+            return True
+        if min_val is not None and min_val > max_years:
+            return True
+        return False
+
+    @staticmethod
+    def _should_allow_soft_negative_keyword(keyword: str, text: str, links: List[str]) -> bool:
+        """
+        Allow only soft negative keywords when clear entry-level signal + apply path exist.
+        Hard negative keywords are never bypassed.
+        """
+        normalized_keyword = (keyword or "").strip().lower()
+        normalized_text = (text or "").lower()
+
+        if not normalized_keyword:
+            return False
+
+        if normalized_keyword in _HARD_NEGATIVE_KEYWORDS:
+            return False
+
+        has_apply_path = bool(links) or _has_obfuscated_email(text) or bool(
+            _re.search(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", text or "")
+        )
+
+        has_entry_level_signal = any(
+            _keyword_present(normalized_text, signal) for signal in _ENTRY_LEVEL_SIGNALS
+        )
+
+        return has_apply_path and has_entry_level_signal
     
     def process_unprocessed_messages(
         self,
@@ -345,7 +408,21 @@ class MLProcessorService:
         
         # 2. If it's a job, extract details and store
         if classification.is_job:
-            
+            # Message-level deduplication guard:
+            # If this Telegram message_id was already processed earlier,
+            # skip the whole message. This still allows multiple extracted jobs
+            # from the same *current* message in this run.
+            _msg_id = str(message.get("message_id", ""))
+            if _msg_id:
+                existing_by_msg = db.execute(
+                    select(Job.id).where(Job.source_message_id == _msg_id)
+                ).first()
+                if existing_by_msg:
+                    logger.info(
+                        f"   ⏭️  Duplicate message_id={_msg_id} already stored, skipping message"
+                    )
+                    return result
+
             # Check confidence threshold
             if classification.confidence < min_confidence:
                 logger.warning(f"   ⚠️  Low confidence ({classification.confidence:.2f}), "
@@ -536,22 +613,10 @@ class MLProcessorService:
                         
                         # Job details with NEW simplified extraction
                         skills_required=extraction.skills if extraction.skills else [],
-                        experience_required=extraction.experience_raw,  # NEW: String format "2-4 years"
-                        
-                        # Numeric experience fields (for filtering)
-                        experience_min=extraction.experience_min,
-                        experience_max=extraction.experience_max,
+                        experience=extraction.experience_raw,
                         is_fresher=extraction.is_fresher_friendly,
                         
-                        # Salary fields (NEW: simplified monthly value)
-                        salary_min=extraction.salary_min,  # Monthly INR from new method
-                        salary_max=extraction.salary_max,
-                        salary_range={  # Legacy JSONB field
-                            "min": extraction.salary_min,
-                            "max": extraction.salary_max,
-                            "currency": extraction.salary_currency or "INR",
-                            "raw": extraction.salary_raw
-                        } if extraction.salary_raw else {},
+                        salary=extraction.salary_raw,
                         
                         job_type="fulltime",  # Default
                         employment_type="fulltime",  # Default
@@ -559,7 +624,6 @@ class MLProcessorService:
                         # Source information
                         source="telegram",
                         source_url=extraction.apply_link,
-                        raw_text=text,  # Full original message text
                         source_message_id=str(message.get("message_id")),
                         source_telegram_channel_id=channel_id_value,  # NEW - Actual Telegram channel ID
                         sender_id=sender_id_value,  # NEW - Sender user ID
@@ -573,10 +637,6 @@ class MLProcessorService:
                         # Status
                         is_active=classification.confidence >= min_confidence,
                         is_verified=False,
-                        
-                        # Stats
-                        view_count=0,
-                        application_count=0
                     )
                     
                     # Generate content hash for deduplication
@@ -618,20 +678,15 @@ class MLProcessorService:
                     
                     # Set quality scoring fields
                     job.quality_score = quality_result.quality_score
-                    job.relevance_score = quality_result.relevance_score
-                    job.meets_relevance_criteria = quality_result.meets_criteria
-                    job.quality_breakdown = quality_result.breakdown
-                    job.relevance_reasons = quality_result.reasons
-                    job.extraction_completeness_score = quality_result.breakdown.get("completeness", 0)
-                    job.quality_factors = {
-                        "experience_match": quality_result.breakdown.get("experience_match", 0),
-                        "completeness": quality_result.breakdown.get("completeness", 0),
-                        "skills_value": quality_result.breakdown.get("skills_value", 0)
-                    }
                     
                     logger.info(f"      🎯 Quality Score: {quality_result.quality_score:.2f}/100")
                     logger.info(f"      📊 Relevance: {quality_result.relevance_score:.2f}/100")
                     logger.info(f"      ✓ Meets Criteria: {quality_result.meets_criteria}")
+
+                    if not quality_result.meets_criteria:
+                        logger.warning("      ⚠️  Job rejected: failed relevance criteria checks")
+                        result['quality_filtered'] += 1
+                        continue
                     
                     # Filter jobs below minimum quality threshold
                     if quality_result.quality_score < settings.JOB_QUALITY_MIN_SCORE:

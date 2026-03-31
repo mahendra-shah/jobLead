@@ -275,7 +275,7 @@ class TelegramGroupJoinerService:
             # Mark account as banned
             account.is_banned = True
             account.is_active = False
-            account.health_status = HealthStatus.banned
+            account.health_status = HealthStatus.BANNED
             account.last_error_message = "Banned in channel"
             await db.commit()
             

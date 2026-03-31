@@ -12,18 +12,6 @@ from pydantic import BaseModel, Field, EmailStr, validator
 
 class PersonalDetailsMixin(BaseModel):
     """Shared personal details fields - Real-world student information"""
-    first_name: Optional[str] = Field(
-        None, 
-        min_length=1, 
-        max_length=100,
-        description="Student's first/given name"
-    )
-    last_name: Optional[str] = Field(
-        None, 
-        min_length=1, 
-        max_length=100,
-        description="Student's last/family name"
-    )
     phone: Optional[str] = Field(
         None, 
         max_length=20,
@@ -38,11 +26,6 @@ class PersonalDetailsMixin(BaseModel):
         max_length=50,
         description="Gender identity (e.g., Male, Female, Other, Prefer not to say)"
     )
-    current_address: Optional[str] = Field(
-        None, 
-        max_length=500,
-        description="Current residential address"
-    )
 
 
 class EducationDetailsMixin(BaseModel):
@@ -52,24 +35,10 @@ class EducationDetailsMixin(BaseModel):
         max_length=100,
         description="Highest educational qualification (e.g., Bachelor's, Master's, Diploma)"
     )
-    college_name: Optional[str] = Field(
-        None, 
-        max_length=200,
-        description="Name of the college/university (e.g., IIT Delhi, MIT, Stanford)"
-    )
-    college_id: Optional[int] = Field(
-        None,
-        description="Internal college ID for reference"
-    )
     course: Optional[str] = Field(
         None, 
         max_length=100,
         description="Course name (e.g., B.Tech, B.Sc, MCA, MBA)"
-    )
-    branch: Optional[str] = Field(
-        None, 
-        max_length=100,
-        description="Branch/Stream/Department (e.g., Computer Science, Mechanical, Electronics)"
     )
     degree: Optional[str] = Field(
         None, 
@@ -81,18 +50,6 @@ class EducationDetailsMixin(BaseModel):
         ge=2000, 
         le=2030,
         description="Expected or actual year of graduation (e.g., 2024, 2025)"
-    )
-    percentage: Optional[float] = Field(
-        None, 
-        ge=0, 
-        le=100,
-        description="Overall percentage (0-100, e.g., 85.5)"
-    )
-    cgpa: Optional[float] = Field(
-        None, 
-        ge=0, 
-        le=10,
-        description="CGPA on 10-point scale (e.g., 8.5, 9.2) or GPA on 4-point scale converted"
     )
 
 
@@ -111,36 +68,16 @@ class LanguageProficiency(BaseModel):
         return v.lower() if v else v
 
 
-class InternshipDetail(BaseModel):
-    """Internship details"""
-    company_name: str = Field(..., min_length=1, max_length=200)
-    duration: str = Field(..., min_length=1, max_length=100)
-    role: Optional[str] = Field(None, max_length=200)
-    description: Optional[str] = None
-
-
-class ProjectDetail(BaseModel):
-    """Project details"""
-    title: str = Field(..., min_length=1, max_length=200)
-    description: str = Field(..., min_length=1)
-    technologies: Optional[List[str]] = None
-    github_url: Optional[str] = None
-    live_url: Optional[str] = None
-
-
 # ==================== Student Management Schemas (Admin/Placement) ====================
 
 class StudentBase(BaseModel):
     """Base student fields for admin operations"""
-    email: EmailStr
-    first_name: str = Field(..., min_length=1, max_length=100)
-    last_name: str = Field(..., min_length=1, max_length=100)
+    full_name: str = Field(..., min_length=1, max_length=255)
+    email: Optional[EmailStr] = None
     phone: Optional[str] = Field(None, max_length=20)
-    college_id: Optional[int] = None
-    degree: Optional[str] = Field(None, max_length=100)
-    branch: Optional[str] = Field(None, max_length=100)
+    job_category: Optional[str] = Field(None, max_length=100)
+    status: Optional[str] = Field(None, max_length=20)
     passing_year: Optional[int] = Field(None, ge=2000, le=2030)
-    cgpa: Optional[float] = Field(None, ge=0, le=10)
     
     @validator('passing_year')
     def validate_passing_year(cls, v):
@@ -151,22 +88,24 @@ class StudentBase(BaseModel):
 
 class StudentCreate(StudentBase):
     """Create student (admin/placement)"""
-    password: str = Field(..., min_length=8)
+    email: EmailStr
 
 
 class StudentUpdate(PersonalDetailsMixin, EducationDetailsMixin):
     """Update student (admin/placement)"""
-    is_active: Optional[bool] = None
+    full_name: Optional[str] = Field(None, min_length=1, max_length=255)
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = Field(None, max_length=20)
+    job_category: Optional[str] = Field(None, max_length=100)
+    status: Optional[str] = Field(None, max_length=20)
 
 
 class StudentResponse(StudentBase):
     """Student response for admin/placement operations"""
-    id: int
-    full_name: str
-    resume_url: Optional[str]
-    is_active: bool
+    id: str
+    resume_url: Optional[str] = None
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
     profile_completeness: Optional[int] = Field(None, ge=0, le=100)
     saved_jobs_count: Optional[int] = None
     
@@ -197,12 +136,8 @@ class StudentProfileCreate(PersonalDetailsMixin, EducationDetailsMixin):
     **Example**:
     ```json
     {
-      "first_name": "Raj",
-      "last_name": "Kumar",
       "phone": "+91-9876543210",
-      "branch": "Computer Science",
       "passing_year": 2025,
-      "cgpa": 8.5,
       "technical_skills": ["Python", "React", "Node.js"],
       "preferred_location": ["Bangalore", "Remote"]
     }
@@ -214,6 +149,10 @@ class StudentProfileCreate(PersonalDetailsMixin, EducationDetailsMixin):
     )
     
     # Skills - Industry-standard categorization
+    skills: Optional[List[str]] = Field(
+        None,
+        description="General skills array"
+    )
     technical_skills: Optional[List[str]] = Field(
         None, 
         description="Technical/Programming skills (e.g., Python, Java, React, SQL, AWS, Docker)"
@@ -228,20 +167,13 @@ class StudentProfileCreate(PersonalDetailsMixin, EducationDetailsMixin):
         None, 
         description="Experience level: 'fresher' (no work experience) or 'experienced' (has work experience)"
     )
-    internship_details: Optional[List[InternshipDetail]] = Field(
-        None,
-        description="List of internships completed (company, duration, role, description)"
-    )
-    projects: Optional[List[ProjectDetail]] = Field(
-        None,
-        description="Academic or personal projects (title, description, technologies, GitHub links)"
-    )
     
     # Languages - Communication skills
-    languages: Optional[List[LanguageProficiency]] = Field(
+    spoken_languages: Optional[List[LanguageProficiency]] = Field(
         None,
         description="Languages known with proficiency levels (e.g., English: Fluent, Hindi: Native)"
     )
+    email: Optional[EmailStr] = Field(None, description="Primary email")
     
     # Job Preferences - Career goals and requirements
     job_type: Optional[List[str]] = Field(
@@ -256,6 +188,10 @@ class StudentProfileCreate(PersonalDetailsMixin, EducationDetailsMixin):
         None,
         description="Desired job roles/titles (e.g., 'Software Developer', 'Data Analyst', 'Product Manager')"
     )
+    job_category: Optional[str] = Field(
+        None,
+        description="Desired job category (e.g., IT, Data, Core, Marketing)"
+    )
     preferred_location: Optional[List[str]] = Field(
         None,
         description="Preferred job locations (e.g., 'Bangalore', 'Mumbai', 'Remote', 'Pan India')"
@@ -265,26 +201,9 @@ class StudentProfileCreate(PersonalDetailsMixin, EducationDetailsMixin):
         ge=0,
         description="Expected annual salary in INR (e.g., 600000 for 6 LPA)"
     )
-    
-    # Technical Profile Links - Online presence
-    github_profile: Optional[str] = Field(
-        None, 
-        max_length=500,
-        description="GitHub profile URL (e.g., https://github.com/username)"
-    )
-    linkedin_profile: Optional[str] = Field(
-        None, 
-        max_length=500,
-        description="LinkedIn profile URL (e.g., https://linkedin.com/in/username)"
-    )
-    portfolio_url: Optional[str] = Field(
-        None, 
-        max_length=500,
-        description="Personal portfolio website URL (e.g., https://yourname.dev)"
-    )
-    coding_platforms: Optional[Dict[str, str]] = Field(
+    social_links: Optional[Dict[str, Any]] = Field(
         None,
-        description="Coding platform profiles (e.g., {'LeetCode': 'username', 'HackerRank': 'username', 'CodeChef': 'username'})"
+        description="Social links object: {github_profile, linkedin_profile, portfolio_url, coding_platforms}"
     )
     
     @validator('experience_type')
@@ -305,8 +224,6 @@ class StudentProfileCreate(PersonalDetailsMixin, EducationDetailsMixin):
 class StudentProfileResponse(BaseModel):
     """Comprehensive student profile response with all fields"""
     # Personal Details
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
     full_name: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
@@ -319,35 +236,30 @@ class StudentProfileResponse(BaseModel):
     college_name: Optional[str] = None
     college_id: Optional[int] = None
     course: Optional[str] = None
-    branch: Optional[str] = None
     passing_year: Optional[int] = None
     percentage: Optional[float] = None
     cgpa: Optional[float] = None
     
     # Skills
+    skills: Optional[List[str]] = None
     technical_skills: Optional[List[str]] = None
     soft_skills: Optional[List[str]] = None
     
     # Experience
     experience_type: Optional[str] = None
-    internship_details: Optional[List[Dict[str, Any]]] = None
-    projects: Optional[List[Dict[str, Any]]] = None
     
     # Languages
-    languages: Optional[List[Dict[str, str]]] = None
+    spoken_languages: Optional[List[Dict[str, str]]] = None
+    email: Optional[EmailStr] = None
     
     # Job Preferences
     job_type: Optional[List[str]] = None
     work_mode: Optional[List[str]] = None
     preferred_job_role: Optional[List[str]] = None
+    job_category: Optional[str] = None
     preferred_location: Optional[List[str]] = None
     expected_salary: Optional[int] = None
-    
-    # Technical Profile Links
-    github_profile: Optional[str] = None
-    linkedin_profile: Optional[str] = None
-    portfolio_url: Optional[str] = None
-    coding_platforms: Optional[Dict[str, str]] = None
+    social_links: Optional[Dict[str, Any]] = None
     
     # Resume
     resume_url: Optional[str] = None
@@ -366,11 +278,8 @@ class StudentProfileResponse(BaseModel):
 # Legacy schema - kept for backward compatibility
 class StudentProfileUpdate(BaseModel):
     """Student updates their own profile (legacy - use StudentProfileCreate)"""
-    first_name: Optional[str] = Field(None, min_length=1, max_length=100)
-    last_name: Optional[str] = Field(None, min_length=1, max_length=100)
     phone: Optional[str] = Field(None, max_length=20)
     degree: Optional[str] = Field(None, max_length=100)
-    branch: Optional[str] = Field(None, max_length=100)
     passing_year: Optional[int] = None
     cgpa: Optional[float] = Field(None, ge=0, le=10)
 
@@ -404,8 +313,8 @@ class StudentPreferencesUpdate(BaseModel):
     )
     preferred_job_types: Optional[List[str]] = None
     excluded_companies: Optional[List[str]] = None
-    min_salary: Optional[int] = Field(None, ge=0)
-    max_salary: Optional[int] = Field(None, ge=0)
+    salary: Optional[str] = Field(None, description="Preferred salary expectation as text")
+    experience: Optional[str] = Field(None, description="Preferred experience range as text")
 
 
 class StudentPreferencesResponse(BaseModel):
@@ -414,8 +323,8 @@ class StudentPreferencesResponse(BaseModel):
     preferred_locations: List[str]
     preferred_job_types: List[str]
     excluded_companies: List[str]
-    min_salary: Optional[int] = None
-    max_salary: Optional[int] = None
+    salary: Optional[str] = None
+    experience: Optional[str] = None
 
 
 # ==================== Job Recommendation Schemas ====================
@@ -546,7 +455,6 @@ class StudentStatsResponse(BaseModel):
     """Student statistics"""
     total_students: int
     active_students: int
-    by_branch: Dict[str, int]
     by_passing_year: Dict[str, int]
     avg_cgpa: float
     total_saved_jobs: int
@@ -582,12 +490,9 @@ class BulkUploadResponse(BaseModel):
 
 class StudentFilters(BaseModel):
     """Student list filters"""
-    college_id: Optional[int] = None
-    branch: Optional[str] = None
+    job_category: Optional[str] = None
     passing_year: Optional[int] = None
-    cgpa_min: Optional[float] = Field(None, ge=0)
-    cgpa_max: Optional[float] = Field(None, ge=0)
-    is_active: Optional[bool] = None
+    status: Optional[str] = Field(None, pattern="^(active|inactive|placed)$")
     search: Optional[str] = None
-    sort_by: Optional[str] = Field(default="created_at", pattern="^(name|cgpa|created_at|updated_at)$")
+    sort_by: Optional[str] = Field(default="created_at", pattern="^(name|created_at|updated_at)$")
     sort_order: Optional[str] = Field(default="desc", pattern="^(asc|desc)$")

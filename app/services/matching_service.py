@@ -235,11 +235,19 @@ class HybridMatchingService:
     
     def _prepare_student_text(self, student: Dict) -> str:
         """Prepare student profile text for embedding."""
+        education_parts = [
+            f"{e.get('degree')} from {e.get('institution')}"
+            for e in student.get('education', [])
+        ]
+        experience_parts = [
+            f"{e.get('role')} at {e.get('company')} - {e.get('description', '')}"
+            for e in student.get('experience', [])
+        ]
         parts = [
             f"Skills: {', '.join(student.get('skills', []))}",
             f"Bio: {student.get('bio', '')}",
-            f"Education: {' | '.join([f"{e.get('degree')} from {e.get('institution')}" for e in student.get('education', [])])}",
-            f"Experience: {' | '.join([f"{e.get('role')} at {e.get('company')} - {e.get('description', '')}" for e in student.get('experience', [])])}",
+            f"Education: {' | '.join(education_parts)}",
+            f"Experience: {' | '.join(experience_parts)}",
             f"Preferences: {student.get('preferences', {})}",
         ]
         return " ".join(filter(None, parts))
@@ -290,13 +298,14 @@ class HybridMatchingService:
         """Convert Student model to dictionary."""
         # Combine technical and soft skills
         all_skills = (student.technical_skills or []) + (student.soft_skills or [])
+        extra_detail = student.extra_detail if isinstance(getattr(student, 'extra_detail', None), dict) else {}
         
         return {
             "id": str(student.id),
             "full_name": student.full_name,
             "skills": all_skills,
             "bio": getattr(student, 'bio', ''),
-            "education": [student.highest_qualification] if student.highest_qualification else [],
+            "education": [extra_detail.get("highest_qualification")] if extra_detail.get("highest_qualification") else [],
             "experience": [student.experience_type] if student.experience_type else [],
             "preferences": student.preference or {},
         }
@@ -308,13 +317,13 @@ class HybridMatchingService:
             "title": job.title,
             "company_name": job.company_name,
             "description": job.description,
-            "requirements": job.requirements,
-            "skills": job.skills or [],
+            "requirements": job.description,
+            "skills": job.skills_required or [],
             "location": job.location,
             "job_type": job.job_type,
-            "experience_level": job.experience_level,
-            "salary_range": job.salary_range,
-            "status": job.status,
+            "experience": job.experience,
+            "salary": job.salary,
+            "status": "active" if job.is_active else "inactive",
         }
 
 

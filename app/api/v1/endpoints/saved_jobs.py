@@ -9,6 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import joinedload
+from sqlalchemy.exc import SQLAlchemyError
+import logging
 
 from app.api.deps import get_current_user, get_db
 from app.models.user import User
@@ -23,6 +25,33 @@ from app.schemas.student import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+def _job_payload(job: Job):
+    if not job:
+        return None
+    return {
+        "id": str(job.id),
+        "title": job.title,
+        "company_id": str(job.company_id) if job.company_id else None,
+        "company_name": job.company.name if job.company else "Unknown",
+        "description": job.description,
+        "skills_required": job.skills_required or [],
+        "experience": job.experience,
+        "salary": job.salary,
+        "is_fresher": job.is_fresher,
+        "work_type": job.work_type,
+        "location": job.location,
+        "job_type": job.job_type,
+        "employment_type": job.employment_type,
+        "source": job.source,
+        "source_url": job.source_url,
+        "is_active": job.is_active,
+        "shared_count": job.shared_count,
+        "created_at": job.created_at.isoformat() if job.created_at else None,
+        "updated_at": job.updated_at.isoformat() if job.updated_at else None,
+    }
 
 
 @router.post("", response_model=SavedJobResponse, status_code=status.HTTP_201_CREATED)
@@ -88,32 +117,7 @@ async def save_job(
     await db.refresh(db_saved_job)
     
     # Format job data for response
-    job_data = {
-        "id": str(job.id),
-        "title": job.title,
-        "company_id": str(job.company_id) if job.company_id else None,
-        "company_name": job.company.name if job.company else "Unknown",
-        "description": job.description,
-        "skills_required": job.skills_required or [],
-        "experience_required": job.experience_required,
-        "salary_range": job.salary_range or {},
-        "is_fresher": job.is_fresher,
-        "work_type": job.work_type,
-        "experience_min": job.experience_min,
-        "experience_max": job.experience_max,
-        "salary_min": float(job.salary_min) if job.salary_min else None,
-        "salary_max": float(job.salary_max) if job.salary_max else None,
-        "location": job.location,
-        "job_type": job.job_type,
-        "employment_type": job.employment_type,
-        "source": job.source,
-        "source_url": job.source_url,
-        "is_active": job.is_active,
-        "view_count": job.view_count,
-        "application_count": job.application_count,
-        "created_at": job.created_at.isoformat() if job.created_at else None,
-        "updated_at": job.updated_at.isoformat() if job.updated_at else None,
-    }
+    job_data = _job_payload(job)
     
     return SavedJobResponse(
         id=str(db_saved_job.id),
@@ -142,26 +146,30 @@ async def list_saved_jobs(
     **Query Parameters**:
     - `folder`: Filter by folder name (optional)
     """
-    # Build query
-    query = select(SavedJob).where(SavedJob.user_id == current_user.id)
-    
-    if folder:
-        query = query.where(SavedJob.folder == folder)
-    
-    query = query.order_by(SavedJob.saved_at.desc())
-    
-    # Execute
-    result = await db.execute(query)
-    saved_jobs = result.scalars().all()
-    
-    # Get unique folders
-    folders_result = await db.execute(
-        select(SavedJob.folder).where(
-            SavedJob.user_id == current_user.id,
-            SavedJob.folder.isnot(None)
-        ).distinct()
-    )
-    folders = [row[0] for row in folders_result.fetchall()]
+    try:
+        # Build query
+        query = select(SavedJob).where(SavedJob.user_id == current_user.id)
+
+        if folder:
+            query = query.where(SavedJob.folder == folder)
+
+        query = query.order_by(SavedJob.saved_at.desc())
+
+        # Execute
+        result = await db.execute(query)
+        saved_jobs = result.scalars().all()
+
+        # Get unique folders
+        folders_result = await db.execute(
+            select(SavedJob.folder).where(
+                SavedJob.user_id == current_user.id,
+                SavedJob.folder.isnot(None)
+            ).distinct()
+        )
+        folders = [row[0] for row in folders_result.fetchall()]
+    except SQLAlchemyError:
+        logger.exception("saved_jobs_list_query_failed user_id=%s", current_user.id)
+        return SavedJobsResponse(total=0, saved_jobs=[], folders=[])
     
     # Format response with job details
     saved_jobs_response = []
@@ -174,35 +182,7 @@ async def list_saved_jobs(
         )
         job = job_result.scalar_one_or_none()
         
-        if job:
-            job_data = {
-                "id": str(job.id),
-                "title": job.title,
-                "company_id": str(job.company_id) if job.company_id else None,
-                "company_name": job.company.name if job.company else "Unknown",
-                "description": job.description,
-                "skills_required": job.skills_required or [],
-                "experience_required": job.experience_required,
-                "salary_range": job.salary_range or {},
-                "is_fresher": job.is_fresher,
-                "work_type": job.work_type,
-                "experience_min": job.experience_min,
-                "experience_max": job.experience_max,
-                "salary_min": float(job.salary_min) if job.salary_min else None,
-                "salary_max": float(job.salary_max) if job.salary_max else None,
-                "location": job.location,
-                "job_type": job.job_type,
-                "employment_type": job.employment_type,
-                "source": job.source,
-                "source_url": job.source_url,
-                "is_active": job.is_active,
-                "view_count": job.view_count,
-                "application_count": job.application_count,
-                "created_at": job.created_at.isoformat() if job.created_at else None,
-                "updated_at": job.updated_at.isoformat() if job.updated_at else None,
-            }
-        else:
-            job_data = None
+        job_data = _job_payload(job)
         
         saved_jobs_response.append(SavedJobResponse(
             id=str(saved_job.id),
@@ -274,35 +254,7 @@ async def update_saved_job(
     )
     job = job_result.scalar_one_or_none()
     
-    if job:
-        job_data = {
-            "id": str(job.id),
-            "title": job.title,
-            "company_id": str(job.company_id) if job.company_id else None,
-            "company_name": job.company.name if job.company else "Unknown",
-            "description": job.description,
-            "skills_required": job.skills_required or [],
-            "experience_required": job.experience_required,
-            "salary_range": job.salary_range or {},
-            "is_fresher": job.is_fresher,
-            "work_type": job.work_type,
-            "experience_min": job.experience_min,
-            "experience_max": job.experience_max,
-            "salary_min": float(job.salary_min) if job.salary_min else None,
-            "salary_max": float(job.salary_max) if job.salary_max else None,
-            "location": job.location,
-            "job_type": job.job_type,
-            "employment_type": job.employment_type,
-            "source": job.source,
-            "source_url": job.source_url,
-            "is_active": job.is_active,
-            "view_count": job.view_count,
-            "application_count": job.application_count,
-            "created_at": job.created_at.isoformat() if job.created_at else None,
-            "updated_at": job.updated_at.isoformat() if job.updated_at else None,
-        }
-    else:
-        job_data = None
+    job_data = _job_payload(job)
     
     return SavedJobResponse(
         id=str(saved_job.id),
@@ -428,14 +380,23 @@ async def check_if_saved(
             detail="Invalid job_id format. Must be a valid UUID."
         )
     
-    # Check if saved
-    result = await db.execute(
-        select(SavedJob).where(
-            SavedJob.user_id == current_user.id,
-            SavedJob.job_id == job_uuid
+    try:
+        # Check if saved
+        result = await db.execute(
+            select(SavedJob).where(
+                SavedJob.user_id == current_user.id,
+                SavedJob.job_id == job_uuid
+            )
         )
-    )
-    saved_job = result.scalar_one_or_none()
+        saved_job = result.scalar_one_or_none()
+    except SQLAlchemyError:
+        logger.exception("saved_jobs_check_query_failed user_id=%s", current_user.id)
+        return {
+            "job_id": job_id,
+            "is_saved": False,
+            "saved_job_id": None,
+            "folder": None,
+        }
     
     return {
         "job_id": job_id,

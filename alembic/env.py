@@ -4,6 +4,7 @@ import os
 import sys
 from pathlib import Path
 from logging.config import fileConfig
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import engine_from_config, pool
 
@@ -17,6 +18,52 @@ from app.db.base import Base
 
 # Import all models to ensure they are registered
 from app.models import user, student, company, job, application, channel  # noqa
+
+
+def _get_sync_migration_url(database_url: str) -> str:
+    """Convert async SQLAlchemy URL into a synchronous URL suitable for Alembic."""
+    if not database_url:
+        return database_url
+
+    if database_url.startswith("postgresql+asyncpg://"):
+        database_url = database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+
+    parsed = urlsplit(database_url)
+    if not parsed.query:
+        return database_url
+
+    query_items = parse_qsl(parsed.query, keep_blank_values=True)
+    has_sslmode = any(key.lower() == "sslmode" for key, _ in query_items)
+
+    ssl_value = None
+    filtered_items = []
+    for key, value in query_items:
+        if key.lower() == "ssl":
+            ssl_value = value
+            continue
+        filtered_items.append((key, value))
+
+    if not has_sslmode and ssl_value is not None:
+        mapped_sslmode = {
+            "false": "disable",
+            "0": "disable",
+            "off": "disable",
+            "no": "disable",
+            "disable": "disable",
+            "true": "require",
+            "1": "require",
+            "on": "require",
+            "yes": "require",
+            "require": "require",
+        }.get(str(ssl_value).strip().lower(), str(ssl_value).strip())
+        filtered_items.append(("sslmode", mapped_sslmode))
+
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(filtered_items), parsed.fragment))
+
+
+def _config_safe_url(database_url: str) -> str:
+    """Escape % so Alembic ConfigParser won't treat URL-encoded bytes as interpolation."""
+    return database_url.replace("%", "%%")
 
 # Alembic Config object
 config = context.config

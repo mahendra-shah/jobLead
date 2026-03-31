@@ -7,6 +7,48 @@ from pathlib import Path
 logger = log_module.getLogger(__name__)
 
 
+def validate_production_configuration(settings_obj) -> None:
+    """Validate production configuration and raise if unsafe values are detected."""
+    environment = str(getattr(settings_obj, "ENVIRONMENT", "development")).lower()
+    if environment != "production":
+        return
+
+    issues = []
+    warnings = []
+
+    if bool(getattr(settings_obj, "DEBUG", False)):
+        issues.append("DEBUG must be False in production")
+
+    if bool(getattr(settings_obj, "RELOAD", False)):
+        issues.append("RELOAD must be False in production")
+
+    secret_key = str(getattr(settings_obj, "SECRET_KEY", ""))
+    if not secret_key or secret_key == "change-this-secret-key-in-production":
+        issues.append("SECRET_KEY must be set to a strong, non-default value")
+
+    cors_origins = getattr(settings_obj, "CORS_ORIGINS", []) or []
+    if isinstance(cors_origins, str):
+        cors_origins = [cors_origins]
+    if not cors_origins:
+        issues.append("CORS_ORIGINS must include at least one trusted origin")
+    elif "*" in cors_origins:
+        issues.append("CORS_ORIGINS cannot contain '*' in production")
+
+    if bool(getattr(settings_obj, "ENABLE_API_DOCS", False)):
+        warnings.append("ENABLE_API_DOCS is enabled in production")
+
+    for warning in warnings:
+        logger.warning("⚠️  %s", warning)
+
+    if issues:
+        for issue in issues:
+            logger.error("❌ %s", issue)
+        raise RuntimeError(
+            "Unsafe production configuration detected. "
+            "Fix ENVIRONMENT/DEBUG/RELOAD/SECRET_KEY/CORS_ORIGINS settings."
+        )
+
+
 def check_ml_system() -> bool:
     """
     Check if ML system is properly configured and ready.

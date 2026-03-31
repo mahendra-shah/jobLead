@@ -1,7 +1,7 @@
 """Job schemas for API responses."""
 
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Any
 from uuid import UUID
 from pydantic import BaseModel, Field, model_validator
 
@@ -66,22 +66,17 @@ class JobBase(BaseModel):
                 'company_name': getattr(data, 'company_name', 'Unknown'),
                 'description': getattr(data, 'description', None),
                 'skills_required': getattr(data, 'skills_required', []) or [],
-                'experience_required': getattr(data, 'experience_required', None),
-                'salary_range': getattr(data, 'salary_range', {}) or {},
+                'experience': getattr(data, 'experience', None),
+                'salary': getattr(data, 'salary', None),
                 'is_fresher': getattr(data, 'is_fresher', None),
                 'work_type': getattr(data, 'work_type', None),
-                'experience_min': getattr(data, 'experience_min', None),
-                'experience_max': getattr(data, 'experience_max', None),
-                'salary_min': getattr(data, 'salary_min', None),
-                'salary_max': getattr(data, 'salary_max', None),
                 'location': getattr(data, 'location', None),
                 'job_type': getattr(data, 'job_type', None),
                 'employment_type': getattr(data, 'employment_type', None),
                 'source': getattr(data, 'source', None),
                 'source_url': getattr(data, 'source_url', None),
                 'is_active': getattr(data, 'is_active', True),
-                'view_count': getattr(data, 'view_count', 0),
-                'application_count': getattr(data, 'application_count', 0),
+                'shared_count': getattr(data, 'shared_count', 0),
                 'created_at': getattr(data, 'created_at', None),
                 'updated_at': getattr(data, 'updated_at', None),
             }
@@ -95,17 +90,10 @@ class JobBase(BaseModel):
                 data['company_id'] = str(data['company_id'])
         return data
     
-    # Legacy fields (kept for backward compatibility)
-    experience_required: Optional[str] = None
-    salary_range: Dict[str, Any] = Field(default_factory=dict)
-    
-    # New structured fields
+    experience: Optional[str] = None
+    salary: Optional[str] = None
     is_fresher: Optional[bool] = None
     work_type: Optional[str] = None  # remote, on-site, hybrid
-    experience_min: Optional[int] = None
-    experience_max: Optional[int] = None
-    salary_min: Optional[float] = None
-    salary_max: Optional[float] = None
     
     location: Optional[str] = None
     job_type: Optional[str] = None
@@ -113,8 +101,7 @@ class JobBase(BaseModel):
     source: Optional[str] = None
     source_url: Optional[str] = None
     is_active: bool = True
-    view_count: int = 0
-    application_count: int = 0
+    shared_count: int = 0
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

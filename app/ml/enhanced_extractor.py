@@ -342,6 +342,22 @@ class EnhancedJobExtractor:
         
         # No multiple jobs detected, return full text
         return [text]
+
+    @staticmethod
+    def _has_remote_jobboard_hint(text: str, links: Optional[List[str]]) -> bool:
+        """Return True when message/link suggests remote-first aggregator format."""
+        text_lower = (text or "").lower()
+        if "remotefirstjobs.com" in text_lower:
+            return True
+
+        for link in links or []:
+            lower_link = (link or "").lower()
+            if "remotefirstjobs.com" in lower_link:
+                return True
+            if "jobboardsearch.com/redirect" in lower_link and "remotefirstjobs.com" in lower_link:
+                return True
+
+        return False
     
     def _extract_single_job(self, text: str, links: List[str] = None) -> Optional[EnhancedJobExtraction]:
         """Extract all information from a single job posting"""

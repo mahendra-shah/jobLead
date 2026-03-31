@@ -38,6 +38,25 @@ class GoogleSheetsService:
         # Build service
         self.service = build('sheets', 'v4', credentials=self.credentials)
         self.sheets = self.service.spreadsheets()
+
+    def _build_export_row(self, job: Job):
+        company_name = job.company_name or 'Unknown'
+        sender_id = str(job.sender_id) if job.sender_id else ''
+        account_used = f"Account {job.fetched_by_account}" if job.fetched_by_account else ''
+        source_platform = job.source if job.source else 'telegram'
+        return [
+            str(job.id),
+            job.source_message_id or '',
+            job.created_at.strftime('%Y-%m-%d'),
+            company_name,
+            job.job_type or '',
+            ', '.join(job.skills_required) if job.skills_required else '',
+            sender_id,
+            account_used,
+            source_platform,
+            job.source_url or '',
+            (job.description or '')[:1000],
+        ]
     
     def create_daily_tab_by_date_str(self, date_str: str) -> str:
         """
@@ -132,7 +151,6 @@ class GoogleSheetsService:
             'ID',
             'Message ID',
             'Date',
-            # 'Time',  # Commented per user request
             'Company',
             'Job Title',
             'Location',
@@ -145,27 +163,21 @@ class GoogleSheetsService:
             'Work Type',
             'Job Type',
             'Skills',
-            'Channel Name',           # NEW
-            'Channel URL',            # NEW
-            'Channel ID',             # Fixed - Now shows actual Telegram channel ID
-            'Sender ID',              # NEW - Telegram sender user ID
-            'Account Used',           # NEW
-            'Source Channel',         # OLD - keeping for backward compat
+            'Sender ID',
+            'Account Used',
+            'Source',
             'Apply Link',
             'Full Message Text'
         ]
-        
         body = {
             'values': [headers]
         }
-        
         self.sheets.values().update(
             spreadsheetId=self.sheet_id,
             range=f"{tab_name}!A1:S1",  # 19 columns (A-S) - added Experience Required
             valueInputOption='RAW',
             body=body
         ).execute()
-        
         # Format header row (bold, background color)
         self._format_header_row(tab_name)
     

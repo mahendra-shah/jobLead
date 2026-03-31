@@ -8,7 +8,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from app.api.deps import get_current_user, get_db
 from app.models.user import User
@@ -21,10 +21,29 @@ from app.schemas.job import CompanyBrief
 router = APIRouter()
 
 
+def _as_string_list(value) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if item is not None and str(item).strip()]
+    if isinstance(value, str) and value.strip():
+        if "," in value:
+            return [part.strip() for part in value.split(",") if part.strip()]
+        return [value.strip()]
+    return []
+
+
 def get_cache_manager():
     """Get cache manager without circular import."""
     from app.main import cache_manager
     return cache_manager
+
+
+async def _get_student_for_current_user(db: AsyncSession, current_user: User):
+    if not current_user or not current_user.email:
+        return None
+    result = await db.execute(
+        select(Student).where(func.lower(Student.email) == current_user.email.strip().lower())
+    )
+    return result.scalar_one_or_none()
 
 
 @router.get("/recommended-jobs", response_model=RecommendedJobsResponse)
@@ -70,11 +89,7 @@ async def get_recommended_jobs(
     GET /api/v1/students/me/recommended-jobs?limit=10&min_score=60&exclude_saved=true
     ```
     """
-    # Get student profile by user_id
-    result = await db.execute(
-        select(Student).where(Student.user_id == current_user.id)
-    )
-    student = result.scalar_one_or_none()
+    student = await _get_student_for_current_user(db, current_user)
     
     if not student:
         raise HTTPException(
@@ -82,9 +97,13 @@ async def get_recommended_jobs(
             detail="Student profile not found. Please complete your profile first."
         )
     
+    # Normalize possible legacy/malformed skill shapes from DB
+    student.technical_skills = _as_string_list(getattr(student, "technical_skills", None))
+    student.soft_skills = _as_string_list(getattr(student, "soft_skills", None))
+
     # Check if student has set skills (technical_skills or soft_skills)
-    has_technical_skills = student.technical_skills and len(student.technical_skills) > 0
-    has_soft_skills = student.soft_skills and len(student.soft_skills) > 0
+    has_technical_skills = len(student.technical_skills) > 0
+    has_soft_skills = len(student.soft_skills) > 0
     
     if not (has_technical_skills or has_soft_skills):
         raise HTTPException(

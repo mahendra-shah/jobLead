@@ -10,12 +10,14 @@ Date: 2026-02-13
 
 import json
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 
 from app.config import settings
+from app.utils.job_parser import extract_salary_from_text, parse_experience
 
 logger = logging.getLogger(__name__)
 
@@ -184,9 +186,9 @@ class JobQualityScorer:
         reasons = []
         
         # 1. Experience Match
+        parsed_experience = parse_experience(job_data.get('experience'))
         scores['experience_match'], exp_reasons = self._score_experience(
-            job_data.get('experience_min'),
-            job_data.get('experience_max'),
+            parsed_experience,
             job_data.get('is_fresher', False)
         )
         reasons.extend(exp_reasons)
@@ -208,9 +210,9 @@ class JobQualityScorer:
         reasons.extend(location_reasons)
         
         # 5. Salary Range
+        parsed_salary = extract_salary_from_text(job_data.get('salary'))
         scores['salary_score'], salary_reasons = self._score_salary(
-            job_data.get('salary_min'),
-            job_data.get('salary_max')
+            parsed_salary
         )
         reasons.extend(salary_reasons)
         
@@ -238,12 +240,14 @@ class JobQualityScorer:
             reasons=reasons
         )
     
-    def _score_experience(self, min_exp: Optional[int], max_exp: Optional[int], 
+    def _score_experience(self, parsed_experience: Dict[str, Any], 
                           is_fresher: bool) -> tuple[float, List[str]]:
         """Score based on experience match with criteria"""
         criteria = self.experience_criteria
         scoring = criteria.get('scoring', {})
         reasons = []
+        min_exp = parsed_experience.get('min') if parsed_experience else None
+        max_exp = parsed_experience.get('max') if parsed_experience else None
         
         # Fresher jobs get top score
         if is_fresher:
@@ -430,14 +434,15 @@ class JobQualityScorer:
                 reasons.append("○ Location unspecified")
                 return scoring.get('unspecified', 60.0), reasons
     
-    def _score_salary(self, min_salary: Optional[float], 
-                      max_salary: Optional[float]) -> tuple[float, List[str]]:
+    def _score_salary(self, parsed_salary: Dict[str, Any]) -> tuple[float, List[str]]:
         """Score based on salary range alignment"""
         criteria = self.config['salary_criteria']
         min_expected = criteria.get('min_expected_inr', 15000)
         max_expected = criteria.get('max_expected_inr', 100000)
         modifiers = criteria.get('score_modifier', {})
         reasons = []
+        min_salary = parsed_salary.get('min') if parsed_salary else None
+        max_salary = parsed_salary.get('max') if parsed_salary else None
         
         if not min_salary and not max_salary:
             reasons.append("○ Salary not specified")
@@ -468,7 +473,8 @@ class JobQualityScorer:
             score += factors.get('has_apply_link', 20)
         
         # Has salary
-        if job_data.get('salary_min') or job_data.get('salary_max'):
+        parsed_salary = extract_salary_from_text(job_data.get('salary'))
+        if parsed_salary.get('min') or parsed_salary.get('max'):
             score += factors.get('has_salary', 15)
         
         # Has skills
@@ -476,7 +482,9 @@ class JobQualityScorer:
             score += factors.get('has_skills', 10)
         
         # Fresher-friendly
-        if job_data.get('is_fresher') or ((job_data.get('experience_max') or 99) <= 2):
+        parsed_experience = parse_experience(job_data.get('experience'))
+        max_experience = parsed_experience.get('max')
+        if job_data.get('is_fresher') or ((max_experience or 99) <= 2):
             score += factors.get('freshers_welcome', 20)
         
         # Remote work
@@ -507,12 +515,13 @@ class JobQualityScorer:
         
         for category, keywords in self.excluded_keywords.items():
             for keyword in keywords:
-                if keyword.lower() in text_to_check:
+                if self._keyword_present(text_to_check, keyword):
                     fail_reasons.append(f"✗ Contains excluded keyword: {keyword} ({category})")
                     return False, fail_reasons
         
         # Check location compatibility (REJECT international onsite jobs)
         location_data = job_data.get('location_data') or {}
+        geo_scope = 'unspecified'
         if location_data:
             geo_scope = location_data.get('geographic_scope', 'unspecified')
             is_remote = location_data.get('is_remote', False)
@@ -527,6 +536,25 @@ class JobQualityScorer:
             if is_onsite and 'relocation' in text_to_check:
                 fail_reasons.append("✗ Strict onsite with relocation requirement")
                 return False, fail_reasons
+
+        # Fallback guard: if extractor misses geography but text clearly indicates an
+        # international onsite/non-remote post, reject.
+        remote_signals = ["remote", "work from home", "wfh", "hybrid", "anywhere"]
+        onsite_signals = self.location_filters.get('onsite_only_indicators', []) + [
+            "islandwide", "onsite", "on-site", "office", "work from office", "wfo"
+        ]
+        international_keywords = self.location_filters.get('international_keywords', [])
+
+        has_international_keyword = any(
+            self._keyword_present(text_to_check, keyword)
+            for keyword in international_keywords
+        )
+        has_remote_signal = any(self._keyword_present(text_to_check, signal) for signal in remote_signals)
+        has_onsite_signal = any(self._keyword_present(text_to_check, signal) for signal in onsite_signals)
+
+        if geo_scope == 'unspecified' and has_international_keyword and (has_onsite_signal or not has_remote_signal):
+            fail_reasons.append("✗ International onsite/non-remote posting (fallback excluded)")
+            return False, fail_reasons
         
         # Minimum location score threshold
         if scores.get('location_compatibility', 100) < 10:
@@ -549,6 +577,22 @@ class JobQualityScorer:
             return False, fail_reasons
         
         return True, []
+
+    @staticmethod
+    def _keyword_present(text: str, keyword: str) -> bool:
+        """Case-insensitive keyword match with boundary-safe behavior for simple terms."""
+        if not text or not keyword:
+            return False
+
+        normalized_keyword = keyword.strip().lower()
+        if not normalized_keyword:
+            return False
+
+        if re.match(r"^[a-z0-9][a-z0-9\s\-/]*[a-z0-9]$", normalized_keyword):
+            body = re.escape(normalized_keyword).replace(r"\ ", r"\s+")
+            return bool(re.search(rf"\b{body}\b", text, flags=re.IGNORECASE))
+
+        return normalized_keyword in text.lower()
 
 
 # Global instance (singleton pattern)
