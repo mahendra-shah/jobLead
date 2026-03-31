@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     STORAGE_TYPE: str = "mongodb"  # "local" or "mongodb" for raw message storage
     # When True and localhost fails, try Atlas (can hang if network/credentials wrong). Default: off.
     MONGODB_ATLAS_FALLBACK: bool = False
+    # Web/board crawled jobs queue (Mongo → ML → verified JSON → Sheets). Not Telegram raw_messages.
+    JOB_INGEST_COLLECTION: str = "job_ingest"
     
     @property
     def MONGODB_URI(self) -> str:

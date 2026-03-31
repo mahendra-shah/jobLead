@@ -13,14 +13,17 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from sqlalchemy.orm import Session  # kept for future DB-based exports
+from sqlalchemy import and_, select
 
 import pytz
 
 from app.config import settings
+from app.models.job import Job
 from app.utils.timezone import IST, ist_today_utc_window
 
 logger = logging.getLogger(__name__)
@@ -606,6 +609,147 @@ class JobBoardSheetsService:
             "jobs_exported": len(rows),
             "append": append,
             "start_row": start_row_1based,
+        }
+
+    def export_jobs_from_postgres(
+        self,
+        db: Session,
+        *,
+        date_str: Optional[str] = None,
+        append: bool = False,
+        source_value: str = "job_board",
+    ) -> Dict:
+        """Export Postgres jobs (filtered by source + IST date) to <date>_jobs tab."""
+        if not date_str:
+            date_str = self._default_ist_date_str()
+        tab_name = f"{date_str}_jobs"
+
+        ref_dt = datetime.strptime(date_str, "%Y-%m-%d")
+        start_utc, end_utc, _ = ist_today_utc_window(ref_dt)
+
+        query = (
+            select(Job)
+            .where(
+                and_(
+                    Job.source == source_value,
+                    Job.created_at >= start_utc,
+                    Job.created_at < end_utc,
+                )
+            )
+            .order_by(Job.created_at.desc())
+        )
+        jobs = db.execute(query).scalars().all()
+        if not jobs:
+            return {
+                "status": "no_jobs",
+                "date": date_str,
+                "tab_name": tab_name,
+                "jobs_exported": 0,
+                "append": append,
+            }
+
+        headers = [
+            "Segment (Tech / Non-tech)",
+            "Category",
+            "Job Title",
+            "Company",
+            "Location Type",
+            "Location Detail",
+            "Country",
+            "Work Type",
+            "Seniority Level",
+            "Salary",
+            "Skills",
+            "Degree / Education",
+            "Job Description (short)",
+            "Apply URL",
+            "Source Domain",
+            "Source Discovered Date",
+            "Job Posted At (raw)",
+            "Date & time (India)",
+            "Crawled At (UTC)",
+        ]
+        sheet_id = self._ensure_tab_with_headers(tab_name, headers, self.JOB_COLUMN_WIDTHS)
+
+        if append:
+            start_row_1based = self._next_append_row_1based(tab_name)
+        else:
+            self._clear_data_rows(tab_name, num_cols=len(headers))
+            start_row_1based = 2
+
+        rows: List[List[str]] = []
+        for j in jobs:
+            source_url = j.source_url or ""
+            source_domain = j.source_channel_name or (urlparse(source_url).netloc if source_url else "")
+            segment, category = self._classify_job(j.title or "", source_domain or "")
+            if j.job_type:
+                wt = str(j.job_type).strip()
+            elif j.employment_type:
+                wt = str(j.employment_type).strip()
+            else:
+                wt = ""
+            salary_raw = ""
+            if isinstance(j.salary_range, dict):
+                salary_raw = str(j.salary_range.get("raw") or "")
+            if not salary_raw and (j.salary_min is not None or j.salary_max is not None):
+                salary_raw = f"{j.salary_min or ''}-{j.salary_max or ''}".strip("-")
+            skills = ", ".join(j.skills_required or []) if isinstance(j.skills_required, list) else ""
+
+            created_utc = j.created_at.isoformat() if j.created_at else ""
+            created_ist = ""
+            if j.created_at:
+                created_ist = j.created_at.replace(tzinfo=pytz.utc).astimezone(IST).strftime("%Y-%m-%d %H:%M")
+
+            rows.append(
+                [
+                    segment,
+                    category,
+                    j.title or "",
+                    j.company_name or "",
+                    j.work_type or "",
+                    j.location or "",
+                    "",
+                    wt,
+                    j.experience_required or "",
+                    salary_raw,
+                    skills,
+                    "",
+                    (j.description or "")[:500],
+                    source_url,
+                    source_domain,
+                    "",
+                    "",
+                    created_ist,
+                    created_utc,
+                ]
+            )
+
+        end_col = chr(ord("A") + len(headers) - 1)
+        end_row = start_row_1based + len(rows) - 1
+        range_name = f"{tab_name}!A{start_row_1based}:{end_col}{end_row}"
+        self.sheets.values().update(
+            spreadsheetId=self.sheet_id,
+            range=range_name,
+            valueInputOption="RAW",
+            body={"values": rows},
+        ).execute()
+        if sheet_id is not None:
+            self._format_data_cells(
+                tab_name,
+                sheet_id,
+                len(headers),
+                len(rows),
+                data_start_row_0based=start_row_1based - 1,
+            )
+
+        return {
+            "status": "success",
+            "date": date_str,
+            "tab_name": tab_name,
+            "jobs_exported": len(rows),
+            "append": append,
+            "start_row": start_row_1based,
+            "source": source_value,
         }
 
 

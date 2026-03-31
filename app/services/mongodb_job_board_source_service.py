@@ -26,6 +26,17 @@ logger = logging.getLogger(__name__)
 JOB_BOARD_SOURCES_COLLECTION = "job_board_sources"
 
 
+def _normalize_domain_key(doc: Dict[str, Any]) -> str:
+    """Stable key so one batch does not crawl the same board twice via duplicate Mongo rows."""
+    d = str(doc.get("domain") or "").strip().lower()
+    if d:
+        return f"domain:{d}"
+    u = doc.get("url_norm") or _normalize_url(str(doc.get("url") or ""))
+    if u:
+        return f"url:{u}"
+    return f"id:{doc.get('_id')}"
+
+
 def _normalize_url(url: str) -> str:
     if not url:
         return ""
@@ -306,6 +317,39 @@ class MongoJobBoardSourcesService:
             "student_pipeline_eligible": doc.get("student_pipeline_eligible"),
         }
 
+    def _ordered_crawl_ready_docs(
+        self,
+        *,
+        student_pipeline_priority: bool = True,
+        student_pipeline_only: bool = False,
+    ) -> List[Dict[str, Any]]:
+        self._ensure_indexes()
+        assert self._col is not None
+
+        q: Dict[str, Any] = {"crawl_ready": True, "status": "active"}
+        if student_pipeline_only:
+            q["student_pipeline_eligible"] = True
+
+        cursor = self._col.find(q).sort([("health_score", -1)])
+        all_docs = list(cursor)
+
+        if not student_pipeline_priority or student_pipeline_only:
+            merged = all_docs
+        else:
+            eligible = [d for d in all_docs if d.get("student_pipeline_eligible") is True]
+            ineligible = [d for d in all_docs if d.get("student_pipeline_eligible") is not True]
+            merged = eligible + ineligible
+
+        seen: set[str] = set()
+        out: List[Dict[str, Any]] = []
+        for d in merged:
+            key = _normalize_domain_key(d)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(d)
+        return out
+
     def get_phase2_crawl_queue(
         self,
         *,
@@ -319,22 +363,41 @@ class MongoJobBoardSourcesService:
           then others, each bucket by health_score desc.
         - student_pipeline_only=True: only eligible rows (no fallback).
         """
-        self._ensure_indexes()
-        assert self._col is not None
-
-        q: Dict[str, Any] = {"crawl_ready": True, "status": "active"}
-        if student_pipeline_only:
-            q["student_pipeline_eligible"] = True
-
-        cursor = self._col.find(q).sort([("health_score", -1)])
-        all_docs = list(cursor)
-
-        if not student_pipeline_priority or student_pipeline_only:
-            out = all_docs[: int(limit)]
-            return [self.mongo_doc_to_phase2_source(d) for d in out]
-
-        eligible = [d for d in all_docs if d.get("student_pipeline_eligible") is True]
-        ineligible = [d for d in all_docs if d.get("student_pipeline_eligible") is not True]
-        ordered = eligible + ineligible
+        ordered = self._ordered_crawl_ready_docs(
+            student_pipeline_priority=student_pipeline_priority,
+            student_pipeline_only=student_pipeline_only,
+        )
         return [self.mongo_doc_to_phase2_source(d) for d in ordered[: int(limit)]]
+
+    def get_phase2_crawl_queue_slice(
+        self,
+        *,
+        offset: int,
+        limit: int,
+        student_pipeline_priority: bool = True,
+        student_pipeline_only: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """Same order as get_phase2_crawl_queue but windowed for batched daily runs."""
+        ordered = self._ordered_crawl_ready_docs(
+            student_pipeline_priority=student_pipeline_priority,
+            student_pipeline_only=student_pipeline_only,
+        )
+        off = max(0, int(offset))
+        lim = max(0, int(limit))
+        chunk = ordered[off : off + lim]
+        return [self.mongo_doc_to_phase2_source(d) for d in chunk]
+
+    def count_crawl_ready_active(
+        self,
+        *,
+        student_pipeline_priority: bool = True,
+        student_pipeline_only: bool = False,
+    ) -> int:
+        """Length of the Phase-2 queue (unique domain / URL key), not raw Mongo row count."""
+        return len(
+            self._ordered_crawl_ready_docs(
+                student_pipeline_priority=student_pipeline_priority,
+                student_pipeline_only=student_pipeline_only,
+            )
+        )
 

@@ -1,10 +1,8 @@
 {
   "meta": {
-    "runs_merged": [
-      "jobs_run_fallback_51_15_try0.json"
-    ],
-    "total_jobs_unique": 2,
-    "max_master_jobs": 0
+    "generated_at_utc": "2026-03-27T17:01:34Z",
+    "sources_used": 12,
+    "total_jobs": 2
   },
   "jobs": [
     {
@@ -15,7 +13,7 @@
       "source_domain": "www.assemblyai.com",
       "source_discovered_date": null,
       "job_posted_at_raw": null,
-      "crawled_at_utc": "2026-03-30T03:08:00Z",
+      "crawled_at_utc": "2026-03-27T16:59:45Z",
       "segment": "Tech",
       "category": "Software / Engineering",
       "location_type": "",
@@ -37,7 +35,7 @@
       "source_domain": "www.assemblyai.com",
       "source_discovered_date": null,
       "job_posted_at_raw": null,
-      "crawled_at_utc": "2026-03-30T03:08:00Z",
+      "crawled_at_utc": "2026-03-27T16:59:45Z",
       "segment": "Tech",
       "category": "Software / Engineering",
       "location_type": "",
