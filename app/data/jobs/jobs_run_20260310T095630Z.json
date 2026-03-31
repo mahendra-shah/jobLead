@@ -1,0 +1,1059 @@
+{
+  "meta": {
+    "generated_at_utc": "2026-03-10T09:57:15Z",
+    "sources_used": 10,
+    "total_jobs": 105
+  },
+  "jobs": [
+    {
+      "title": "See open positions",
+      "company": null,
+      "location": null,
+      "url": "https://about.gitlab.com/jobs/all-jobs/",
+      "source_domain": "remoteintech.company",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:31Z"
+    },
+    {
+      "title": "Learn more about our accommodations and accessibility.",
+      "company": null,
+      "location": null,
+      "url": "https://about.gitlab.com/jobs/accessibility",
+      "source_domain": "remoteintech.company",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:31Z"
+    },
+    {
+      "title": "Learn more",
+      "company": null,
+      "location": null,
+      "url": "https://about.gitlab.com/jobs/ai-interview-process/",
+      "source_domain": "remoteintech.company",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:31Z"
+    },
+    {
+      "title": "Life at Stripe",
+      "company": null,
+      "location": null,
+      "url": "https://stripe.com/in/jobs/life-at-stripe",
+      "source_domain": "remoteintech.company",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:36Z"
+    },
+    {
+      "title": "Benefits",
+      "company": null,
+      "location": null,
+      "url": "https://stripe.com/in/jobs/benefits",
+      "source_domain": "remoteintech.company",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:36Z"
+    },
+    {
+      "title": "University",
+      "company": null,
+      "location": null,
+      "url": "https://stripe.com/in/jobs/university",
+      "source_domain": "remoteintech.company",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:36Z"
+    },
+    {
+      "title": "See open roles",
+      "company": null,
+      "location": null,
+      "url": "https://stripe.com/jobs/search",
+      "source_domain": "remoteintech.company",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:36Z"
+    },
+    {
+      "title": "How we operate",
+      "company": null,
+      "location": null,
+      "url": "https://stripe.com/in/jobs/culture",
+      "source_domain": "remoteintech.company",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:36Z"
+    },
+    {
+      "title": "General application",
+      "company": null,
+      "location": "General applicationWe do not currently have any open positions. However, we welcome you to submit your resume and cover letter to ourGeneral Applicationfor future consideration. We're always looking for great talent!Employment rights and noticesNotice of E-Verify ParticipationNotice of Right to WorkEqual Employment Opportunity Policy",
+      "url": "https://lullabot.bamboohr.com/jobs/view.php?id=13&source=aWQ9OA%3D%3D",
+      "source_domain": "www.lullabot.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:51Z"
+    },
+    {
+      "title": "Remote",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/jobs/remote",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:57Z"
+    },
+    {
+      "title": "Product Specialist",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/product-specialist/8700479",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:57Z"
+    },
+    {
+      "title": "Vice President of Engineering",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/vice-president-engineering/8700402",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:57Z"
+    },
+    {
+      "title": "Principal Software Engineer - Contractors Payroll",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/principal-software-engineer-payroll/4693095",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:57Z"
+    },
+    {
+      "title": "Sr Staff Frontend Engineer, Design Systems",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/sr-staff-frontend-engineer-design-systems/8700379",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:57Z"
+    },
+    {
+      "title": "Head of Gustie Growth",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/head-gustie-growth/8565297",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:57Z"
+    },
+    {
+      "title": "Data Analyst - Authentication and Grading",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/data-analyst-authentication-and-grading/8700319",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:57Z"
+    },
+    {
+      "title": "Event Marketing Manager",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/event-marketing-manager/8127618",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:57Z"
+    },
+    {
+      "title": "Manager, Finance & Strategy (Beckett)",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/manager-finance-strategy-beckett/8395409",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:57Z"
+    },
+    {
+      "title": "Manager, Procurement Business Processes",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/manager-procurement-business-processes/8700133",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:57Z"
+    },
+    {
+      "title": "Shipping & Receiving HiLo Clerk (First Shift)",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/shipping-receiving-hilo-clerk-first-shift/8700125",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:57Z"
+    },
+    {
+      "title": "Shipping & Receiving HiLo Clerk (Second Shift)",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/shipping-receiving-hilo-clerk-second-shift/8700120",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:57Z"
+    },
+    {
+      "title": "Growth Marketing Manager",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/growth-marketing-manager/8700064",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:57Z"
+    },
+    {
+      "title": "Senior Digital Experience Lead",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/senior-digital-experience-lead/8700000",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:57Z"
+    },
+    {
+      "title": "Senior Software Engineer (Full Stack)",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/senior-software-engineer-full-stack/8699997",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:57Z"
+    },
+    {
+      "title": "Federal Solution Sales Executive- Identity and Security",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/federal-solution-sales-executive-identity-and-security/8699992",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:57Z"
+    },
+    {
+      "title": "Senior Software Engineer - iOS",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/senior-software-engineer-ios/8699959",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:57Z"
+    },
+    {
+      "title": "Solutions Engineering Manager - NYC",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/solutions-engineering-manager-nyc/8698734",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:57Z"
+    },
+    {
+      "title": "Senior Project Engineer, Global Services",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/senior-project-engineer-global-services/7426784",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:57Z"
+    },
+    {
+      "title": "Software Engineer, Database Developer (Experienced or Senior)",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/software-engineer-database-developer-experienced-or-senior/8699898",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:57Z"
+    },
+    {
+      "title": "Senior Manager, BTI Mission Systems Payloads",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/senior-manager-bti-mission-systems-payloads/8699897",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:57Z"
+    },
+    {
+      "title": "Mission Operations Engineer, Colorado Springs - Millennium Space Systems",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/mission-operations-engineer-entry-level-millennium-space-systems/8475711",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:57Z"
+    },
+    {
+      "title": "Senior Software Engineer, Backend - Platform (Payments)",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/senior-software-engineer-backend-platform-payments/8699878",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:57Z"
+    },
+    {
+      "title": "Internal Audit Analyst",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/internal-audit-analyst/8698542",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:57Z"
+    },
+    {
+      "title": "Senior Software Engineer, Backend (Platform - Financial Eng)",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/senior-software-engineer-backend-platform-financial-eng/8698541",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:57Z"
+    },
+    {
+      "title": "Healthcare Partnerships Associate (Remote - Atlanta)",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/healthcare-partnerships-associate-remote-atlanta/8699699",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:58Z"
+    },
+    {
+      "title": "Healthcare Partnerships Associate (Remote - South Florida)",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/healthcare-partnerships-associate-remote-south-florida/8699698",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:58Z"
+    },
+    {
+      "title": "Healthcare Partnerships Associate (Remote - Chicago)",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/healthcare-partnerships-associate-remote-chicago/8699697",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:58Z"
+    },
+    {
+      "title": "Senior Sales Engineer - Majors West",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/senior-sales-engineer-majors-west/8699663",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:58Z"
+    },
+    {
+      "title": "Corporate Sales Engineer, LATAM (Remote)",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/corporate-sales-engineer-latam-remote/8699596",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:58Z"
+    },
+    {
+      "title": "Regional Sales Manager – Majors (Remote, Pittsburgh)",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/regional-sales-manager-majors-remote-pa-nj/8694780",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:58Z"
+    },
+    {
+      "title": "Security Advisor I, Falcon Complete (Remote)",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/security-advisor-i-falcon-complete-remote/8694772",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:58Z"
+    },
+    {
+      "title": "Physician - Tele-Medicine",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/physician-tele-medicine/8699548",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:58Z"
+    },
+    {
+      "title": "Licensed Nurse Practitioner",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/licensed-nurse-practitioner/8699519",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:58Z"
+    },
+    {
+      "title": "System Administrator",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/system-administrator/8699411",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:58Z"
+    },
+    {
+      "title": "Sr. Software Engineer",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/sr-software-engineer/8699410",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:58Z"
+    },
+    {
+      "title": "Senior Director, Product Management",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/senior-director-product-management/8699351",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:58Z"
+    },
+    {
+      "title": "Recruiter",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/recruiter/8699223",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:58Z"
+    },
+    {
+      "title": "Staff Product Manager, GTPN",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/staff-product-manager-gtpn/8259838",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:58Z"
+    },
+    {
+      "title": "Staff Product Manager, Embedded Finance",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/staff-product-manager-embedded-finance/8190534",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:56:58Z"
+    },
+    {
+      "title": "Programming Coordinator",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/programming-coordinator/8670713",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:04Z"
+    },
+    {
+      "title": "Security Engineer",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/sr-staff-cyber-security-engineer-ai/8383139",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:07Z"
+    },
+    {
+      "title": "Technical Project Manager",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/technical-project-manager/8698303",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:07Z"
+    },
+    {
+      "title": "Senior Business Analyst",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/sr-business-analyst-successfactors/8698302",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:07Z"
+    },
+    {
+      "title": "Product Manager",
+      "company": null,
+      "location": null,
+      "url": "https://builtin.com/job/product-manager-ai-enterprise-data/8681410",
+      "source_domain": "builtin.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:07Z"
+    },
+    {
+      "title": "Senior Blockchain Engineer",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/senior-blockchain-engineer-at-unlimit-pro-4",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Senior/Principal Infrastructure Engineer Paradex",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/senior-principal-infrastructure-engineer-at-paradigm-3",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Co-founder & CEO",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/co-founder-ceo-at-niubi-bank",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Senior Blockchain Developer",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/senior-blockchain-developer-at-lemon-io",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Junior Crypto Trader (Remote, Spot Trading)",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/junior-crypto-trader-remote-spot-trading-at-token-town",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Technical Lead (Rust)",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/technical-lead-rust-at-keyrock",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Accounting and Financial Operations Analyst",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/accounting-and-financial-operations-analyst-at-nascent",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "DeFi Analyst and Educator",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/defi-analyst-and-educator-at-decentralized-masters-2",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Lead Blockchain & AI Developer for Cutting-Edge Automation Platform",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/job-opportunity-lead-blockchain-ai-developer-for-cutting-edge-automation-platform-at-graphlinq-chain-glq",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "SOCIAL ACCOUNT MANAGER",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/social-account-manager-at-phoenix-growth",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Trader Executor (Market Making)",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/trader-executor-market-making-at-fibonacci-capital-2",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Junior Crypto Trader",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/junior-crypto-trader-at-token-town-2",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Mobile Software Engineer (remote)",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/mobile-software-engineer-remote-at-dash-core-group",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Senior Solidity Developer",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/senior-solidity-developer-at-alto",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Full Stack Developer",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/full-stack-developer-at-decentralized-masters",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Fullstack Engineer (Backend-Leaning)",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/fullstack-engineer-backend-leaning-at-fountain",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Recruiter Partner (Sourcer)",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/recruiter-partner-sourcer-at-squad",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Metagraph Developer - Scala (remote)",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/metagraph-developer-scala-remote-at-constellation-network",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Assistant Trader (remote)",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/assistant-trader-remote-at-exora",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Ares: Node.js Senior/Staff Engineer (Nest.js)",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/full-stack-engineer-senior-staff-at-fountain",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Product Designer II - Consumer",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/product-designer-ii-consumer-at-coinbase",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Crypto Product Manager I - Consumer",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/crypto-product-manager-i-consumer-at-coinbase",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Smart Contract Engineer - Ethereum, Solidity",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/smart-contract-engineer-ethereum-solidity-at-clearmatics",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Compliance Manager – Crypto Exchange",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/compliance-manager-crypto-exchange-at-alemx",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Senior Frontend Developer",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/senior-frontend-developer-at-decentralized-masters",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Scala Engineer - Remote (North/South America)",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/scala-engineer-remote-north-south-america-at-constellation-network",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Senior Product Manager - Cables",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/senior-product-manager-cables-at-shift-markets",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Fullstack Web3 Developer",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/fullstack-web3-developer-at-fabric-labs",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Chief Technology Officer (CTO) & Co-Founder at Alemx",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/chief-technology-officer-cto-co-founder-at-alemx-at-alemx",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Content Marketing Strategist",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/content-marketing-strategist-at-propy",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Senior Blockchain Developer & Backend Developer for DEFI Dashbaord",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/senior-blockchain-developer-backend-developer-for-defi-dashbaord-at-cobravision-llc",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Crypto Marketing Expert",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/crypto-marketing-expert-at-cosmo-1",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Senior Customer Success Analyst (DeFi Analyst)",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/senior-customer-success-analyst-defi-analyst-at-decentralized-masters",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Senior Bitcoin/JS Developer",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/bitcoin-js-developer-at-blockonomics",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Lead Blockchain Engineer",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/lead-blockchain-engineer-at-bjak-sdn-bhd",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Head of Investor Relations & Fundraising",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/head-of-investor-relations-fundraising-at-alemx",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Frontend Web3 Developer",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/frontend-web3-developer-at-bitrefill",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Sr Full-Stack/Web3 Engineer",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/sr-full-stack-web3-engineer-at-reveel-1",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Solutions Engineer",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/solutions-engineer-at-paradex",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "MEV engineering intern",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/mev-engineering-intern-at-naked-koala-capital",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Youtube Content Creator",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/youtube-presenter-at-real-world-asset-watchlist-3",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Compliance Manager for Global Crypto Exchange",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/compliance-manager-for-global-crypto-exchange-at-alemx-1",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Product Owner for Global Crypto Exchange",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/product-owner-for-global-crypto-exchange-at-alemx",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Senior Backend Developer",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/senior-backend-developer-at-falcon-ai",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Web3 Solidity Bootcamp - Job Guaranteed 🚀",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/web3-solidity-bootcamp-job-guaranteed-at-metana",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Senior Tax Manager, Compliance",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/senior-tax-manager-compliance-at-coinbase",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Quant Developer",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/quant-developer-at-fractality-formerly-y2k-1",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Business Development Lead - Cycles Protocol",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/business-development-lead-cycles-protocol-at-informal-systems",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Gaming BD & Partnership Manager (Asia)",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/gaming-bd-partnership-manager-asia-at-portal-fantasy-at-portal-fantasy",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Core Protocol Engineer - Scala",
+      "company": null,
+      "location": null,
+      "url": "https://crypto.jobs/jobs/core-protocol-engineer-scala-at-constellation-network",
+      "source_domain": "crypto.jobs",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:11Z"
+    },
+    {
+      "title": "Internship",
+      "company": null,
+      "location": null,
+      "url": "https://cryptocurrencyjobs.co/internship/",
+      "source_domain": "cryptocurrencyjobs.co",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-03-10T09:57:13Z"
+    }
+  ]
+}
