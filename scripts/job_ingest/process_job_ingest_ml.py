@@ -18,6 +18,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from app.ml.sklearn_classifier import SklearnClassifier
 from app.services.mongodb_job_ingest_service import MongoJobIngestService
 from app.utils.india_job_gate import passes_india_relevance
+from app.utils.job_dedupe import build_text_for_ml
 from scripts.merge_job_runs import _profile_filters
 
 
@@ -50,8 +51,11 @@ def main() -> int:
         if not doc:
             break
         dk = doc.get("dedupe_key") or ""
-        text = (doc.get("text_for_ml") or "").strip()
         payload = doc.get("payload") or {}
+        text = (doc.get("text_for_ml") or "").strip()
+        rebuilt = build_text_for_ml(payload).strip()
+        if rebuilt and len(rebuilt) > len(text):
+            text = rebuilt
 
         ml_scores: dict = {
             "model_loaded": bool(clf.is_loaded),

@@ -28,6 +28,9 @@ from app.utils.timezone import IST, ist_today_utc_window
 
 logger = logging.getLogger(__name__)
 
+# Google Sheets per-cell character limit is ~50,000; stay under for safety.
+SHEET_DESCRIPTION_MAX_CHARS = 49000
+
 
 class JobBoardSheetsService:
     """Export Phase 1/2 discovery + job-board data to Google Sheets."""
@@ -65,7 +68,7 @@ class JobBoardSheetsService:
         130,  # Salary
         220,  # Skills
         160,  # Degree
-        260,  # Job Description (short)
+        420,  # Job Description (full)
         220,  # Apply URL
         140,  # Source Domain
         140,  # Source Discovered Date
@@ -312,6 +315,22 @@ class JobBoardSheetsService:
         return segment, category
 
     @staticmethod
+    def _sheet_description_cell(text: Optional[str]) -> str:
+        t = (text or "").strip()
+        if len(t) <= SHEET_DESCRIPTION_MAX_CHARS:
+            return t
+        return t[: SHEET_DESCRIPTION_MAX_CHARS - 40] + "\n...[truncated: Sheets cell limit]"
+
+    @staticmethod
+    def _pretty_location_type(val: Optional[str]) -> str:
+        v = (val or "").strip().lower()
+        if not v:
+            return ""
+        if v in ("on-site", "on_site"):
+            v = "onsite"
+        return v[:1].upper() + v[1:] if len(v) > 1 else v.upper()
+
+    @staticmethod
     def _crawled_at_ist_simple(utc_str: str) -> str:
         """Format crawled_at_utc (ISO) as India date and time, e.g. '16 March, 11:20 am'."""
         if not utc_str or not isinstance(utc_str, str):
@@ -508,7 +527,7 @@ class JobBoardSheetsService:
             "Salary",
             "Skills",
             "Degree / Education",
-            "Job Description (short)",
+            "Job Description (full)",
             "Apply URL",
             "Source Domain",
             "Source Discovered Date",
@@ -550,7 +569,9 @@ class JobBoardSheetsService:
                 skills = ", ".join(str(s) for s in skills_val) if skills_val else sk_der
             else:
                 skills = (skills_val or sk_der) if isinstance(skills_val, str) else sk_der
-            description = (job.get("description") or job.get("raw_text") or "")[:240]
+            description = self._sheet_description_cell(
+                job.get("description") or job.get("raw_text") or ""
+            )
             apply_url = job.get("apply_url") or job.get("url") or ""
 
             rows.append(
@@ -661,7 +682,7 @@ class JobBoardSheetsService:
             "Salary",
             "Skills",
             "Degree / Education",
-            "Job Description (short)",
+            "Job Description (full)",
             "Apply URL",
             "Source Domain",
             "Source Discovered Date",
@@ -695,6 +716,31 @@ class JobBoardSheetsService:
                 salary_raw = f"{j.salary_min or ''}-{j.salary_max or ''}".strip("-")
             skills = ", ".join(j.skills_required or []) if isinstance(j.skills_required, list) else ""
 
+            jb: dict = {}
+            if isinstance(j.quality_breakdown, dict):
+                inner = j.quality_breakdown.get("job_board_export")
+                if isinstance(inner, dict):
+                    jb = inner
+
+            fake = {
+                "title": j.title or "",
+                "location": j.location or "",
+                "description": j.description or j.raw_text or "",
+                "skills": j.skills_required if isinstance(j.skills_required, list) else [],
+                "salary": salary_raw,
+            }
+            lt_d, ld_d, co_d, wt_d, sr_d, sal_der, sk_der, deg_d = self._derive_job_metadata(fake)
+            country_cell = (jb.get("country") or "").strip() or co_d
+            degree_cell = (jb.get("degree") or "").strip() or deg_d
+            discovered_cell = (jb.get("source_discovered_date") or "").strip()
+            posted_cell = (jb.get("job_posted_at_raw") or "").strip()
+            loc_type_disp = self._pretty_location_type(j.work_type) or lt_d
+            work_type_disp = wt or wt_d
+            seniority_disp = (j.experience_required or "").strip() or sr_d
+            salary_disp = salary_raw or sal_der
+            skills_disp = skills or sk_der
+            location_detail = (j.location or "").strip() or ld_d
+
             created_utc = j.created_at.isoformat() if j.created_at else ""
             created_ist = ""
             if j.created_at:
@@ -706,19 +752,19 @@ class JobBoardSheetsService:
                     category,
                     j.title or "",
                     j.company_name or "",
-                    j.work_type or "",
-                    j.location or "",
-                    "",
-                    wt,
-                    j.experience_required or "",
-                    salary_raw,
-                    skills,
-                    "",
-                    (j.description or "")[:500],
+                    loc_type_disp,
+                    location_detail,
+                    country_cell,
+                    work_type_disp,
+                    seniority_disp,
+                    salary_disp,
+                    skills_disp,
+                    degree_cell,
+                    self._sheet_description_cell(j.description or j.raw_text or ""),
                     source_url,
                     source_domain,
-                    "",
-                    "",
+                    discovered_cell,
+                    posted_cell,
                     created_ist,
                     created_utc,
                 ]
