@@ -293,7 +293,7 @@ def _derive_segment_category(title: str, source_domain: str) -> tuple[str, str]:
     design_kw = ["designer", "ux", "ui", "product design", "graphic design"]
     def any_kw(kws): return any(kw in t for kw in kws)
     if any_kw(tech_kw): return "Tech", "Software / Engineering"
-    if any_kw(product_kw): return "Tech", "Product Management"
+    if any_kw(data_kw): return "Non-tech", "Data / Analytics"
     if any_kw(design_kw): return "Tech", "Design / UX"
 >>>>>>> be4cd6c (Crawler enhancement)
     if any_kw(sales_kw): return "Non-tech", "Sales"

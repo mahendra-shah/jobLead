@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import List, Union, Annotated, Any
 from pydantic import Field, field_validator, BeforeValidator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+import os
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -73,6 +74,35 @@ class Settings(BaseSettings):
     @property
     def MONGODB_URI(self) -> str:
         """Construct MongoDB connection URI"""
+        # Allow overriding via environment variable (needed for local MongoDB).
+        # Example from .env:
+        #   MONGODB_URI=mongodb://localhost:27017/placement_db
+        uri_env = os.getenv("MONGODB_URI")
+        if uri_env and uri_env.strip():
+            return uri_env.strip()
+
+        # Pydantic loads .env for fields, but does not necessarily export it to
+        # os.environ. If an override is present in .env, read it directly.
+        try:
+            from pathlib import Path
+
+            repo_root = Path(__file__).resolve().parent.parent
+            env_path = repo_root / ".env"
+            if env_path.exists():
+                for line in env_path.read_text(encoding="utf-8").splitlines():
+                    s = line.strip()
+                    if not s or s.startswith("#"):
+                        continue
+                    if s.startswith("MONGODB_URI"):
+                        # supports: MONGODB_URI=mongodb://...
+                        _, _, val = s.partition("=")
+                        val = val.strip().strip('"').strip("'")
+                        if val:
+                            return val
+        except Exception:
+            # If parsing .env fails, fall back to Atlas construction.
+            pass
+
         if self.MONGODB_USERNAME and self.MONGODB_PASSWORD:
             return f"mongodb+srv://{self.MONGODB_USERNAME}:{self.MONGODB_PASSWORD}@{self.MONGODB_CLUSTER}/?retryWrites=true&w=majority"
         return f"mongodb+srv://{self.MONGODB_CLUSTER}/?retryWrites=true&w=majority"
