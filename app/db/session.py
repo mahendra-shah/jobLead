@@ -14,9 +14,16 @@ from app.db.base import Base
 # Load environment variables
 load_dotenv()
 
+# Normalize DB URLs so async engine always gets asyncpg.
+raw_database_url = str(settings.DATABASE_URL)
+if raw_database_url.startswith("postgresql://"):
+    async_database_url = raw_database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+else:
+    async_database_url = raw_database_url
+
 # Create async engine
 engine = create_async_engine(
-    settings.DATABASE_URL,
+    async_database_url,
     echo=settings.DEBUG,
     pool_size=settings.DATABASE_POOL_SIZE,
     max_overflow=settings.DATABASE_MAX_OVERFLOW,
@@ -30,7 +37,7 @@ if local_db_url:
     sync_database_url = local_db_url
     print(f"✅ Using LOCAL_DATABASE_URL for sync engine: {sync_database_url}")
 else:
-    sync_database_url = settings.DATABASE_URL.replace("+asyncpg", "")  # Remove async driver
+    sync_database_url = raw_database_url.replace("+asyncpg", "")  # Remove async driver
     print(f"⚠️  Using DATABASE_URL for sync engine: {sync_database_url}")
 
 sync_engine = create_engine(

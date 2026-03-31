@@ -22,6 +22,7 @@ api_router.include_router(channels.router, prefix="/channels", tags=["Channels"]
 api_router.include_router(applications.router, prefix="/applications", tags=["Applications"])
 api_router.include_router(admin.router, prefix="/admin", tags=["Admin"])
 api_router.include_router(job_trigger_router, prefix="/job-trigger", tags=["Job Trigger"])
+api_router.include_router(discovery.router, prefix="/discovery", tags=["Discovery"])
 
 # Student Management System - New endpoints
 api_router.include_router(student_crud.router, prefix="/admin/students", tags=["Admin - Student Management"])

@@ -17,6 +17,7 @@ from app.models.job import Job
 # Models with foreign keys to other models
 from app.models.application import Application
 from app.models.student_interactions import SavedJob, JobView, StudentNotification
+from app.models.discovery_source import DiscoverySource
 
 # Export all models
 __all__ = [
@@ -31,4 +32,5 @@ __all__ = [
     "SavedJob",
     "JobView",
     "StudentNotification",
+    "DiscoverySource",
 ]

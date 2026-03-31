@@ -108,6 +108,8 @@ class Settings(BaseSettings):
     
     # Google Sheets
     SHEET_ID: str = ""  # Google Sheets ID for daily job exports
+    # Separate sheet for job-board crawl/export (Phase 1/2 pipeline).
+    JOB_BOARD_SHEET_ID: str = ""
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
 
