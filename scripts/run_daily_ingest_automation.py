@@ -67,6 +67,12 @@ def main() -> int:
         help="Cap job candidates per source (faster + less waste)",
     )
     parser.add_argument("--ml-limit", type=int, default=600, help="Max ML rows per batch")
+    parser.add_argument(
+        "--sync-limit",
+        type=int,
+        default=200,
+        help="Max verified rows to sync to Postgres per batch (controls sync time).",
+    )
     parser.add_argument("--prefer-less-known-sources", action="store_true", help="Prioritize lesser-known source domains")
     parser.add_argument("--exclude-popular-sources", action="store_true", help="Skip major/common boards")
     parser.add_argument("--focus-digital-marketing", action="store_true", help="Focus output on digital-marketing roles")
@@ -211,6 +217,8 @@ def main() -> int:
             str(args.max_jobs_per_source),
             "--ml-limit",
             str(args.ml_limit),
+            "--sync-limit",
+            str(args.sync_limit),
             "--sleep-min",
             str(args.sleep_min),
             "--sleep-max",
@@ -250,6 +258,8 @@ def main() -> int:
         str(args.max_jobs_per_source),
         "--ml-limit",
         str(args.ml_limit),
+        "--sync-limit",
+        str(args.sync_limit),
     ]
     if args.prefer_less_known_sources:
         pipe_cmd.append("--prefer-less-known-sources")

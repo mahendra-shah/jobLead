@@ -42,6 +42,12 @@ def main() -> int:
     )
     parser.add_argument("--ml-limit", type=int, default=400)
     parser.add_argument(
+        "--sync-limit",
+        type=int,
+        default=200,
+        help="Max verified rows to sync to Postgres per iteration.",
+    )
+    parser.add_argument(
         "--sleep-min",
         type=float,
         default=120.0,
@@ -98,6 +104,8 @@ def main() -> int:
             str(args.max_jobs_per_source),
             "--ml-limit",
             str(args.ml_limit),
+            "--sync-limit",
+            str(args.sync_limit),
         ]
         if not args.disable_mongo_fallback:
             cmd.append("--mongo-fallback-json")

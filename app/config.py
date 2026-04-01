@@ -1,9 +1,12 @@
 """Application configuration using Pydantic Settings."""
 
+import os
 from pathlib import Path
 from typing import List, Union, Annotated, Any
 from pydantic import Field, field_validator, BeforeValidator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def parse_list_of_ints(v: Any) -> List[int]:
