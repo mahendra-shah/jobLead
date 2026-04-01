@@ -78,6 +78,12 @@ def main() -> int:
         help="Keep digital-marketing oriented jobs in profile filter step.",
     )
     parser.add_argument("--ml-limit", type=int, default=500, help="Max job_ingest docs to process this run")
+    parser.add_argument(
+        "--sync-limit",
+        type=int,
+        default=200,
+        help="Max verified rows to sync to Postgres this run (keeps each batch fast).",
+    )
     parser.add_argument("--no-sheet", action="store_true", help="Skip Google Sheets export")
     parser.add_argument(
         "--append-sheet",
@@ -270,6 +276,7 @@ def main() -> int:
     if args.sleep_after_crawl > 0:
         time.sleep(float(args.sleep_after_crawl))
 
+    print(">>> ML: process_job_ingest_ml (this can take several minutes) ...", flush=True)
     ml_cmd = [py, "scripts/job_ingest/process_job_ingest_ml.py", "--limit", str(args.ml_limit)]
     if args.no_strict_india:
         ml_cmd.append("--no-strict-india")
@@ -277,11 +284,21 @@ def main() -> int:
     if r2.returncode != 0:
         return r2.returncode
 
-    r3 = subprocess.run([py, "scripts/job_ingest/sync_verified_to_postgres.py"], cwd=ROOT)
+    print(f">>> Postgres: sync_verified_to_postgres (limit={args.sync_limit}) ...", flush=True)
+    r3 = subprocess.run(
+        [
+            py,
+            "scripts/job_ingest/sync_verified_to_postgres.py",
+            "--limit",
+            str(args.sync_limit),
+        ],
+        cwd=ROOT,
+    )
     if r3.returncode != 0:
         return r3.returncode
 
     if not args.no_sheet:
+        print(">>> Google Sheets: export_job_board_jobs_to_sheets (chunked writes) ...", flush=True)
         cmd = [
             py,
             "scripts/export_job_board_jobs_to_sheets.py",

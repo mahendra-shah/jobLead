@@ -10,6 +10,8 @@ produced by the discovery/crawling pipeline:
 
 import json
 import logging
+import warnings
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -18,7 +20,7 @@ from urllib.parse import urlparse
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from sqlalchemy.orm import Session  # kept for future DB-based exports
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, or_, select
 
 import pytz
 
@@ -27,6 +29,9 @@ from app.models.job import Job
 from app.utils.timezone import IST, ist_today_utc_window
 
 logger = logging.getLogger(__name__)
+
+# Google Sheets per-cell character limit is ~50,000; stay under for safety.
+SHEET_DESCRIPTION_MAX_CHARS = 49000
 
 
 class JobBoardSheetsService:
@@ -65,7 +70,7 @@ class JobBoardSheetsService:
         130,  # Salary
         220,  # Skills
         160,  # Degree
-        260,  # Job Description (short)
+        420,  # Job Description (full)
         220,  # Apply URL
         140,  # Source Domain
         140,  # Source Discovered Date
@@ -211,6 +216,41 @@ class JobBoardSheetsService:
         ]
         self.sheets.batchUpdate(spreadsheetId=self.sheet_id, body={"requests": requests}).execute()
 
+    def _ensure_row_capacity(self, tab_name: str, required_end_row_1based: int) -> None:
+        """Expand sheet rowCount when write range exceeds current grid size."""
+        meta = self.sheets.get(spreadsheetId=self.sheet_id).execute()
+        target = None
+        for s in meta.get("sheets", []):
+            props = s.get("properties", {})
+            if props.get("title") == tab_name:
+                target = props
+                break
+        if not target:
+            return
+        sheet_id = target.get("sheetId")
+        grid = target.get("gridProperties", {}) or {}
+        current_rows = int(grid.get("rowCount") or 0)
+        if required_end_row_1based <= current_rows:
+            return
+        # Grow with buffer to avoid frequent API calls.
+        new_rows = max(required_end_row_1based + 500, current_rows + 1000, 5000)
+        self.sheets.batchUpdate(
+            spreadsheetId=self.sheet_id,
+            body={
+                "requests": [
+                    {
+                        "updateSheetProperties": {
+                            "properties": {
+                                "sheetId": sheet_id,
+                                "gridProperties": {"rowCount": int(new_rows)},
+                            },
+                            "fields": "gridProperties.rowCount",
+                        }
+                    }
+                ]
+            },
+        ).execute()
+
     def _clear_data_rows(self, tab_name: str, num_cols: int = 26) -> None:
         """Clear all rows except the header (row 1)."""
         try:
@@ -223,14 +263,86 @@ class JobBoardSheetsService:
             logger.warning("Could not clear rows for tab '%s': %s", tab_name, exc)
 
     def _next_append_row_1based(self, tab_name: str) -> int:
-        """First empty row below existing content in column A (1-based). Assumes row 1 is header."""
+        """First empty row below existing content in column A (1-based). Assumes row 1 is header.
+
+        Only reads ``A1:A10000`` — never ``A:A`` (full-column reads hang on large tabs). Prefer
+        :meth:`_append_rows_chunked` for appends so the next row is not needed.
+        """
         res = (
             self.sheets.values()
-            .get(spreadsheetId=self.sheet_id, range=f"{tab_name}!A:A")
+            .get(
+                spreadsheetId=self.sheet_id,
+                range=f"{tab_name}!A1:A10000",
+                majorDimension="ROWS",
+            )
             .execute()
         )
         vals = res.get("values") or []
-        return len(vals) + 1
+        n = len(vals)
+        if n >= 10000:
+            logger.warning(
+                "Tab '%s': column A has >=10000 populated rows; append-row estimate may be low. "
+                "Use chunked append API.",
+                tab_name,
+            )
+        return n + 1
+
+    def _sheet_grid_row_count(self, tab_name: str) -> int:
+        meta = self.sheets.get(spreadsheetId=self.sheet_id).execute()
+        for s in meta.get("sheets", []):
+            props = s.get("properties", {})
+            if props.get("title") == tab_name:
+                return int((props.get("gridProperties") or {}).get("rowCount") or 0)
+        return 0
+
+    def _append_rows_chunked(
+        self,
+        tab_name: str,
+        rows: List[List[str]],
+        *,
+        chunk_size: int = 25,
+    ) -> None:
+        """Append rows using values.append (no full-column read; avoids huge single POST bodies)."""
+        if not rows:
+            return
+        for i in range(0, len(rows), chunk_size):
+            chunk = rows[i : i + chunk_size]
+            lo, hi = i + 1, min(i + chunk_size, len(rows))
+            logger.info("Sheets append chunk rows %d-%d of %d", lo, hi, len(rows))
+            print(f"  Sheets: append rows {lo}-{hi} of {len(rows)}", flush=True)
+            self.sheets.values().append(
+                spreadsheetId=self.sheet_id,
+                range=f"{tab_name}!A1",
+                valueInputOption="RAW",
+                insertDataOption="INSERT_ROWS",
+                body={"values": chunk},
+            ).execute()
+
+    def _update_rows_chunked(
+        self,
+        tab_name: str,
+        num_cols: int,
+        start_row_1based: int,
+        rows: List[List[str]],
+        *,
+        chunk_size: int = 25,
+    ) -> None:
+        """Write rows via multiple values.update calls (smaller payloads, fewer timeouts)."""
+        if not rows:
+            return
+        end_col = chr(ord("A") + num_cols - 1)
+        for i in range(0, len(rows), chunk_size):
+            chunk = rows[i : i + chunk_size]
+            sr = start_row_1based + i
+            er = sr + len(chunk) - 1
+            logger.info("Sheets update chunk rows %d-%d of %d", sr, er, len(rows))
+            print(f"  Sheets: update rows {sr}-{er} of {len(rows)} total", flush=True)
+            self.sheets.values().update(
+                spreadsheetId=self.sheet_id,
+                range=f"{tab_name}!A{sr}:{end_col}{er}",
+                valueInputOption="RAW",
+                body={"values": chunk},
+            ).execute()
 
     def _default_ist_date_str(self) -> str:
         _, _, ist_date_str = ist_today_utc_window()
@@ -310,6 +422,22 @@ class JobBoardSheetsService:
             category = "Other / Unknown"
 
         return segment, category
+
+    @staticmethod
+    def _sheet_description_cell(text: Optional[str]) -> str:
+        t = (text or "").strip()
+        if len(t) <= SHEET_DESCRIPTION_MAX_CHARS:
+            return t
+        return t[: SHEET_DESCRIPTION_MAX_CHARS - 40] + "\n...[truncated: Sheets cell limit]"
+
+    @staticmethod
+    def _pretty_location_type(val: Optional[str]) -> str:
+        v = (val or "").strip().lower()
+        if not v:
+            return ""
+        if v in ("on-site", "on_site"):
+            v = "onsite"
+        return v[:1].upper() + v[1:] if len(v) > 1 else v.upper()
 
     @staticmethod
     def _crawled_at_ist_simple(utc_str: str) -> str:
@@ -508,7 +636,7 @@ class JobBoardSheetsService:
             "Salary",
             "Skills",
             "Degree / Education",
-            "Job Description (short)",
+            "Job Description (full)",
             "Apply URL",
             "Source Domain",
             "Source Discovered Date",
@@ -520,11 +648,7 @@ class JobBoardSheetsService:
         num_cols = len(headers)
         if not append:
             self._clear_data_rows(tab_name, num_cols=num_cols)
-            start_row_1based = 2
-        else:
-            start_row_1based = self._next_append_row_1based(tab_name)
-            if start_row_1based < 2:
-                start_row_1based = 2
+        start_row_1based = 2
 
         rows: List[List[str]] = []
         for job in jobs:
@@ -550,7 +674,9 @@ class JobBoardSheetsService:
                 skills = ", ".join(str(s) for s in skills_val) if skills_val else sk_der
             else:
                 skills = (skills_val or sk_der) if isinstance(skills_val, str) else sk_der
-            description = (job.get("description") or job.get("raw_text") or "")[:240]
+            description = self._sheet_description_cell(
+                job.get("description") or job.get("raw_text") or ""
+            )
             apply_url = job.get("apply_url") or job.get("url") or ""
 
             rows.append(
@@ -577,16 +703,16 @@ class JobBoardSheetsService:
                 ]
             )
 
-        end_col = chr(ord("A") + len(headers) - 1)
-        end_row = start_row_1based + len(rows) - 1
-        range_name = f"{tab_name}!A{start_row_1based}:{end_col}{end_row}"
-        self.sheets.values().update(
-            spreadsheetId=self.sheet_id,
-            range=range_name,
-            valueInputOption="RAW",
-            body={"values": rows},
-        ).execute()
-        if sheet_id is not None:
+        if append:
+            grid_n = self._sheet_grid_row_count(tab_name)
+            self._ensure_row_capacity(tab_name, grid_n + len(rows) + 100)
+            self._append_rows_chunked(tab_name, rows, chunk_size=25)
+            start_row_1based = 0
+        else:
+            end_row = start_row_1based + len(rows) - 1
+            self._ensure_row_capacity(tab_name, end_row)
+            self._update_rows_chunked(tab_name, num_cols, start_row_1based, rows, chunk_size=25)
+        if sheet_id is not None and not append and len(rows) <= 400:
             self._format_data_cells(
                 tab_name,
                 sheet_id,
@@ -618,8 +744,17 @@ class JobBoardSheetsService:
         date_str: Optional[str] = None,
         append: bool = False,
         source_value: str = "job_board",
+        ignore_date_filter: bool = False,
     ) -> Dict:
-        """Export Postgres jobs (filtered by source + IST date) to <date>_jobs tab."""
+        """Export Postgres jobs (filtered by source + IST date) to <date>_jobs tab.
+
+        Rows match the IST calendar day if **created_at** *or* **updated_at** falls in that day.
+        (Sync often updates existing job_board rows without changing ``created_at``; without
+        ``updated_at`` those would be missing from the daily sheet.)
+
+        If ``ignore_date_filter=True``, exports **all** rows for ``source_value`` (no IST window).
+        Use sparingly to repair an empty daily tab; with ``append=True`` you may duplicate rows.
+        """
         if not date_str:
             date_str = self._default_ist_date_str()
         tab_name = f"{date_str}_jobs"
@@ -627,18 +762,80 @@ class JobBoardSheetsService:
         ref_dt = datetime.strptime(date_str, "%Y-%m-%d")
         start_utc, end_utc, _ = ist_today_utc_window(ref_dt)
 
-        query = (
-            select(Job)
-            .where(
-                and_(
-                    Job.source == source_value,
-                    Job.created_at >= start_utc,
-                    Job.created_at < end_utc,
-                )
+        # Reflect table at runtime to avoid ORM/schema drift errors
+        # (e.g., DB has `experience_required` while model expects `experience`).
+        from sqlalchemy import MetaData, Table
+        from sqlalchemy import inspect as sa_inspect
+
+        engine = db.get_bind()
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=".*Did not recognize type 'vector'.*")
+            inspector = sa_inspect(engine)
+            job_columns = {str(c.get("name")) for c in inspector.get_columns("jobs")}
+            jobs_table = Table("jobs", MetaData(), autoload_with=engine)
+
+        has_source_col = "source" in job_columns
+        has_created_at_col = "created_at" in job_columns
+        has_updated_at_col = "updated_at" in job_columns
+
+        select_cols = [
+            jobs_table.c[name]
+            for name in (
+                "title",
+                "company_name",
+                "description",
+                "raw_text",
+                "skills_required",
+                "experience_required",
+                "work_type",
+                "job_type",
+                "employment_type",
+                "salary_range",
+                "salary_min",
+                "salary_max",
+                "location",
+                "quality_breakdown",
+                "source_url",
+                "source_channel_name",
+                "created_at",
+                "updated_at",
+                "source",
             )
-            .order_by(Job.created_at.desc())
-        )
-        jobs = db.execute(query).scalars().all()
+            if name in job_columns
+        ]
+        stmt = select(*select_cols)
+        where_clauses = []
+        if has_source_col:
+            where_clauses.append(jobs_table.c.source == source_value)
+
+        if not ignore_date_filter:
+            created_in_day = (
+                and_(jobs_table.c.created_at >= start_utc, jobs_table.c.created_at < end_utc)
+                if has_created_at_col
+                else None
+            )
+            updated_in_day = (
+                and_(jobs_table.c.updated_at >= start_utc, jobs_table.c.updated_at < end_utc)
+                if has_updated_at_col
+                else None
+            )
+            if created_in_day is not None and updated_in_day is not None:
+                where_clauses.append(or_(created_in_day, updated_in_day))
+            elif created_in_day is not None:
+                where_clauses.append(created_in_day)
+            elif updated_in_day is not None:
+                where_clauses.append(updated_in_day)
+
+        if where_clauses:
+            stmt = stmt.where(and_(*where_clauses))
+        if has_updated_at_col and has_created_at_col:
+            stmt = stmt.order_by(func.coalesce(jobs_table.c.updated_at, jobs_table.c.created_at).desc())
+        elif has_created_at_col:
+            stmt = stmt.order_by(jobs_table.c.created_at.desc())
+        elif has_updated_at_col:
+            stmt = stmt.order_by(jobs_table.c.updated_at.desc())
+
+        jobs = db.execute(stmt).mappings().all()
         if not jobs:
             return {
                 "status": "no_jobs",
@@ -646,6 +843,7 @@ class JobBoardSheetsService:
                 "tab_name": tab_name,
                 "jobs_exported": 0,
                 "append": append,
+                "ignore_date_filter": ignore_date_filter,
             }
 
         headers = [
@@ -661,7 +859,7 @@ class JobBoardSheetsService:
             "Salary",
             "Skills",
             "Degree / Education",
-            "Job Description (short)",
+            "Job Description (full)",
             "Apply URL",
             "Source Domain",
             "Source Discovered Date",
@@ -671,69 +869,104 @@ class JobBoardSheetsService:
         ]
         sheet_id = self._ensure_tab_with_headers(tab_name, headers, self.JOB_COLUMN_WIDTHS)
 
-        if append:
-            start_row_1based = self._next_append_row_1based(tab_name)
-        else:
+        if not append:
             self._clear_data_rows(tab_name, num_cols=len(headers))
-            start_row_1based = 2
+        start_row_1based = 2
 
         rows: List[List[str]] = []
         for j in jobs:
-            source_url = j.source_url or ""
-            source_domain = j.source_channel_name or (urlparse(source_url).netloc if source_url else "")
-            segment, category = self._classify_job(j.title or "", source_domain or "")
-            if j.job_type:
-                wt = str(j.job_type).strip()
-            elif j.employment_type:
-                wt = str(j.employment_type).strip()
+            # SQLAlchemy RowMapping is a Mapping but not a dict; do not use isinstance(..., dict).
+            source_url = (j.get("source_url") or "") if isinstance(j, Mapping) else ""
+            source_domain = (j.get("source_channel_name") or "") if isinstance(j, Mapping) else ""
+            if not source_domain and source_url:
+                source_domain = urlparse(source_url).netloc
+            title = (j.get("title") or "") if isinstance(j, Mapping) else ""
+            segment, category = self._classify_job(title, source_domain or "")
+            if j.get("job_type"):
+                wt = str(j.get("job_type")).strip()
+            elif j.get("employment_type"):
+                wt = str(j.get("employment_type")).strip()
             else:
                 wt = ""
             salary_raw = ""
-            if isinstance(j.salary_range, dict):
-                salary_raw = str(j.salary_range.get("raw") or "")
-            if not salary_raw and (j.salary_min is not None or j.salary_max is not None):
-                salary_raw = f"{j.salary_min or ''}-{j.salary_max or ''}".strip("-")
-            skills = ", ".join(j.skills_required or []) if isinstance(j.skills_required, list) else ""
+            if isinstance(j.get("salary_range"), dict):
+                salary_raw = str((j.get("salary_range") or {}).get("raw") or "")
+            if not salary_raw and (j.get("salary_min") is not None or j.get("salary_max") is not None):
+                salary_raw = f"{j.get('salary_min') or ''}-{j.get('salary_max') or ''}".strip("-")
+            skills = ", ".join(j.get("skills_required") or []) if isinstance(j.get("skills_required"), list) else ""
 
-            created_utc = j.created_at.isoformat() if j.created_at else ""
+            jb: dict = {}
+            if isinstance(j.get("quality_breakdown"), dict):
+                inner = (j.get("quality_breakdown") or {}).get("job_board_export")
+                if isinstance(inner, dict):
+                    jb = inner
+
+            fake = {
+                "title": title,
+                "location": j.get("location") or "",
+                "description": j.get("description") or j.get("raw_text") or "",
+                "skills": j.get("skills_required") if isinstance(j.get("skills_required"), list) else [],
+                "salary": salary_raw,
+            }
+            lt_d, ld_d, co_d, wt_d, sr_d, sal_der, sk_der, deg_d = self._derive_job_metadata(fake)
+            country_cell = (jb.get("country") or "").strip() or co_d
+            degree_cell = (jb.get("degree") or "").strip() or deg_d
+            discovered_cell = (jb.get("source_discovered_date") or "").strip()
+            posted_cell = (jb.get("job_posted_at_raw") or "").strip()
+            loc_type_disp = self._pretty_location_type(j.get("work_type")) or lt_d
+            work_type_disp = wt or wt_d
+            seniority_disp = (j.get("experience_required") or "").strip() or sr_d
+            salary_disp = salary_raw or sal_der
+            skills_disp = skills or sk_der
+            location_detail = (j.get("location") or "").strip() or ld_d
+            company_disp = (j.get("company_name") or "").strip() or source_domain or "Unknown"
+            if not location_detail:
+                location_detail = country_cell or ("Remote" if (work_type_disp or "").lower().find("remote") >= 0 else "")
+            apply_url_cell = source_url.strip()
+            if apply_url_cell and not apply_url_cell.startswith(("http://", "https://")) and source_domain:
+                apply_url_cell = f"https://{source_domain}{apply_url_cell if apply_url_cell.startswith('/') else '/' + apply_url_cell}"
+
+            created_at = j.get("created_at")
+            created_utc = created_at.isoformat() if created_at else ""
             created_ist = ""
-            if j.created_at:
-                created_ist = j.created_at.replace(tzinfo=pytz.utc).astimezone(IST).strftime("%Y-%m-%d %H:%M")
+            if created_at:
+                created_ist = created_at.replace(tzinfo=pytz.utc).astimezone(IST).strftime("%Y-%m-%d %H:%M")
 
             rows.append(
                 [
                     segment,
                     category,
-                    j.title or "",
-                    j.company_name or "",
-                    j.work_type or "",
-                    j.location or "",
-                    "",
-                    wt,
-                    j.experience_required or "",
-                    salary_raw,
-                    skills,
-                    "",
-                    (j.description or "")[:500],
-                    source_url,
+                    title,
+                    company_disp,
+                    loc_type_disp,
+                    location_detail,
+                    country_cell,
+                    work_type_disp,
+                    seniority_disp,
+                    salary_disp,
+                    skills_disp,
+                    degree_cell,
+                    self._sheet_description_cell(j.get("description") or j.get("raw_text") or ""),
+                    apply_url_cell,
                     source_domain,
-                    "",
-                    "",
+                    discovered_cell,
+                    posted_cell,
                     created_ist,
                     created_utc,
                 ]
             )
 
-        end_col = chr(ord("A") + len(headers) - 1)
-        end_row = start_row_1based + len(rows) - 1
-        range_name = f"{tab_name}!A{start_row_1based}:{end_col}{end_row}"
-        self.sheets.values().update(
-            spreadsheetId=self.sheet_id,
-            range=range_name,
-            valueInputOption="RAW",
-            body={"values": rows},
-        ).execute()
-        if sheet_id is not None:
+        num_cols = len(headers)
+        if append:
+            grid_n = self._sheet_grid_row_count(tab_name)
+            self._ensure_row_capacity(tab_name, grid_n + len(rows) + 100)
+            self._append_rows_chunked(tab_name, rows, chunk_size=25)
+            start_row_1based = 0
+        else:
+            end_row = start_row_1based + len(rows) - 1
+            self._ensure_row_capacity(tab_name, end_row)
+            self._update_rows_chunked(tab_name, num_cols, start_row_1based, rows, chunk_size=25)
+        if sheet_id is not None and not append and len(rows) <= 400:
             self._format_data_cells(
                 tab_name,
                 sheet_id,
@@ -750,6 +983,7 @@ class JobBoardSheetsService:
             "append": append,
             "start_row": start_row_1based,
             "source": source_value,
+            "ignore_date_filter": ignore_date_filter,
         }
 
 

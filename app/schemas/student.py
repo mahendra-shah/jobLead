@@ -339,12 +339,12 @@ class RecommendedJobResponse(BaseModel):
     """A recommended job with score and reasons"""
     job: Dict[str, Any]
     recommendation_score: float = Field(..., ge=0, le=100)
-    match_reasons: List[str] = Field(default_factory=list)
-    missing_skills: List[str] = Field(default_factory=list)
-    is_saved: bool = False
-    view_count: int = 0
-    similar_jobs_count: int = 0
-    score_breakdown: Dict[str, float] = Field(default_factory=dict)
+    match_reasons: List[str]
+    missing_skills: List[str]
+    is_saved: bool
+    view_count: int
+    similar_jobs_count: int
+    score_breakdown: Dict[str, float] = {}
 
 
 class RecommendedJobsResponse(BaseModel):

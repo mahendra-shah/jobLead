@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 JOB_INGEST_COLLECTION_DEFAULT = "job_ingest"
 
 
-def _trim_payload(job: Dict[str, Any], max_desc: int = 12000) -> Dict[str, Any]:
+def _trim_payload(job: Dict[str, Any], max_desc: int = 80000) -> Dict[str, Any]:
     out = dict(job)
     d = out.get("description")
     if isinstance(d, str) and len(d) > max_desc:

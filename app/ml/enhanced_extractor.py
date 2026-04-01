@@ -376,21 +376,14 @@ class EnhancedJobExtractor:
         
         # CRITICAL: Filter international jobs — this is an India placement dashboard.
         # Reject any job whose geographic_scope is confirmed 'international'.
-        # Exception: some remote-first aggregators include global-company naming
-        # (e.g. "Denmark in USA") without actual onsite location constraints.
-        # For those, treat geographic scope as unspecified and continue extraction.
+        # We do NOT require is_onsite_only because even international remote roles
+        # are posted on foreign company JDs and are not relevant for India freshers.
+        # Exception: if the post also mentions Indian cities it may be a global
+        # company with India openings — those already get geographic_scope='india'.
         if location_data.get('geographic_scope') == 'international':
-            remote_jobboard_hint = self._has_remote_jobboard_hint(text, links)
-            has_precise_location_signal = bool(location_data.get('raw_location')) or bool(location_data.get('cities'))
-
-            if remote_jobboard_hint and not has_precise_location_signal:
-                logger.info("Downgrading ambiguous international signal to unspecified for remote-first aggregator post")
-                location_data['geographic_scope'] = 'unspecified'
-                extraction.location_data = location_data
-            else:
-                logger.warning(f"Rejected international job: {text[:80]}...")
-                extraction.confidence = 0.0  # Mark as rejected
-                return extraction  # Return with 0 confidence to skip storage
+            logger.warning(f"Rejected international job: {text[:80]}...")
+            extraction.confidence = 0.0  # Mark as rejected
+            return extraction  # Return with 0 confidence to skip storage
         
         # Salary - Use NEW simplified extraction
         salary_monthly = self._extract_salary_simple(text)

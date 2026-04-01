@@ -407,33 +407,33 @@ class SystemVerifier:
                 warning=(dist.avg_score < 45)
             )
         
-        # 4.3 Check quality threshold coverage
+        # 4.3 Check relevance criteria
         result = await db.execute(
             select(func.count(Job.id))
-            .where(Job.quality_score >= 70)
+            .where(Job.meets_relevance_criteria == True)
         )
         relevant_jobs = result.scalar()
         
         relevant_pct = (relevant_jobs / total_jobs * 100) if total_jobs > 0 else 0
         self.log_test(
-            "Quality Threshold Filtering",
+            "Relevance Filtering",
             relevant_pct > 5,  # At least 5% should be relevant
-            f"{relevant_jobs:,}/{total_jobs:,} jobs have quality score ≥ 70 ({relevant_pct:.1f}%)",
+            f"{relevant_jobs:,}/{total_jobs:,} jobs meet relevance criteria ({relevant_pct:.1f}%)",
             warning=(relevant_pct < 5)
         )
         
-        # 4.4 Check quality score persistence
+        # 4.4 Check quality breakdown JSONB
         result = await db.execute(
             select(func.count(Job.id))
-            .where(Job.quality_score.isnot(None))
+            .where(Job.quality_breakdown.isnot(None))
         )
         with_breakdown = result.scalar()
         
         breakdown_pct = (with_breakdown / total_jobs * 100) if total_jobs > 0 else 0
         self.log_test(
-            "Quality Score Data",
+            "Quality Breakdown Data",
             breakdown_pct > 80,
-            f"{with_breakdown:,}/{total_jobs:,} jobs have quality score ({breakdown_pct:.1f}%)",
+            f"{with_breakdown:,}/{total_jobs:,} jobs have detailed breakdown ({breakdown_pct:.1f}%)",
             warning=(breakdown_pct < 80)
         )
         

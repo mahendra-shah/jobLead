@@ -30,7 +30,6 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import and_, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import SQLAlchemyError
 import logging
 
 from app.models.job import Job
@@ -56,7 +55,6 @@ class JobRecommendationService:
 
     # --- Cache ---
     CACHE_RECOMMENDATIONS_TTL = 1800  # 30 minutes
-    CACHE_KEY_VERSION = "v2"
 
     # --- Fallback windows: widen date range when too few jobs found ---
     DATE_WINDOWS = [7, 14, 30]    # days
@@ -227,7 +225,7 @@ class JobRecommendationService:
         """
         if not self.cache_manager or not self.cache_manager.enabled:
             return 0
-        pattern = f"rec:{self.CACHE_KEY_VERSION}:student_{student_id}:*"
+        pattern = f"rec:student_{student_id}:*"
         deleted = self.cache_manager.delete_pattern(pattern)
         logger.info(
             "recommendation_cache_invalidated student=%s keys=%s",
@@ -254,7 +252,7 @@ class JobRecommendationService:
         cached full list is reused for every page.
         """
         return (
-            f"rec:{self.CACHE_KEY_VERSION}:student_{student_id}:"
+            f"rec:student_{student_id}:"
             f"min_{min_score}:"
             f"saved_{exclude_saved}:"
             f"viewed_{exclude_viewed}"
@@ -299,25 +297,13 @@ class JobRecommendationService:
 
         # Saved-job IDs for the is_saved flag in the response.
         saved_job_ids: set = set()
-        student_user_id = getattr(student, "user_id", None)
         if not exclude_saved:
-            if student_user_id:
-                try:
-                    saved_result = await self.db.execute(
-                        select(SavedJob.job_id).where(
-                            SavedJob.user_id == student_user_id
-                        )
-                    )
-                    saved_job_ids = {row[0] for row in saved_result.all()}
-                except SQLAlchemyError:
-                    logger.exception(
-                        "saved_jobs_lookup_failed_for_recommendations student=%s user_id=%s",
-                        student.id,
-                        student_user_id,
-                    )
-                    saved_job_ids = set()
-            else:
-                logger.debug("student_user_mapping_missing student=%s", student.id)
+            saved_result = await self.db.execute(
+                select(SavedJob.job_id).where(
+                    SavedJob.user_id == student.user_id
+                )
+            )
+            saved_job_ids = {row[0] for row in saved_result.all()}
 
         # Score each job (typically 50-150 iterations)
         scored: List[Dict] = []
@@ -383,14 +369,13 @@ class JobRecommendationService:
             )
 
             # SQL-level exclusions via NOT EXISTS
-            student_user_id = getattr(student, "user_id", None)
-            if exclude_saved and student_user_id:
+            if exclude_saved:
                 query = query.where(
                     ~exists(
                         select(1).where(
                             and_(
                                 SavedJob.job_id == Job.id,
-                                SavedJob.user_id == student_user_id,
+                                SavedJob.user_id == student.user_id,
                             )
                         )
                     )
@@ -408,32 +393,8 @@ class JobRecommendationService:
                     )
                 )
 
-            try:
-                result = await self.db.execute(query)
-                jobs = result.scalars().all()
-            except SQLAlchemyError:
-                if exclude_saved:
-                    logger.exception(
-                        "exclude_saved_query_failed_falling_back student=%s window_days=%s",
-                        student.id,
-                        days,
-                    )
-                    fallback_query = (
-                        select(Job)
-                        .where(
-                            Job.is_active.is_(True),
-                            Job.created_at >= cutoff,
-                            Job.quality_score >= self.MIN_QUALITY_SCORE,
-                        )
-                        .order_by(
-                            Job.quality_score.desc(), Job.created_at.desc()
-                        )
-                        .limit(self.MAX_JOBS_TO_QUERY)
-                    )
-                    result = await self.db.execute(fallback_query)
-                    jobs = result.scalars().all()
-                else:
-                    raise
+            result = await self.db.execute(query)
+            jobs = result.scalars().all()
 
             if len(jobs) >= self.MIN_JOBS_THRESHOLD:
                 if days > 7:
@@ -660,19 +621,15 @@ class JobRecommendationService:
         Returns 7.5 (neutral) when experience is unspecified.
         Fresher roles score full points; roles requiring > 2 years score 0.
         """
-        if getattr(job, "is_fresher", None) is True:
+        if not job.experience_required:
+            return 7.5  # Neutral
+
+        exp_str = job.experience_required.lower()
+        if any(kw in exp_str for kw in ("fresher", "entry", "0-1", "0-2")):
             match_reasons.append("🎓 Freshers welcomed")
             return self.EXPERIENCE_WEIGHT * 100
 
-        experience_text = (getattr(job, "experience", None) or "").strip().lower()
-        if not experience_text:
-            return 7.5  # Neutral fallback
-
-        if any(kw in experience_text for kw in ("fresher", "entry", "0-1", "0-2", "0 to 2", "0-3")):
-            match_reasons.append("🎓 Freshers welcomed")
-            return self.EXPERIENCE_WEIGHT * 100
-
-        numbers = re.findall(r"\d+", experience_text)
+        numbers = re.findall(r"\d+", exp_str)
         if numbers:
             min_exp = int(numbers[0])
             if min_exp <= 2:
@@ -767,15 +724,9 @@ class JobRecommendationService:
                         "job_type": job.job_type,
                         "employment_type": job.employment_type,
                         "experience_required": (
-                            "Fresher" if getattr(job, "is_fresher", None) is True
-                            else (getattr(job, "experience", None) or "Not specified")
+                            job.experience_required or "Not specified"
                         ),
-                        "salary_range": {
-                            "raw": getattr(job, "salary", None),
-                            "min": None,
-                            "max": None,
-                            "currency": "INR",
-                        },
+                        "salary_range": job.salary_range or {},
                         "skills_required": job.skills_required or [],
                         "description": job.description,
                         "source_url": job.source_url,
@@ -792,7 +743,7 @@ class JobRecommendationService:
                     "missing_skills": score_data["missing_skills"],
                     "is_saved": rec["is_saved"],
                     "score_breakdown": score_data["breakdown"],
-                    "view_count": 0,
+                    "view_count": getattr(job, "view_count", 0),
                     "similar_jobs_count": 0,
                 }
             )

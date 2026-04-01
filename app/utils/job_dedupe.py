@@ -57,11 +57,18 @@ def compute_dedupe_key(job: Dict[str, Any]) -> str:
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
+# Long enough for classifier + India gate; aligned with Mongo payload trim cap.
+_ML_DESCRIPTION_MAX_CHARS = 32000
+
+
 def build_text_for_ml(job: Dict[str, Any]) -> str:
+    desc = job.get("description") or ""
+    if isinstance(desc, str) and len(desc) > _ML_DESCRIPTION_MAX_CHARS:
+        desc = desc[:_ML_DESCRIPTION_MAX_CHARS]
     parts = [
         job.get("title") or "",
         job.get("company") or "",
         job.get("location") or job.get("location_detail") or "",
-        (job.get("description") or "")[:4000],
+        desc,
     ]
     return _WS.sub(" ", " ".join(str(p) for p in parts if p)).strip()

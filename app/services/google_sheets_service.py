@@ -152,6 +152,15 @@ class GoogleSheetsService:
             'Message ID',
             'Date',
             'Company',
+            'Job Title',
+            'Location',
+            # 'Experience Min',  # Commented per user request
+            # 'Experience Max',  # Commented per user request
+            'Is Fresher',
+            'Experience Required',       # NEW — raw string, e.g. '1-2 years' or 'Fresher'
+            # 'Salary Min',  # Commented per user request
+            # 'Salary Max',  # Commented per user request
+            'Work Type',
             'Job Type',
             'Skills',
             'Sender ID',
@@ -165,7 +174,7 @@ class GoogleSheetsService:
         }
         self.sheets.values().update(
             spreadsheetId=self.sheet_id,
-            range=f"{tab_name}!A1:K1",  # 11 columns (A-K)
+            range=f"{tab_name}!A1:S1",  # 19 columns (A-S) - added Experience Required
             valueInputOption='RAW',
             body=body
         ).execute()
@@ -258,8 +267,6 @@ class GoogleSheetsService:
                 and_(
                     Job.created_at >= start_time,
                     Job.created_at < end_time,
-                    Job.quality_score >= 50,
-                    Job.is_active.is_(True),
                 )
             )
             .order_by(Job.created_at.desc())
@@ -291,7 +298,38 @@ class GoogleSheetsService:
         except Exception as e:
             logger.warning(f"Could not clear existing rows (non-fatal): {e}")
 
-        rows = [self._build_export_row(job) for job in jobs]
+        rows = []
+        for job in jobs:
+            # Use denormalized company_name — no extra DB query needed
+            company_name = job.company_name or 'Unknown'
+            channel_name = job.source_channel_name or ''
+            channel_url = f"https://t.me/{channel_name}" if channel_name else ''
+            channel_id = job.source_telegram_channel_id or ''
+            sender_id = str(job.sender_id) if job.sender_id else ''
+            account_used = f"Account {job.fetched_by_account}" if job.fetched_by_account else ''
+
+            row = [
+                str(job.id),
+                job.source_message_id or '',
+                job.created_at.strftime('%Y-%m-%d'),
+                company_name,
+                job.title or '',
+                job.location or '',
+                'Yes' if job.is_fresher else ('No' if job.is_fresher is not None else ''),
+                job.experience_required or '',
+                job.work_type or '',
+                job.job_type or '',
+                ', '.join(job.skills_required) if job.skills_required else '',
+                channel_name,
+                channel_url,
+                channel_id,
+                sender_id,
+                account_used,
+                job.source or '',
+                job.source_url or '',
+                (job.raw_text or '')[:1000],
+            ]
+            rows.append(row)
 
         if rows:
             end_col = chr(ord('A') + len(rows[0]) - 1)
