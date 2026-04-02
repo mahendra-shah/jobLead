@@ -86,6 +86,27 @@ def iso_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+SOURCE_PERF_PATH = JOBLEAD_ROOT / "app" / "data" / "pipeline" / "source_yield_state.json"
+
+
+def _load_source_perf() -> dict:
+    if not SOURCE_PERF_PATH.exists():
+        return {"sources": {}}
+    try:
+        data = json.loads(SOURCE_PERF_PATH.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            data.setdefault("sources", {})
+            return data
+    except Exception:
+        pass
+    return {"sources": {}}
+
+
+def _save_source_perf(data: dict) -> None:
+    SOURCE_PERF_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SOURCE_PERF_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
 def extract_job_details_from_page(html: str, page_url: str) -> dict:
     """
     Best-effort extraction of richer job fields from a job detail page.
@@ -310,10 +331,25 @@ def _derive_location_work_seniority(job: dict) -> dict:
     elif "contract" in desc: out["work_type"] = "Contract"
     elif "full-time" in desc or "full time" in desc: out["work_type"] = "Full-time"
     else: out["work_type"] = ""
-    if any(w in title for w in ["intern", "fresher", "graduate", "entry level", "entry-level"]): out["seniority"] = "Fresher / Entry"
-    elif "junior" in title: out["seniority"] = "Junior"
-    elif "senior" in title or "lead" in title: out["seniority"] = "Senior"
-    else: out["seniority"] = ""
+    if any(w in title for w in ["intern", "fresher", "graduate", "entry level", "entry-level"]):
+        out["seniority"] = "Fresher / Entry"
+    elif "junior" in title or "associate" in title:
+        out["seniority"] = "Junior"
+    elif "senior" in title or "lead" in title or "staff" in title or "principal" in title:
+        out["seniority"] = "Senior"
+    else:
+        exp = parse_experience(desc.lower())
+        mn = exp.get("min")
+        mx = exp.get("max")
+        is_fresher = bool(exp.get("is_fresher"))
+        if is_fresher:
+            out["seniority"] = "Fresher / Entry"
+        elif mn is not None and mn <= 1:
+            out["seniority"] = "Junior"
+        elif mx is not None and mx >= 5:
+            out["seniority"] = "Senior"
+        else:
+            out["seniority"] = ""
     return out
 
 
@@ -706,6 +742,23 @@ def main() -> int:
         default=0.0,
         help="Random extra delay 0..N seconds added to --source-request-delay for each request.",
     )
+    parser.add_argument(
+        "--min-jobs-per-source",
+        type=int,
+        default=0,
+        help="Performance threshold per source; sources below this are tracked as low-yield.",
+    )
+    parser.add_argument(
+        "--auto-pause-low-yield",
+        action="store_true",
+        help="With --from-mongo: auto-pause sources below --min-jobs-per-source for consecutive runs.",
+    )
+    parser.add_argument(
+        "--low-yield-runs-threshold",
+        type=int,
+        default=3,
+        help="Consecutive low-yield runs required before auto-pause.",
+    )
     args = parser.parse_args()
 
     run_ts_compact = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -830,6 +883,7 @@ def main() -> int:
     jobs: list[dict] = []
     seen_urls: set[str] = set()
 
+    per_source_jobs: dict[str, int] = {}
     try:
         for idx, source in enumerate(to_crawl, 1):
             m = source.get("metadata") or {}
@@ -928,9 +982,52 @@ def main() -> int:
                     if len(jobs) - source_jobs_before >= source_job_cap:
                         break
 
-            print(f"{len(jobs) - source_jobs_before} jobs")
+            source_jobs_count = len(jobs) - source_jobs_before
+            per_source_jobs[str(source_domain or "").strip().lower()] = source_jobs_count
+            print(f"{source_jobs_count} jobs")
     finally:
         client.close()
+
+    perf_state = _load_source_perf()
+    perf_sources = perf_state.setdefault("sources", {})
+    min_jobs_threshold = max(0, int(args.min_jobs_per_source or 0))
+    pause_after = max(1, int(args.low_yield_runs_threshold or 3))
+    to_pause_domains: list[str] = []
+    for domain, jobs_count in per_source_jobs.items():
+        if not domain:
+            continue
+        row = dict(perf_sources.get(domain) or {})
+        row["last_jobs"] = int(jobs_count)
+        row["last_run_at"] = iso_now()
+        row["runs"] = int(row.get("runs") or 0) + 1
+        row["total_jobs"] = int(row.get("total_jobs") or 0) + int(jobs_count)
+        if min_jobs_threshold > 0 and int(jobs_count) < min_jobs_threshold:
+            row["consecutive_low_yield"] = int(row.get("consecutive_low_yield") or 0) + 1
+        else:
+            row["consecutive_low_yield"] = 0
+        perf_sources[domain] = row
+
+        if (
+            args.auto_pause_low_yield
+            and args.from_mongo
+            and min_jobs_threshold > 0
+            and int(row.get("consecutive_low_yield") or 0) >= pause_after
+        ):
+            to_pause_domains.append(domain)
+    _save_source_perf(perf_state)
+
+    if to_pause_domains and args.from_mongo:
+        from app.services.mongodb_job_board_source_service import MongoJobBoardSourcesService
+
+        svc = MongoJobBoardSourcesService()
+        paused_n = svc.pause_sources_by_domain(
+            to_pause_domains,
+            reason=f"low_yield_below_{min_jobs_threshold}_for_{pause_after}_runs",
+        )
+        print(
+            "Auto-paused low-yield sources: "
+            f"{paused_n} domains (threshold={min_jobs_threshold}, runs={pause_after})"
+        )
 
     if args.write_job_ingest:
         from app.services.mongodb_job_ingest_service import MongoJobIngestService

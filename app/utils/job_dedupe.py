@@ -1,4 +1,4 @@
-"""Dedupe keys for job_ingest: URL normalization + composite hash across sources."""
+"""Dedupe keys for job_ingest: URL-first + secondary identity hash."""
 
 from __future__ import annotations
 
@@ -36,25 +36,35 @@ def _norm_text(s: Any, max_len: int = 400) -> str:
     return t[:max_len]
 
 
-def compute_dedupe_key(job: Dict[str, Any]) -> str:
-    """
-    Cross-board identity: stable hash of normalized title + company + location + apply URL.
-    Falls back to url_norm if everything else empty.
-    """
+def compute_primary_url_key(job: Dict[str, Any]) -> str:
+    """Primary dedupe key from normalized apply URL (empty when URL missing)."""
+    apply_u = normalize_url(str(job.get("apply_url") or job.get("url") or ""))
+    if not apply_u:
+        return ""
+    return hashlib.sha256(apply_u.encode("utf-8")).hexdigest()
+
+
+def compute_secondary_identity_key(job: Dict[str, Any]) -> str:
+    """Secondary dedupe key from title+company+location when URL variants differ."""
     title = _norm_text(job.get("title"), 300)
     company = _norm_text(job.get("company"), 200)
     loc = _norm_text(
         job.get("location_detail") or job.get("location"),
         200,
     )
-    apply_u = normalize_url(
-        str(job.get("apply_url") or job.get("url") or ""),
-    )
-    blob = f"{title}|{company}|{loc}|{apply_u}"
+    blob = f"{title}|{company}|{loc}"
     if blob.strip("|") == "":
-        apply_u = normalize_url(str(job.get("url") or ""))
+        apply_u = normalize_url(str(job.get("apply_url") or job.get("url") or ""))
         blob = apply_u or "empty"
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def compute_dedupe_key(job: Dict[str, Any]) -> str:
+    """
+    Backward-compatible alias used by existing pipeline code.
+    Returns secondary identity key; primary URL key is handled separately.
+    """
+    return compute_secondary_identity_key(job)
 
 
 # Long enough for classifier + India gate; aligned with Mongo payload trim cap.

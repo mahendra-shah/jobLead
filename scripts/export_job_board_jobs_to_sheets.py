@@ -89,6 +89,12 @@ def main() -> int:
         help="When --from-postgres: ignore IST date filter and export all rows for --postgres-source "
         "(repair empty daily tab). Avoid --append-jobs unless you accept duplicates.",
     )
+    parser.add_argument(
+        "--max-jobs-per-domain",
+        type=int,
+        default=0,
+        help="When --from-postgres: cap rows per source domain in daily export (0 = no cap).",
+    )
     args = parser.parse_args()
 
     if args.postgres_all_job_board and not args.from_postgres:
@@ -152,6 +158,7 @@ def main() -> int:
                     append=bool(args.append_jobs),
                     source_value=str(args.postgres_source or "job_board"),
                     ignore_date_filter=bool(args.postgres_all_job_board),
+                    max_jobs_per_domain=int(args.max_jobs_per_domain or 0),
                 )
             finally:
                 db.close()
