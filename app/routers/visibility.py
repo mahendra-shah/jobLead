@@ -32,6 +32,7 @@ from app.models.job import Job
 from app.services.telegram_scraper_service import get_scraper_service
 from app.core.scheduler import get_scheduler_status
 from app.config import settings
+from app.utils.job_board_report import read_job_board_report
 
 logger = structlog.get_logger(__name__)
 router = APIRouter()
@@ -80,6 +81,7 @@ class VisibilityDashboardResponse(BaseModel):
     channels: Dict
     messages: Dict
     jobs: Dict
+    job_board: Optional[Dict] = None
     system: Dict
     sheets: Optional[Dict] = None
 
@@ -375,6 +377,11 @@ def _sheets_redis_sync(redis_url: str) -> dict:
         return {"status": "unavailable", "error": str(exc)}
 
 
+def _job_board_redis_sync(redis_url: str) -> dict:
+    """Read latest JobBoard run report from Redis."""
+    return read_job_board_report(redis_url=redis_url)
+
+
 @router.get("/dashboard", response_model=VisibilityDashboardResponse)
 async def get_visibility_dashboard(db: AsyncSession = Depends(get_db)):
     """
@@ -393,7 +400,7 @@ async def get_visibility_dashboard(db: AsyncSession = Depends(get_db)):
     logger.info("visibility_dashboard_requested")
 
     # ── 30-second Redis cache ─────────────────────────────────────────────
-    _CACHE_KEY = "visibility:dashboard:v1"
+    _CACHE_KEY = "visibility:dashboard:v2"
     try:
         _rc = _redis_mod.from_url(settings.REDIS_URL, decode_responses=True, socket_timeout=1)
         _cached = _rc.get(_CACHE_KEY)
@@ -448,10 +455,11 @@ async def get_visibility_dashboard(db: AsyncSession = Depends(get_db)):
 
     # ── MongoDB + Redis sheets status — both in thread executors ─────────
     loop = asyncio.get_event_loop()
-    mongo_stats, sheets_section = await asyncio.gather(
+    mongo_stats, sheets_section, job_board_section = await asyncio.gather(
         loop.run_in_executor(None, _mongodb_stats_sync,
                              settings.MONGODB_URI, settings.MONGODB_DATABASE, today_start_utc),
         loop.run_in_executor(None, _sheets_redis_sync, settings.REDIS_URL),
+        loop.run_in_executor(None, _job_board_redis_sync, settings.REDIS_URL),
     )
 
     # ── Assemble accounts section ─────────────────────────────────────────
@@ -533,6 +541,7 @@ async def get_visibility_dashboard(db: AsyncSession = Depends(get_db)):
         channels=channels_section,
         messages=messages_section,
         jobs=jobs_section,
+        job_board=job_board_section,
         system=system_section,
         sheets=sheets_section,
     )
@@ -563,11 +572,13 @@ async def get_system_status():
     """
     scraper = get_scraper_service()
     sched_status = get_scheduler_status()
+    job_board = _job_board_redis_sync(settings.REDIS_URL)
 
     return {
         "status": "operational",
         "scraper_initialized": scraper._initialized,
         "connected_clients": len(scraper.clients),
         "scheduler": sched_status,
+        "job_board": job_board,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
