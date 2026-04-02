@@ -424,6 +424,34 @@ class JobBoardSheetsService:
         return segment, category
 
     @staticmethod
+    def _infer_seniority_value(
+        title: str,
+        description: str,
+        experience_required: str,
+        fallback: str = "",
+    ) -> str:
+        """Backfill seniority from explicit experience or title/description hints."""
+        exp = (experience_required or "").strip()
+        if exp:
+            low = exp.lower()
+            if any(k in low for k in ("0-1", "0 - 1", "0 to 1", "fresher", "entry")):
+                return "Fresher / Entry"
+            if any(k in low for k in ("1-3", "1 - 3", "2-3", "2 - 3", "junior")):
+                return "Junior"
+            if any(k in low for k in ("5+", "6+", "7+", "lead", "senior", "staff", "principal")):
+                return "Senior"
+            return exp
+
+        text = f"{title} {description}".lower()
+        if any(k in text for k in ("intern", "internship", "fresher", "entry level", "graduate")):
+            return "Fresher / Entry"
+        if any(k in text for k in ("junior", "associate")):
+            return "Junior"
+        if any(k in text for k in ("senior", "lead", "staff", "principal", "architect", "manager")):
+            return "Senior"
+        return (fallback or "").strip()
+
+    @staticmethod
     def _sheet_description_cell(text: Optional[str]) -> str:
         t = (text or "").strip()
         if len(t) <= SHEET_DESCRIPTION_MAX_CHARS:
@@ -745,6 +773,7 @@ class JobBoardSheetsService:
         append: bool = False,
         source_value: str = "job_board",
         ignore_date_filter: bool = False,
+        max_jobs_per_domain: int = 0,
     ) -> Dict:
         """Export Postgres jobs (filtered by source + IST date) to <date>_jobs tab.
 
@@ -836,6 +865,21 @@ class JobBoardSheetsService:
             stmt = stmt.order_by(jobs_table.c.updated_at.desc())
 
         jobs = db.execute(stmt).mappings().all()
+        if int(max_jobs_per_domain or 0) > 0:
+            capped: List[Mapping] = []
+            domain_counts: Dict[str, int] = {}
+            for j in jobs:
+                src_url = (j.get("source_url") or "") if isinstance(j, Mapping) else ""
+                dom = (j.get("source_channel_name") or "") if isinstance(j, Mapping) else ""
+                if not dom and src_url:
+                    dom = urlparse(src_url).netloc
+                key = (dom or "unknown").strip().lower()
+                n = domain_counts.get(key, 0)
+                if n >= int(max_jobs_per_domain):
+                    continue
+                domain_counts[key] = n + 1
+                capped.append(j)
+            jobs = capped
         if not jobs:
             return {
                 "status": "no_jobs",
@@ -915,7 +959,12 @@ class JobBoardSheetsService:
             posted_cell = (jb.get("job_posted_at_raw") or "").strip()
             loc_type_disp = self._pretty_location_type(j.get("work_type")) or lt_d
             work_type_disp = wt or wt_d
-            seniority_disp = (j.get("experience_required") or "").strip() or sr_d
+            seniority_disp = self._infer_seniority_value(
+                title=title,
+                description=(j.get("description") or j.get("raw_text") or ""),
+                experience_required=(j.get("experience_required") or ""),
+                fallback=sr_d,
+            )
             salary_disp = salary_raw or sal_der
             skills_disp = skills or sk_der
             location_detail = (j.get("location") or "").strip() or ld_d
@@ -984,6 +1033,7 @@ class JobBoardSheetsService:
             "start_row": start_row_1based,
             "source": source_value,
             "ignore_date_filter": ignore_date_filter,
+            "max_jobs_per_domain": int(max_jobs_per_domain or 0),
         }
 
 

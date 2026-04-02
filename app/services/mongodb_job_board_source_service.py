@@ -401,3 +401,24 @@ class MongoJobBoardSourcesService:
             )
         )
 
+    def pause_sources_by_domain(self, domains: List[str], *, reason: str = "low_yield_auto_pause") -> int:
+        """Pause active sources by domain and attach pause metadata."""
+        self._ensure_indexes()
+        assert self._col is not None
+        clean = sorted({str(d or "").strip().lower() for d in domains if str(d or "").strip()})
+        if not clean:
+            return 0
+        now = datetime.now(timezone.utc)
+        res = self._col.update_many(
+            {"domain": {"$in": clean}, "status": "active"},
+            {
+                "$set": {
+                    "status": "paused",
+                    "updated_at": now,
+                    "pause_reason": reason,
+                    "paused_at": now,
+                }
+            },
+        )
+        return int(res.modified_count)
+

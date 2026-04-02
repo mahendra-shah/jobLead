@@ -1,0 +1,53 @@
+{
+  "meta": {
+    "generated_at_utc": "2026-04-01T10:15:20Z",
+    "sources_used": 3,
+    "total_jobs": 2
+  },
+  "jobs": [
+    {
+      "title": "Resume/CV Writing Service",
+      "company": "higheredjobs.com",
+      "location": null,
+      "url": "https://www.higheredjobs.com/career/ResumeService.cfm",
+      "source_domain": "www.higheredjobs.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-04-01T10:14:58Z",
+      "segment": "Unknown",
+      "category": "Other / Unknown",
+      "location_type": "",
+      "location_detail": "",
+      "country": "",
+      "work_type": "",
+      "seniority": "",
+      "salary": "$139",
+      "skills": [],
+      "degree": "",
+      "description": "Starter Professional Growth An expertly written and keyword-optimized resume that sets you apart. Professionally-written - By experts with specialized experience. Formatted for success - To get an employer's attention. Keyword optimized - To pass through Applicant Tracking Systems. $139 Regular Price $149 Order Now Popular Premium Career Evolution Everything you need to apply to jobs, including a resume and cover letter. Starter Package Plus: Cover letter - Employers are 40% more likely to read a resume with a cover letter. 60-day interview guarantee. $199 Regular Price $219 Order Now Ultimate Executive Priority Resume, cover letter, and LinkedIn profile, created by an executive writer. Premium Package Plus: Executive Writer - Top 10% of our network. LinkedIn Makeover - 97% of employers use LinkedIn; we'll rewrite your profile. 60-day interview guarantee. $314 Regular Price $349 Order Now Starter Professional Growth An expertly written and keyword-optimized curriculum vitae that sets you apart. Professionally-written - By experts with specialized experience. Formatted for success - To get an employer's attention. Keyword optimized - To pass through Applicant Tracking Systems. $199 Regular Price $219 Order Now Premium Career Evolution Start applying to academic positions, with a curriculum vitae and cover letter. Starter Package Plus: Cover letter - Employers are 40% more likely to read a resume with a cover letter. 60-day interview guarantee. $259 Regular Price $289 Order Now Ultimate Executive Priority Curriculum Vitae, cover letter, and LinkedIn profile, created by an executive writer. Premium Package Plus: Executive Writer - Top 10% of our network. LinkedIn Makeover - 97% of employers use LinkedIn; we'll rewrite your profile. 60-day interview guarantee. $379 Regular Price $419 Order Now",
+      "apply_url": "https://www.higheredjobs.com/career/ResumeService.cfm"
+    },
+    {
+      "title": "Search Firms",
+      "company": "higheredjobs.com",
+      "location": null,
+      "url": "https://www.higheredjobs.com/career/SiteListings.cfm",
+      "source_domain": "www.higheredjobs.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-04-01T10:14:58Z",
+      "segment": "Unknown",
+      "category": "Other / Unknown",
+      "location_type": "",
+      "location_detail": "",
+      "country": "",
+      "work_type": "",
+      "seniority": "",
+      "salary": "",
+      "skills": [],
+      "degree": "",
+      "description": "Search Firms Each of the search firms listed below has experience conducting searches for colleges and universities.\r\n\t\t\t\tAnd, if your institution needs help now from an interim executive while you search for a permanent hire,\r\n\t\t\t\tcheck out our interim search tool. Academic Career & Executive Search (ACES) Founded by Jennifer Muller, ACES focuses on executive search services, career planning, and candidate coaching. Specializing in challenging faculty to VP level positions, they offer four a la carte services spanning enhanced search, full search, candidate generator plus, and interim search. Academic Search For more than four decades, Academic Search has been partnering with higher education institutions and associations. Its mission is to enhance institutional capacity by providing executive recruitment services, executive coaching, and transition support, in collaboration with its parent organization, the American Academic Leadership Institute. Adkisson Search Consultants Founded in 2001, Adkisson Search Consultants' primary focus is on placing candidates at healthcare organizations.  They also have experience conducting searches for medical faculty at colleges and universities. Advocate Staffing Advocate Staffing provides retained search, contingency search, and engaged search. Originally exclusive to the higher education industries, post-Covid they have broadened their experience across various industries and have filled over 5,000 positions. AGB Search AGB Search assists colleges, universities, systems, coordinating boards, and institutionally related foundations in planning for, recruiting, selecting, and transitioning new executive leaders. AGB Search is an affiliate of the Association of Governing Boards of Universities and Colleges. AMI Network AMI Network is a nationwide executive search firm that specializes in filling higher education leadership roles within health sciences. They have led searches for a variety of higher education positions including f",
+      "apply_url": "https://www.higheredjobs.com/career/SiteListings.cfm"
+    }
+  ]
+}
