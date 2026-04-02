@@ -63,6 +63,23 @@ def main() -> int:
     )
     parser.add_argument("--max-jobs-per-source", type=int, default=60, help="Cap job candidates per source crawl")
     parser.add_argument(
+        "--min-jobs-per-source",
+        type=int,
+        default=0,
+        help="Track source yield and mark sources below threshold as low-yield.",
+    )
+    parser.add_argument(
+        "--auto-pause-low-yield",
+        action="store_true",
+        help="Auto-pause low-yield sources after repeated runs (Mongo source mode).",
+    )
+    parser.add_argument(
+        "--low-yield-runs-threshold",
+        type=int,
+        default=3,
+        help="Consecutive low-yield runs required before auto-pause.",
+    )
+    parser.add_argument(
         "--prefer-less-known-sources",
         action="store_true",
         help="Prioritize lesser-known source domains over major boards.",
@@ -83,6 +100,12 @@ def main() -> int:
         type=int,
         default=200,
         help="Max verified rows to sync to Postgres this run (keeps each batch fast).",
+    )
+    parser.add_argument(
+        "--max-jobs-per-domain",
+        type=int,
+        default=0,
+        help="Cap rows per source domain in sheet export (0 = no cap).",
     )
     parser.add_argument("--no-sheet", action="store_true", help="Skip Google Sheets export")
     parser.add_argument(
@@ -191,6 +214,12 @@ def main() -> int:
                 crawl_cmd.append("--exclude-popular-sources")
             if args.focus_digital_marketing:
                 crawl_cmd.append("--focus-digital-marketing")
+            if int(args.min_jobs_per_source) > 0:
+                crawl_cmd.extend(["--min-jobs-per-source", str(int(args.min_jobs_per_source))])
+            if args.auto_pause_low_yield:
+                crawl_cmd.append("--auto-pause-low-yield")
+            if int(args.low_yield_runs_threshold) > 0:
+                crawl_cmd.extend(["--low-yield-runs-threshold", str(int(args.low_yield_runs_threshold))])
             r1 = subprocess.run(crawl_cmd, cwd=ROOT)
             if r1.returncode != 0:
                 return r1.returncode
@@ -218,6 +247,8 @@ def main() -> int:
             ]
             if args.append_sheet:
                 cmd.append("--append-jobs")
+            if int(args.max_jobs_per_domain) > 0:
+                cmd.extend(["--max-jobs-per-domain", str(int(args.max_jobs_per_domain))])
             r3 = subprocess.run(cmd, cwd=ROOT)
             if r3.returncode != 0:
                 return r3.returncode
@@ -263,6 +294,12 @@ def main() -> int:
         crawl_cmd.append("--exclude-popular-sources")
     if args.focus_digital_marketing:
         crawl_cmd.append("--focus-digital-marketing")
+    if int(args.min_jobs_per_source) > 0:
+        crawl_cmd.extend(["--min-jobs-per-source", str(int(args.min_jobs_per_source))])
+    if args.auto_pause_low_yield:
+        crawl_cmd.append("--auto-pause-low-yield")
+    if int(args.low_yield_runs_threshold) > 0:
+        crawl_cmd.extend(["--low-yield-runs-threshold", str(int(args.low_yield_runs_threshold))])
     if args.mongo_fallback_json:
         crawl_cmd.append("--mongo-fallback-json")
         crawl_cmd.extend(["--sources-file", str(args.sources_file)])
@@ -306,6 +343,8 @@ def main() -> int:
         ]
         if args.append_sheet:
             cmd.append("--append-jobs")
+        if int(args.max_jobs_per_domain) > 0:
+            cmd.extend(["--max-jobs-per-domain", str(int(args.max_jobs_per_domain))])
         r4 = subprocess.run(cmd, cwd=ROOT)
         if r4.returncode != 0:
             return r4.returncode

@@ -7,9 +7,15 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from pymongo import ASCENDING, MongoClient, ReturnDocument
+from pymongo.errors import OperationFailure
 
 from app.config import settings
-from app.utils.job_dedupe import build_text_for_ml, compute_dedupe_key, normalize_url
+from app.utils.job_dedupe import (
+    build_text_for_ml,
+    compute_dedupe_key,
+    compute_primary_url_key,
+    normalize_url,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +85,16 @@ class MongoJobIngestService:
         self._connect()
         assert self._col is not None
         self._col.create_index("dedupe_key", unique=True, background=True)
+        # Sparse unique: only documents with non-empty url_key are indexed (no $ne in partial — older Mongo rejects it).
+        try:
+            self._col.create_index("url_key", unique=True, sparse=True, background=True)
+        except OperationFailure:
+            for name in ("url_key_1", "url_key"):
+                try:
+                    self._col.drop_index(name)
+                except Exception:
+                    pass
+            self._col.create_index("url_key", unique=True, sparse=True, background=True)
         self._col.create_index([("ml_status", ASCENDING), ("created_at", ASCENDING)], background=True)
         self._col.create_index("url_norm", background=True)
         self._col.create_index("updated_at", background=True)
@@ -101,6 +117,7 @@ class MongoJobIngestService:
         url = str(job.get("apply_url") or job.get("url") or "").strip()
         url_norm = normalize_url(url)
         dedupe_key = compute_dedupe_key(job)
+        url_key = compute_primary_url_key(job)
         text_for_ml = build_text_for_ml(job) or url_norm or dedupe_key
         payload = _trim_payload(job)
         now = datetime.now(timezone.utc)
@@ -110,29 +127,37 @@ class MongoJobIngestService:
             "crawl_batch_id": crawl_batch_id,
         }
 
-        self._col.update_one(
-            {"dedupe_key": dedupe_key},
-            {
-                "$set": {
-                    "url_norm": url_norm,
-                    "dedupe_key": dedupe_key,
-                    "source_platform": source_platform,
-                    "source_ref": source_ref,
-                    "payload": payload,
-                    "text_for_ml": text_for_ml,
-                    "updated_at": now,
-                    "last_seen_at": now,
-                },
-                "$setOnInsert": {
-                    "ml_status": "pending",
-                    "first_seen_at": now,
-                    "created_at": now,
-                    "ml_scores": {},
-                },
-                "$inc": {"seen_count": 1},
+        match_query: Dict[str, Any] = {"dedupe_key": dedupe_key}
+        if url_key:
+            # URL hash is primary across title/company variants.
+            match_query = {"$or": [{"url_key": url_key}, {"dedupe_key": dedupe_key}]}
+
+        set_doc: Dict[str, Any] = {
+            "url_norm": url_norm,
+            "dedupe_key": dedupe_key,
+            "source_platform": source_platform,
+            "source_ref": source_ref,
+            "payload": payload,
+            "text_for_ml": text_for_ml,
+            "updated_at": now,
+            "last_seen_at": now,
+        }
+        if url_key:
+            set_doc["url_key"] = url_key
+        update_doc: Dict[str, Any] = {
+            "$set": set_doc,
+            "$setOnInsert": {
+                "ml_status": "pending",
+                "first_seen_at": now,
+                "created_at": now,
+                "ml_scores": {},
             },
-            upsert=True,
-        )
+            "$inc": {"seen_count": 1},
+        }
+        if not url_key:
+            update_doc["$unset"] = {"url_key": ""}
+
+        self._col.update_one(match_query, update_doc, upsert=True)
         return dedupe_key
 
     def claim_next_pending(self) -> Optional[Dict[str, Any]]:
