@@ -8,11 +8,18 @@ Author: Backend Team
 Date: 2026-02-10
 """
 
+import asyncio
+import json
 import logging
 import os
 import fcntl
-from datetime import datetime
-import pytz
+import subprocess
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Callable, Dict, Optional
+
+import redis as redis_mod
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -20,13 +27,380 @@ from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
 
 from app.config import settings
+from app.utils.job_board_report import read_job_board_report, write_job_board_report
 from app.utils.timezone import now_ist
 
 logger = logging.getLogger(__name__)
 
+ROOT = Path(__file__).resolve().parent.parent.parent
+JOB_BOARD_SOURCE_STATE_PATH = ROOT / "app" / "data" / "pipeline" / "source_yield_state.json"
+JOB_BOARD_RUNNER_PATH = ROOT / "scripts" / "run_daily_ingest_automation.py"
+
+_manual_trigger_tasks: Dict[str, asyncio.Task] = {}
+_job_board_runner_task: Optional[asyncio.Task] = None
+_job_board_process: Optional[subprocess.Popen] = None
+
+
+def _clear_job_board_runner_task() -> None:
+    """Clear finished JobBoard runner task reference."""
+    global _job_board_runner_task
+    _job_board_runner_task = None
+
 # Scheduler lock state (prevents duplicate scheduler start across Gunicorn workers)
 _scheduler_lock_fd = None
 _scheduler_lock_acquired = False
+
+
+def _read_json_file(path: Path) -> Dict[str, Any]:
+    """Read a JSON file into a dictionary with safe fallback."""
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _parse_utc_timestamp(value: str) -> Optional[datetime]:
+    """Parse a UTC timestamp string into an aware datetime."""
+    if not value:
+        return None
+    try:
+        text = str(value).strip()
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        parsed = datetime.fromisoformat(text)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def _collect_source_counts_since(
+    started_at: datetime,
+    ended_at: Optional[datetime] = None,
+) -> Dict[str, int]:
+    """Collect attempted/succeeded/failed source counts from source-yield state."""
+    state = _read_json_file(JOB_BOARD_SOURCE_STATE_PATH)
+    sources = state.get("sources") or {}
+
+    attempted = 0
+    succeeded = 0
+    failed = 0
+    total_jobs = 0
+
+    for row in sources.values():
+        if not isinstance(row, dict):
+            continue
+        run_at = _parse_utc_timestamp(str(row.get("last_run_at") or ""))
+        if run_at is None:
+            continue
+        if run_at < started_at:
+            continue
+        if ended_at is not None and run_at > ended_at:
+            continue
+
+        attempted += 1
+        jobs_count = int(row.get("last_jobs") or 0)
+        total_jobs += max(0, jobs_count)
+        if jobs_count > 0:
+            succeeded += 1
+        else:
+            failed += 1
+
+    return {
+        "attempted": attempted,
+        "succeeded": succeeded,
+        "failed": failed,
+        "jobs_total": total_jobs,
+    }
+
+
+def _collect_ml_counts() -> Dict[str, int]:
+    """Collect ML status counts from Mongo job_ingest collection."""
+    try:
+        from app.services.mongodb_job_ingest_service import MongoJobIngestService
+
+        counts = MongoJobIngestService().count_by_status()
+    except Exception as exc:
+        logger.warning("Failed to collect JobBoard ML counts: %s", exc)
+        counts = {}
+
+    return {
+        "pending": int(counts.get("pending") or 0),
+        "processing": int(counts.get("processing") or 0),
+        "verified": int(counts.get("verified") or 0),
+        "rejected": int(counts.get("rejected") or 0),
+    }
+
+
+def _count_job_board_rows() -> Optional[int]:
+    """Count Postgres jobs rows with source='job_board'."""
+    try:
+        from sqlalchemy import create_engine, text
+
+        local_db_url = os.getenv("LOCAL_DATABASE_URL")
+        db_url = local_db_url or str(settings.DATABASE_URL)
+        sync_url = db_url.replace("+asyncpg", "")
+        sync_url = sync_url.replace("?ssl=require", "?sslmode=require")
+        sync_url = sync_url.replace("&ssl=require", "&sslmode=require")
+
+        engine = create_engine(sync_url, pool_pre_ping=True)
+        try:
+            with engine.connect() as conn:
+                result = conn.execute(
+                    text("SELECT COUNT(*) FROM jobs WHERE source = 'job_board'")
+                )
+                return int(result.scalar() or 0)
+        finally:
+            engine.dispose()
+    except Exception as exc:
+        logger.warning("Failed to count Postgres job_board rows: %s", exc)
+        return None
+
+
+def _collect_sheets_export_count_since(started_at: datetime) -> int:
+    """Read jobs_exported count from Redis sheets status after start time."""
+    client = None
+    try:
+        client = redis_mod.from_url(
+            settings.REDIS_URL,
+            decode_responses=True,
+            socket_timeout=3,
+        )
+        raw = client.get("sheets:last_export")
+        if not raw:
+            return 0
+        payload = json.loads(raw)
+        if not isinstance(payload, dict):
+            return 0
+        exported_at = _parse_utc_timestamp(str(payload.get("exported_at") or ""))
+        if exported_at is None or exported_at < started_at:
+            return 0
+        return int(payload.get("jobs_exported") or 0)
+    except Exception:
+        return 0
+    finally:
+        if client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
+
+
+def _persist_job_board_report(report: Dict[str, Any]) -> None:
+    """Persist latest JobBoard report in Redis."""
+    write_job_board_report(redis_url=settings.REDIS_URL, report=report)
+
+
+def _build_job_board_command() -> list[str]:
+    """Build the default 5 AM all-day JobBoard command."""
+    return [
+        os.getenv("JOB_BOARD_PYTHON_BIN") or "python3",
+        str(JOB_BOARD_RUNNER_PATH),
+        "--all-day",
+        "--spaced-batches",
+        "12",
+        "--batch-size",
+        "12",
+        "--sleep-min",
+        "300",
+        "--sleep-max",
+        "600",
+    ]
+
+
+def _is_job_board_process_running() -> bool:
+    """Check whether the JobBoard pipeline process is currently active."""
+    if _job_board_process is None:
+        return False
+    return _job_board_process.poll() is None
+
+
+async def _run_job_board_pipeline(
+    *,
+    run_id: str,
+    trigger: str,
+    command: list[str],
+    started_at: datetime,
+    postgres_before: Optional[int],
+) -> None:
+    """Execute JobBoard pipeline in background and persist completion report."""
+    global _job_board_process
+
+    log_dir = ROOT / "logs" / "job_board"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / f"job_board_{run_id}.log"
+
+    report: Dict[str, Any] = {
+        "run_id": run_id,
+        "trigger": trigger,
+        "status": "running",
+        "started_at": started_at,
+        "ended_at": None,
+        "duration_seconds": None,
+        "command": " ".join(command),
+        "pid": None,
+        "log_path": str(log_path),
+        "source_counts": {
+            "attempted": 0,
+            "succeeded": 0,
+            "failed": 0,
+            "jobs_total": 0,
+        },
+        "ml_counts": _collect_ml_counts(),
+        "postgres_sync_count": 0,
+        "sheets_export_count": 0,
+        "last_error": None,
+    }
+
+    try:
+        with log_path.open("a", encoding="utf-8") as log_file:
+            log_file.write(
+                f"\n===== JobBoard Run {run_id} ({trigger}) "
+                f"started {started_at.isoformat()} =====\n"
+            )
+            log_file.flush()
+
+            _job_board_process = subprocess.Popen(
+                command,
+                cwd=ROOT,
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+
+        report["pid"] = _job_board_process.pid
+        _persist_job_board_report(report)
+
+        return_code = await asyncio.to_thread(_job_board_process.wait)
+        ended_at = datetime.now(timezone.utc)
+
+        postgres_after = _count_job_board_rows()
+        postgres_delta = 0
+        if postgres_before is not None and postgres_after is not None:
+            postgres_delta = max(0, postgres_after - postgres_before)
+
+        report.update(
+            {
+                "status": "success" if return_code == 0 else "failed",
+                "ended_at": ended_at,
+                "duration_seconds": int((ended_at - started_at).total_seconds()),
+                "source_counts": _collect_source_counts_since(started_at, ended_at),
+                "ml_counts": _collect_ml_counts(),
+                "postgres_sync_count": postgres_delta,
+                "sheets_export_count": _collect_sheets_export_count_since(started_at),
+                "last_error": (
+                    None
+                    if return_code == 0
+                    else f"JobBoard pipeline exited with code {return_code}"
+                ),
+            }
+        )
+    except Exception as exc:
+        ended_at = datetime.now(timezone.utc)
+        report.update(
+            {
+                "status": "failed",
+                "ended_at": ended_at,
+                "duration_seconds": int((ended_at - started_at).total_seconds()),
+                "source_counts": _collect_source_counts_since(started_at, ended_at),
+                "ml_counts": _collect_ml_counts(),
+                "postgres_sync_count": 0,
+                "sheets_export_count": _collect_sheets_export_count_since(started_at),
+                "last_error": str(exc),
+            }
+        )
+        logger.error("JobBoard pipeline run failed: %s", exc, exc_info=True)
+    finally:
+        _persist_job_board_report(report)
+        _job_board_process = None
+
+
+async def launch_job_board_pipeline(trigger: str) -> Dict[str, Any]:
+    """Launch JobBoard ingest pipeline in background and return immediately."""
+    global _job_board_runner_task
+
+    if _is_job_board_process_running():
+        latest = read_job_board_report(redis_url=settings.REDIS_URL)
+        return {
+            "status": "already_running",
+            "job_id": "job_board_daily_5am",
+            "message": "JobBoard pipeline is already running.",
+            "run_id": latest.get("run_id"),
+        }
+
+    if _job_board_runner_task is not None and not _job_board_runner_task.done():
+        latest = read_job_board_report(redis_url=settings.REDIS_URL)
+        return {
+            "status": "already_running",
+            "job_id": "job_board_daily_5am",
+            "message": "JobBoard runner task is already active.",
+            "run_id": latest.get("run_id"),
+        }
+
+    run_id = uuid.uuid4().hex[:12]
+    started_at = datetime.now(timezone.utc)
+    command = _build_job_board_command()
+
+    start_report: Dict[str, Any] = {
+        "run_id": run_id,
+        "trigger": trigger,
+        "status": "starting",
+        "started_at": started_at,
+        "ended_at": None,
+        "duration_seconds": None,
+        "command": " ".join(command),
+        "pid": None,
+        "source_counts": {
+            "attempted": 0,
+            "succeeded": 0,
+            "failed": 0,
+            "jobs_total": 0,
+        },
+        "ml_counts": _collect_ml_counts(),
+        "postgres_sync_count": 0,
+        "sheets_export_count": 0,
+        "last_error": None,
+    }
+    _persist_job_board_report(start_report)
+
+    postgres_before = _count_job_board_rows()
+    _job_board_runner_task = asyncio.create_task(
+        _run_job_board_pipeline(
+            run_id=run_id,
+            trigger=trigger,
+            command=command,
+            started_at=started_at,
+            postgres_before=postgres_before,
+        )
+    )
+    _job_board_runner_task.add_done_callback(lambda _t: _clear_job_board_runner_task())
+
+    return {
+        "status": "started",
+        "job_id": "job_board_daily_5am",
+        "message": "JobBoard pipeline started in background.",
+        "run_id": run_id,
+    }
+
+
+async def _run_manual_job(job_id: str, job_func: Callable[..., Any]) -> None:
+    """Execute a manually triggered job in background with safe logging."""
+    try:
+        if asyncio.iscoroutinefunction(job_func):
+            await job_func()
+        else:
+            await asyncio.to_thread(job_func)
+        logger.info("Manual job completed: %s", job_id)
+    except Exception as exc:
+        logger.error("Manual job failed: %s (%s)", job_id, exc, exc_info=True)
+
+
+def _clear_manual_task(job_id: str) -> None:
+    """Clear finished manual trigger task entry."""
+    _manual_trigger_tasks.pop(job_id, None)
 
 
 def _acquire_scheduler_lock() -> bool:
@@ -257,6 +631,14 @@ async def send_daily_slack_summary():
         logger.error(f"❌ Failed to send morning update: {e}", exc_info=True)
 
 
+async def run_job_board_daily_ingest() -> Dict[str, Any]:
+    """Launch the JobBoard all-day ingest pipeline in background."""
+    logger.info("🚀 Launching JobBoard daily ingest pipeline (background)")
+    result = await launch_job_board_pipeline(trigger="scheduler")
+    logger.info("JobBoard daily ingest launch status: %s", result.get("status"))
+    return result
+
+
 async def run_telegram_group_joiner():
     """
     Scheduled task: Join Telegram groups (1 per account per cycle).
@@ -382,7 +764,7 @@ def setup_jobs():
             replace_existing=True
         )
     logger.info(f"   ✅ Added: ML Processor jobs (20 min after each scrape)")
-    
+
     # Job 4: Telegram Group Joiner - Every 5 hours
     scheduler.add_job(
         run_telegram_group_joiner,
@@ -392,6 +774,16 @@ def setup_jobs():
         replace_existing=True
     )
     logger.info("   ✅ Added: telegram_group_joiner_5hourly (Every 5 hours)")
+
+    # Job 5: JobBoard all-day ingest launcher at 5:00 AM IST
+    scheduler.add_job(
+        run_job_board_daily_ingest,
+        CronTrigger(hour=5, minute=0, timezone='Asia/Kolkata'),
+        id='job_board_daily_5am',
+        name='Job Board Daily Ingest (05:00 IST)',
+        replace_existing=True,
+    )
+    logger.info("   ✅ Added: job_board_daily_5am (05:00 IST)")
     
     logger.info("✅ All scheduled jobs configured")
 
@@ -490,18 +882,31 @@ async def trigger_job_now(job_id: str) -> dict:
         ValueError: If job not found
     """
     job = scheduler.get_job(job_id)
-    
-    if not job:
+
+    manual_only_jobs: Dict[str, Callable[..., Any]] = {
+        "ml_processor_on_demand": run_ml_processor,
+    }
+
+    if job is None and job_id not in manual_only_jobs:
         raise ValueError(f"Job '{job_id}' not found")
+
+    job_func = job.func if job is not None else manual_only_jobs[job_id]
     
-    logger.info(f"🔄 Manually triggering job: {job_id}")
-    
-    # Get the job function
-    job_func = job.func
-    
-    # Execute the job
-    result = await job_func()
-    
-    logger.info(f"✅ Manual job execution completed: {job_id}")
-    
-    return result
+    existing_task = _manual_trigger_tasks.get(job_id)
+    if existing_task is not None and not existing_task.done():
+        return {
+            "status": "already_running",
+            "job_id": job_id,
+            "message": f"Job '{job_id}' is already running.",
+        }
+
+    logger.info(f"🔄 Manually triggering job in background: {job_id}")
+    task = asyncio.create_task(_run_manual_job(job_id, job_func))
+    _manual_trigger_tasks[job_id] = task
+    task.add_done_callback(lambda _t, jid=job_id: _clear_manual_task(jid))
+
+    return {
+        "status": "started",
+        "job_id": job_id,
+        "message": f"Job '{job_id}' started in background.",
+    }

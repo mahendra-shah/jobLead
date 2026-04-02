@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from app.config import settings
+from app.utils.job_board_report import read_job_board_report
+from app.utils.timezone import IST, ist_today_utc_window
 
 logger = structlog.get_logger(__name__)
 
@@ -64,6 +66,32 @@ class SlackNotifier:
             return False
         
         return True
+
+    @staticmethod
+    def _fmt_report_time(value: object) -> str:
+        """Format report timestamp value for Slack display."""
+        if not value:
+            return "-"
+        text = str(value)
+        try:
+            if text.endswith("Z"):
+                text = text[:-1] + "+00:00"
+            dt = datetime.fromisoformat(text)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        except Exception:
+            return str(value)
+
+    def _get_job_board_report(self) -> Dict[str, object]:
+        """Read the latest JobBoard run report from Redis."""
+        report = read_job_board_report(redis_url=settings.REDIS_URL)
+        if isinstance(report, dict):
+            return report
+        return {
+            "status": "unavailable",
+            "note": "Invalid JobBoard report payload.",
+        }
 
     async def send_alert(
         self,
@@ -427,15 +455,14 @@ class SlackNotifier:
             from app.models.job import Job
             from app.services.telegram_scraper_service import get_scraper_service
             
-            # Get yesterday's date range.
-            # PostgreSQL jobs.created_at / telegram_groups.last_scraped_at are TIMESTAMP WITHOUT TIME ZONE,
-            # so these SQL filters must use naive datetimes.
-            today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-            yesterday = today - timedelta(days=1)
+            # Build IST-based "yesterday" window and query with UTC bounds.
+            # PostgreSQL columns are TIMESTAMP WITHOUT TIME ZONE (naive UTC).
+            yesterday_ref = datetime.now(IST) - timedelta(days=1)
+            yesterday, today, yesterday_ist_str = ist_today_utc_window(yesterday_ref)
 
-            # Mongo fetched_at uses UTC-aware datetimes
-            today_utc = today.replace(tzinfo=timezone.utc)
+            # Mongo fetched_at uses timezone-aware UTC datetimes.
             yesterday_utc = yesterday.replace(tzinfo=timezone.utc)
+            today_utc = today.replace(tzinfo=timezone.utc)
             
             # Account health
             result = await db.execute(select(TelegramAccount))
@@ -471,6 +498,7 @@ class SlackNotifier:
                 )
             )
             channels_yesterday = result.scalar() or 0
+            channels_source = "postgres"
             
             # Total active channels
             result = await db.execute(
@@ -482,15 +510,80 @@ class SlackNotifier:
             
             # Yesterday's messages from MongoDB
             messages_yesterday = 0
+            mongo_db = None
             try:
                 scraper = get_scraper_service()
-                if scraper._initialized:
-                    mongo_db = scraper.mongo_client[settings.MONGODB_DATABASE]
-                    messages_yesterday = mongo_db.raw_messages.count_documents({
-                        "fetched_at": {"$gte": yesterday_utc, "$lt": today_utc}
-                    })
+                if not scraper._initialized:
+                    await scraper.initialize()
+                mongo_db = scraper.mongo_client[settings.MONGODB_DATABASE]
+                messages_yesterday = mongo_db.raw_messages.count_documents({
+                    "fetched_at": {"$gte": yesterday_utc, "$lt": today_utc}
+                })
             except Exception as e:
                 logger.warning("failed_to_get_mongodb_stats", error=str(e))
+
+            # Fallback only for false-zero cases from Postgres channel timestamps.
+            if channels_yesterday == 0 and mongo_db is not None:
+                try:
+                    mongo_filter = {
+                        "fetched_at": {"$gte": yesterday_utc, "$lt": today_utc}
+                    }
+                    channel_usernames = set(
+                        mongo_db.raw_messages.distinct(
+                            "channel_username",
+                            mongo_filter,
+                        )
+                    )
+                    legacy_usernames = set(
+                        mongo_db.raw_messages.distinct(
+                            "username",
+                            mongo_filter,
+                        )
+                    )
+                    normalized_channels = {
+                        str(value).strip().lower()
+                        for value in (channel_usernames | legacy_usernames)
+                        if value
+                    }
+                    mongo_channels = len(normalized_channels)
+                    if mongo_channels > 0:
+                        channels_yesterday = mongo_channels
+                        channels_source = "mongo_fallback"
+                except Exception as e:
+                    logger.warning(
+                        "failed_to_get_mongodb_channel_fallback",
+                        error=str(e),
+                    )
+
+            logger.info(
+                "morning_update_channels_count",
+                source=channels_source,
+                channels_yesterday=channels_yesterday,
+                total_channels=total_channels,
+                window_start_utc=yesterday_utc.isoformat(),
+                window_end_utc=today_utc.isoformat(),
+            )
+
+            job_board_report = self._get_job_board_report()
+            jb_status = str(job_board_report.get("status") or "unknown")
+            jb_started_at = self._fmt_report_time(job_board_report.get("started_at"))
+            jb_ended_at = self._fmt_report_time(job_board_report.get("ended_at"))
+            jb_duration = int(job_board_report.get("duration_seconds") or 0)
+            jb_error = str(job_board_report.get("last_error") or "")
+
+            source_counts = job_board_report.get("source_counts") or {}
+            source_attempted = int(source_counts.get("attempted") or 0)
+            source_succeeded = int(source_counts.get("succeeded") or 0)
+            source_failed = int(source_counts.get("failed") or 0)
+
+            ml_counts = job_board_report.get("ml_counts") or {}
+            ml_pending = int(ml_counts.get("pending") or 0)
+            ml_processing = int(ml_counts.get("processing") or 0)
+            ml_verified = int(ml_counts.get("verified") or 0)
+            ml_rejected = int(ml_counts.get("rejected") or 0)
+
+            postgres_sync_count = int(job_board_report.get("postgres_sync_count") or 0)
+            sheets_export_count = int(job_board_report.get("sheets_export_count") or 0)
             
             # Determine system status
             if healthy == 0:
@@ -517,11 +610,16 @@ class SlackNotifier:
                 issues.append("❌ No jobs created yesterday")
             if messages_yesterday == 0:
                 issues.append("❌ No messages scraped yesterday")
+            if jb_status in {"failed", "start_failed"}:
+                issues.append("❌ JobBoard daily ingest failed")
             
             issues_text = "\n".join(f"• {issue}" for issue in issues) if issues else "✅ No issues detected"
             
             # Format message
-            yesterday_date = yesterday.strftime("%B %d, %Y")
+            yesterday_date = datetime.strptime(
+                yesterday_ist_str,
+                "%Y-%m-%d",
+            ).strftime("%B %d, %Y")
             
             message = (
                 f"*System Status:* {status_emoji} {status_text}\n"
@@ -530,6 +628,18 @@ class SlackNotifier:
                 f"• Jobs Created: {jobs_yesterday}\n"
                 f"• Messages Scraped: {messages_yesterday:,}\n"
                 f"• Channels Scraped: {channels_yesterday}/{total_channels}\n\n"
+                f"*🧭 JobBoard Daily Ingest (latest run):*\n"
+                f"• Status: {jb_status}\n"
+                f"• Started: {jb_started_at}\n"
+                f"• Ended: {jb_ended_at}\n"
+                f"• Duration: {jb_duration}s\n"
+                f"• Sources: attempted={source_attempted}, "
+                f"succeeded={source_succeeded}, failed={source_failed}\n"
+                f"• ML: pending={ml_pending}, processing={ml_processing}, "
+                f"verified={ml_verified}, rejected={ml_rejected}\n"
+                f"• Postgres synced: {postgres_sync_count}\n"
+                f"• Sheets exported: {sheets_export_count}\n"
+                f"• Last error: {jb_error or '-'}\n\n"
                 f"*📡 Current Account Health:*\n"
                 f"• Healthy: {healthy}/{len(accounts)}\n"
                 f"• Degraded: {degraded}\n"
@@ -551,7 +661,10 @@ class SlackNotifier:
                 context={
                     "Jobs Yesterday": jobs_yesterday,
                     "Messages Yesterday": messages_yesterday,
+                    "Channels Source": channels_source,
                     "Healthy Accounts": f"{healthy}/{len(accounts)}",
+                    "JobBoard Status": jb_status,
+                    "JobBoard Verified": ml_verified,
                 },
             )
             
