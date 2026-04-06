@@ -157,7 +157,31 @@ class MongoJobIngestService:
         if not url_key:
             update_doc["$unset"] = {"url_key": ""}
 
-        self._col.update_one(match_query, update_doc, upsert=True)
+        try:
+            self._col.update_one(match_query, update_doc, upsert=True)
+        except OperationFailure as exc:
+            # 11000: concurrent upserts or doc exists under same url_key with different dedupe_key.
+            if getattr(exc, "code", None) != 11000:
+                raise
+            retry_ok = False
+            if url_key:
+                r = self._col.update_one(
+                    {"url_key": url_key},
+                    {"$set": set_doc, "$inc": {"seen_count": 1}},
+                )
+                retry_ok = bool(r.matched_count)
+            if not retry_ok:
+                r2 = self._col.update_one(
+                    {"dedupe_key": dedupe_key},
+                    {"$set": set_doc, "$inc": {"seen_count": 1}},
+                )
+                retry_ok = bool(r2.matched_count)
+            if not retry_ok:
+                raise
+            logger.debug(
+                "job_ingest upsert recovered after duplicate key (url_key=%s...)",
+                (url_key or "")[:16],
+            )
         return dedupe_key
 
     def claim_next_pending(self) -> Optional[Dict[str, Any]]:
