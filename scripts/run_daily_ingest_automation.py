@@ -67,18 +67,6 @@ def main() -> int:
         help="Cap job candidates per source (faster + less waste)",
     )
     parser.add_argument("--ml-limit", type=int, default=600, help="Max ML rows per batch")
-    parser.add_argument(
-        "--sync-limit",
-        type=int,
-        default=200,
-        help="Max verified rows to sync to Postgres per batch (controls sync time).",
-    )
-    parser.add_argument(
-        "--max-jobs-per-domain",
-        type=int,
-        default=0,
-        help="Cap sheet rows per source domain for daily export (0 = no cap).",
-    )
     parser.add_argument("--prefer-less-known-sources", action="store_true", help="Prioritize lesser-known source domains")
     parser.add_argument("--exclude-popular-sources", action="store_true", help="Skip major/common boards")
     parser.add_argument("--focus-digital-marketing", action="store_true", help="Focus output on digital-marketing roles")
@@ -90,7 +78,7 @@ def main() -> int:
     parser.add_argument(
         "--no-append-sheet",
         action="store_true",
-        help="Use replace mode for sheets (do not append duplicate same-day rows).",
+        help="Skip Google Sheets (Mongo + verified JSON only)",
     )
     parser.add_argument(
         "--pause-low-sources",
@@ -113,11 +101,6 @@ def main() -> int:
         type=int,
         default=0,
         help="Number of spaced pipeline runs (parts). With --all-day and 0 here, defaults to 20.",
-    )
-    parser.add_argument(
-        "--dynamic-spaced-batches",
-        action="store_true",
-        help="Compute spaced batches from remaining crawl-ready sources and checkpoint.",
     )
     parser.add_argument(
         "--sleep-min",
@@ -170,23 +153,6 @@ def main() -> int:
             "Preset for all-day, human-like crawling focused on India/remote fresher jobs from "
             "student-pipeline niche sources only."
         ),
-    )
-    parser.add_argument(
-        "--min-jobs-per-source",
-        type=int,
-        default=0,
-        help="Track source yield; mark runs below this threshold as low-yield.",
-    )
-    parser.add_argument(
-        "--auto-pause-low-yield",
-        action="store_true",
-        help="With Mongo sources: auto-pause domains repeatedly below --min-jobs-per-source.",
-    )
-    parser.add_argument(
-        "--low-yield-runs-threshold",
-        type=int,
-        default=3,
-        help="Consecutive low-yield runs needed before auto-pause.",
     )
     args = parser.parse_args()
 
@@ -245,17 +211,11 @@ def main() -> int:
             str(args.max_jobs_per_source),
             "--ml-limit",
             str(args.ml_limit),
-            "--sync-limit",
-            str(args.sync_limit),
             "--sleep-min",
             str(args.sleep_min),
             "--sleep-max",
             str(args.sleep_max),
         ]
-        if int(args.max_jobs_per_domain) > 0:
-            pilot_cmd.extend(["--max-jobs-per-domain", str(int(args.max_jobs_per_domain))])
-        if args.dynamic_spaced_batches:
-            pilot_cmd.append("--dynamic-iterations")
         if args.prefer_less_known_sources:
             pilot_cmd.append("--prefer-less-known-sources")
         if args.exclude_popular_sources:
@@ -270,12 +230,6 @@ def main() -> int:
             pilot_cmd.append("--no-append-sheet")
         if args.no_strict_india:
             pilot_cmd.append("--no-strict-india")
-        if int(args.min_jobs_per_source) > 0:
-            pilot_cmd.extend(["--min-jobs-per-source", str(int(args.min_jobs_per_source))])
-        if args.auto_pause_low_yield:
-            pilot_cmd.append("--auto-pause-low-yield")
-        if int(args.low_yield_runs_threshold) > 0:
-            pilot_cmd.extend(["--low-yield-runs-threshold", str(int(args.low_yield_runs_threshold))])
         # Match single-pass resilience: pilot forwards --mongo-fallback-json by default.
         if args.disable_mongo_fallback:
             pilot_cmd.append("--disable-mongo-fallback")
@@ -296,11 +250,7 @@ def main() -> int:
         str(args.max_jobs_per_source),
         "--ml-limit",
         str(args.ml_limit),
-        "--sync-limit",
-        str(args.sync_limit),
     ]
-    if int(args.max_jobs_per_domain) > 0:
-        pipe_cmd.extend(["--max-jobs-per-domain", str(int(args.max_jobs_per_domain))])
     if args.prefer_less_known_sources:
         pipe_cmd.append("--prefer-less-known-sources")
     if args.exclude_popular_sources:

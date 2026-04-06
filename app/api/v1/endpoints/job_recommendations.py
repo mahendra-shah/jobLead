@@ -230,10 +230,7 @@ async def get_recommendation_stats(
     - criteria_matches: skill-match count, fresher-friendly count
     - top_recommendations: first 5 items from the warmed cache
     """
-    result = await db.execute(
-        select(Student).where(Student.user_id == current_user.id)
-    )
-    student = result.scalar_one_or_none()
+    student = await _get_student_for_current_user(db, current_user)
 
     if not student:
         raise HTTPException(

@@ -184,65 +184,37 @@ def _sync_db_url() -> str:
 
 
 def load_jobs_from_postgres(*, date_str: str, source: str = "job_board") -> list[dict]:
-    """Jobs for IST calendar date from Postgres, shaped like ingest/JSON rows.
-
-    Uses reflected ``jobs`` columns only (avoids ORM/schema drift e.g. ``experience`` vs ``experience_required``).
-    """
-    import warnings
-
-    from sqlalchemy import MetaData, Table, and_, create_engine, inspect as sa_inspect, or_, select
+    """Jobs for IST calendar date from Postgres, shaped like ingest/JSON rows."""
+    from sqlalchemy import and_, create_engine, select
     from sqlalchemy.orm import sessionmaker
 
+    from app.models.job import Job
     from app.services.job_board_sheets_service import JobBoardSheetsService
     from app.utils.timezone import ist_today_utc_window
 
     ref_dt = datetime.strptime(date_str, "%Y-%m-%d")
     start_utc, end_utc, _ = ist_today_utc_window(ref_dt)
 
-    engine = create_engine(_sync_db_url(), pool_pre_ping=True)
+    engine = create_engine(_sync_db_url())
     SessionLocal = sessionmaker(bind=engine)
     db = SessionLocal()
     try:
         from sqlalchemy.exc import OperationalError
 
         try:
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", message=".*Did not recognize type 'vector'.*")
-                job_cols = {str(c.get("name")) for c in sa_inspect(engine).get_columns("jobs")}
-                jobs_table = Table("jobs", MetaData(), autoload_with=engine)
-
-            has_source = "source" in job_cols
-            has_created = "created_at" in job_cols
-            has_updated = "updated_at" in job_cols
-            want = ("title", "description", "source_url", "source_channel_name", "ml_confidence")
-            select_cols = [jobs_table.c[n] for n in want if n in job_cols]
-            if not select_cols:
-                return []
-
-            stmt = select(*select_cols)
-            wc = []
-            if has_source:
-                wc.append(jobs_table.c.source == source)
-            c_in = (
-                and_(jobs_table.c.created_at >= start_utc, jobs_table.c.created_at < end_utc)
-                if has_created
-                else None
+            jobs = (
+                db.execute(
+                    select(Job).where(
+                        and_(
+                            Job.source == source,
+                            Job.created_at >= start_utc,
+                            Job.created_at < end_utc,
+                        )
+                    )
+                )
+                .scalars()
+                .all()
             )
-            u_in = (
-                and_(jobs_table.c.updated_at >= start_utc, jobs_table.c.updated_at < end_utc)
-                if has_updated
-                else None
-            )
-            if c_in is not None and u_in is not None:
-                wc.append(or_(c_in, u_in))
-            elif c_in is not None:
-                wc.append(c_in)
-            elif u_in is not None:
-                wc.append(u_in)
-            if wc:
-                stmt = stmt.where(and_(*wc))
-
-            rows = db.execute(stmt).mappings().all()
         except OperationalError as e:
             err = str(getattr(e, "orig", e))
             hint = ""
@@ -255,29 +227,28 @@ def load_jobs_from_postgres(*, date_str: str, source: str = "job_board") -> list
             print(f"Postgres error (student report): {err}{hint}", file=sys.stderr)
             raise SystemExit(1) from e
         out: list[dict] = []
-        for j in rows:
-            u = (j.get("source_url") or "").strip()
-            domain = (j.get("source_channel_name") or "").strip()
+        for j in jobs:
+            u = (j.source_url or "").strip()
+            domain = (j.source_channel_name or "").strip()
             if not domain and u:
                 domain = urlparse(u).netloc
-            _, category = JobBoardSheetsService._classify_job(j.get("title") or "", domain)
+            _, category = JobBoardSheetsService._classify_job(j.title or "", domain)
             conf = None
-            mc = j.get("ml_confidence")
-            if mc not in (None, ""):
+            if j.ml_confidence not in (None, ""):
                 try:
-                    conf = float(mc)
+                    conf = float(j.ml_confidence)
                 except (TypeError, ValueError):
                     conf = None
             row = {
-                "title": j.get("title") or "",
-                "description": j.get("description") or "",
+                "title": j.title or "",
+                "description": j.description or "",
                 "url": u,
                 "apply_url": u,
                 "category": category,
                 "ml_verification": {"confidence": conf} if conf is not None else {},
             }
-            if mc not in (None, ""):
-                row["ml_confidence"] = mc
+            if j.ml_confidence not in (None, ""):
+                row["ml_confidence"] = j.ml_confidence
             out.append(row)
         return out
     finally:

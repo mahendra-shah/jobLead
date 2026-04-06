@@ -63,23 +63,6 @@ def main() -> int:
     )
     parser.add_argument("--max-jobs-per-source", type=int, default=60, help="Cap job candidates per source crawl")
     parser.add_argument(
-        "--min-jobs-per-source",
-        type=int,
-        default=0,
-        help="Track source yield and mark sources below threshold as low-yield.",
-    )
-    parser.add_argument(
-        "--auto-pause-low-yield",
-        action="store_true",
-        help="Auto-pause low-yield sources after repeated runs (Mongo source mode).",
-    )
-    parser.add_argument(
-        "--low-yield-runs-threshold",
-        type=int,
-        default=3,
-        help="Consecutive low-yield runs required before auto-pause.",
-    )
-    parser.add_argument(
         "--prefer-less-known-sources",
         action="store_true",
         help="Prioritize lesser-known source domains over major boards.",
@@ -95,18 +78,6 @@ def main() -> int:
         help="Keep digital-marketing oriented jobs in profile filter step.",
     )
     parser.add_argument("--ml-limit", type=int, default=500, help="Max job_ingest docs to process this run")
-    parser.add_argument(
-        "--sync-limit",
-        type=int,
-        default=200,
-        help="Max verified rows to sync to Postgres this run (keeps each batch fast).",
-    )
-    parser.add_argument(
-        "--max-jobs-per-domain",
-        type=int,
-        default=0,
-        help="Cap rows per source domain in sheet export (0 = no cap).",
-    )
     parser.add_argument("--no-sheet", action="store_true", help="Skip Google Sheets export")
     parser.add_argument(
         "--append-sheet",
@@ -214,12 +185,6 @@ def main() -> int:
                 crawl_cmd.append("--exclude-popular-sources")
             if args.focus_digital_marketing:
                 crawl_cmd.append("--focus-digital-marketing")
-            if int(args.min_jobs_per_source) > 0:
-                crawl_cmd.extend(["--min-jobs-per-source", str(int(args.min_jobs_per_source))])
-            if args.auto_pause_low_yield:
-                crawl_cmd.append("--auto-pause-low-yield")
-            if int(args.low_yield_runs_threshold) > 0:
-                crawl_cmd.extend(["--low-yield-runs-threshold", str(int(args.low_yield_runs_threshold))])
             r1 = subprocess.run(crawl_cmd, cwd=ROOT)
             if r1.returncode != 0:
                 return r1.returncode
@@ -247,8 +212,6 @@ def main() -> int:
             ]
             if args.append_sheet:
                 cmd.append("--append-jobs")
-            if int(args.max_jobs_per_domain) > 0:
-                cmd.extend(["--max-jobs-per-domain", str(int(args.max_jobs_per_domain))])
             r3 = subprocess.run(cmd, cwd=ROOT)
             if r3.returncode != 0:
                 return r3.returncode
@@ -294,12 +257,6 @@ def main() -> int:
         crawl_cmd.append("--exclude-popular-sources")
     if args.focus_digital_marketing:
         crawl_cmd.append("--focus-digital-marketing")
-    if int(args.min_jobs_per_source) > 0:
-        crawl_cmd.extend(["--min-jobs-per-source", str(int(args.min_jobs_per_source))])
-    if args.auto_pause_low_yield:
-        crawl_cmd.append("--auto-pause-low-yield")
-    if int(args.low_yield_runs_threshold) > 0:
-        crawl_cmd.extend(["--low-yield-runs-threshold", str(int(args.low_yield_runs_threshold))])
     if args.mongo_fallback_json:
         crawl_cmd.append("--mongo-fallback-json")
         crawl_cmd.extend(["--sources-file", str(args.sources_file)])
@@ -313,7 +270,6 @@ def main() -> int:
     if args.sleep_after_crawl > 0:
         time.sleep(float(args.sleep_after_crawl))
 
-    print(">>> ML: process_job_ingest_ml (this can take several minutes) ...", flush=True)
     ml_cmd = [py, "scripts/job_ingest/process_job_ingest_ml.py", "--limit", str(args.ml_limit)]
     if args.no_strict_india:
         ml_cmd.append("--no-strict-india")
@@ -321,21 +277,11 @@ def main() -> int:
     if r2.returncode != 0:
         return r2.returncode
 
-    print(f">>> Postgres: sync_verified_to_postgres (limit={args.sync_limit}) ...", flush=True)
-    r3 = subprocess.run(
-        [
-            py,
-            "scripts/job_ingest/sync_verified_to_postgres.py",
-            "--limit",
-            str(args.sync_limit),
-        ],
-        cwd=ROOT,
-    )
+    r3 = subprocess.run([py, "scripts/job_ingest/sync_verified_to_postgres.py"], cwd=ROOT)
     if r3.returncode != 0:
         return r3.returncode
 
     if not args.no_sheet:
-        print(">>> Google Sheets: export_job_board_jobs_to_sheets (chunked writes) ...", flush=True)
         cmd = [
             py,
             "scripts/export_job_board_jobs_to_sheets.py",
@@ -343,8 +289,6 @@ def main() -> int:
         ]
         if args.append_sheet:
             cmd.append("--append-jobs")
-        if int(args.max_jobs_per_domain) > 0:
-            cmd.extend(["--max-jobs-per-domain", str(int(args.max_jobs_per_domain))])
         r4 = subprocess.run(cmd, cwd=ROOT)
         if r4.returncode != 0:
             return r4.returncode

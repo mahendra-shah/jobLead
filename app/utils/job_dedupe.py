@@ -1,4 +1,4 @@
-"""Dedupe keys for job_ingest: URL-first + secondary identity hash."""
+"""Dedupe keys for job_ingest: URL normalization + composite hash across sources."""
 
 from __future__ import annotations
 
@@ -36,49 +36,32 @@ def _norm_text(s: Any, max_len: int = 400) -> str:
     return t[:max_len]
 
 
-def compute_primary_url_key(job: Dict[str, Any]) -> str:
-    """Primary dedupe key from normalized apply URL (empty when URL missing)."""
-    apply_u = normalize_url(str(job.get("apply_url") or job.get("url") or ""))
-    if not apply_u:
-        return ""
-    return hashlib.sha256(apply_u.encode("utf-8")).hexdigest()
-
-
-def compute_secondary_identity_key(job: Dict[str, Any]) -> str:
-    """Secondary dedupe key from title+company+location when URL variants differ."""
+def compute_dedupe_key(job: Dict[str, Any]) -> str:
+    """
+    Cross-board identity: stable hash of normalized title + company + location + apply URL.
+    Falls back to url_norm if everything else empty.
+    """
     title = _norm_text(job.get("title"), 300)
     company = _norm_text(job.get("company"), 200)
     loc = _norm_text(
         job.get("location_detail") or job.get("location"),
         200,
     )
-    blob = f"{title}|{company}|{loc}"
+    apply_u = normalize_url(
+        str(job.get("apply_url") or job.get("url") or ""),
+    )
+    blob = f"{title}|{company}|{loc}|{apply_u}"
     if blob.strip("|") == "":
-        apply_u = normalize_url(str(job.get("apply_url") or job.get("url") or ""))
+        apply_u = normalize_url(str(job.get("url") or ""))
         blob = apply_u or "empty"
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
-def compute_dedupe_key(job: Dict[str, Any]) -> str:
-    """
-    Backward-compatible alias used by existing pipeline code.
-    Returns secondary identity key; primary URL key is handled separately.
-    """
-    return compute_secondary_identity_key(job)
-
-
-# Long enough for classifier + India gate; aligned with Mongo payload trim cap.
-_ML_DESCRIPTION_MAX_CHARS = 32000
-
-
 def build_text_for_ml(job: Dict[str, Any]) -> str:
-    desc = job.get("description") or ""
-    if isinstance(desc, str) and len(desc) > _ML_DESCRIPTION_MAX_CHARS:
-        desc = desc[:_ML_DESCRIPTION_MAX_CHARS]
     parts = [
         job.get("title") or "",
         job.get("company") or "",
         job.get("location") or job.get("location_detail") or "",
-        desc,
+        (job.get("description") or "")[:4000],
     ]
     return _WS.sub(" ", " ".join(str(p) for p in parts if p)).strip()
