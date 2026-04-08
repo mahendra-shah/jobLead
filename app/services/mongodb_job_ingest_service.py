@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from pymongo import ASCENDING, MongoClient, ReturnDocument
@@ -220,6 +220,44 @@ class MongoJobIngestService:
         if ml_scores is not None:
             update["$set"]["ml_scores"] = ml_scores
         self._col.update_one({"dedupe_key": dedupe_key}, update)
+
+    def patch_payload(self, dedupe_key: str, fields: Dict[str, Any]) -> None:
+        """Merge `fields` into nested `payload` (non-destructive $set on payload.<key>)."""
+        self._ensure_indexes()
+        assert self._col is not None
+        now = datetime.now(timezone.utc)
+        set_doc: Dict[str, Any] = {"updated_at": now}
+        for k, v in fields.items():
+            if v is None:
+                continue
+            if v == "":
+                continue
+            if isinstance(v, list) and len(v) == 0:
+                continue
+            set_doc[f"payload.{k}"] = v
+        if len(set_doc) <= 1:
+            return
+        self._col.update_one({"dedupe_key": dedupe_key}, {"$set": set_doc})
+
+    def reset_stale_processing(self, *, max_age_minutes: int = 180) -> int:
+        """Move stuck `processing` docs back to `pending` (worker crash / kill)."""
+        self._ensure_indexes()
+        assert self._col is not None
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(minutes=int(max_age_minutes))
+        r = self._col.update_many(
+            {"ml_status": "processing", "processing_started_at": {"$lt": cutoff}},
+            {"$set": {"ml_status": "pending", "updated_at": now}},
+        )
+        r2 = self._col.update_many(
+            {
+                "ml_status": "processing",
+                "processing_started_at": {"$exists": False},
+                "updated_at": {"$lt": cutoff},
+            },
+            {"$set": {"ml_status": "pending", "updated_at": now}},
+        )
+        return int(r.modified_count + r2.modified_count)
 
     def list_verified_payloads(self, *, limit: int = 50000) -> List[Dict[str, Any]]:
         """Return payload + ml_scores for verified jobs (for JSON export)."""

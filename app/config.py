@@ -213,7 +213,19 @@ class Settings(BaseSettings):
     ML_RETRAIN_SCHEDULE: str = "monthly"  # Auto-retrain frequency
     ML_EXTRACTOR_VERSION: str = "v2"  # Use enhanced extractor v2 by default
     ML_MODEL_PATH: str = "app/ml/models/"  # Path to store trained models
-    
+    # Default sklearn artefact (Telegram + ensemble + legacy scripts): ML_CLASSIFIER_LEGACY_BASENAME.
+    # Job-board ingest uses ML_JOB_BOARD_CLASSIFIER_BASENAME when present, else falls back to legacy.
+    ML_CLASSIFIER_LEGACY_BASENAME: str = "job_classifier.pkl"
+    ML_JOB_BOARD_CLASSIFIER_BASENAME: str = "job_classifier_job_board.pkl"
+    # Job-board depth filter (description-driven): fresher cap, remote/hybrid, role tracks, title+company.
+    JOB_BOARD_DEPTH_PROFILE_ENABLED: bool = True
+    JOB_BOARD_REQUIRE_REMOTE_SIGNAL: bool = True
+    JOB_BOARD_REQUIRE_ROLE_TRACK_MATCH: bool = True
+    # If sklearn says low confidence/not-job but depth profile is strong, allow through
+    # and let quality scorer perform final gate.
+    JOB_BOARD_ALLOW_DEPTH_OVERRIDE: bool = True
+    JOB_BOARD_DEPTH_OVERRIDE_MIN_TEXT_CHARS: int = 120
+
     # Scraping Schedule (4-hour intervals)
     SCRAPING_HOURS: Annotated[List[int], BeforeValidator(parse_list_of_ints)] = [4, 8, 12, 16, 20, 0]
     SCRAPING_TIMEZONE: str = "Asia/Kolkata"  # IST timezone
@@ -222,8 +234,12 @@ class Settings(BaseSettings):
     # Jobs with experience_min <= this value (or no experience mentioned) are
     # classified as fresher-friendly. Raise this value to accept more-experienced
     # candidates, or lower it to be stricter.
-    # Can also be overridden via env var: MAX_FRESHER_EXPERIENCE_YEARS=1
-    MAX_FRESHER_EXPERIENCE_YEARS: int = 2
+    # Can also be overridden via env var: MAX_FRESHER_EXPERIENCE_YEARS=2
+    # Default 1: students with little/no prior work experience (stricter than 0–2 yrs boards).
+    MAX_FRESHER_EXPERIENCE_YEARS: int = 1
+    # Crawl-stage profile filter only: allow slightly wider experience text so rows reach ML/depth.
+    # Final verification still uses MAX_FRESHER_EXPERIENCE_YEARS in depth_profile / ML step.
+    JOB_BOARD_CRAWL_PROFILE_MAX_EXPERIENCE_YEARS: int = 2
 
     @field_validator("ALLOWED_RESUME_EXTENSIONS", mode="before")
     @classmethod

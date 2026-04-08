@@ -29,6 +29,7 @@ if str(JOBLEAD_ROOT) not in sys.path:
 import httpx
 from bs4 import BeautifulSoup  # not heavily used here but available for future refinements
 
+from app.config import settings
 from app.utils.job_parser import parse_experience
 from app.utils.source_classifier import classify_source
 from scripts.discovery.domain_rate_limiter import rate_limit_before_request
@@ -115,6 +116,11 @@ def extract_job_details_from_page(html: str, page_url: str) -> dict:
     soup = BeautifulSoup(html, "html.parser")
     details: dict = {}
 
+    # Structured data first (JSON-LD JobPosting), then generic HTML fallbacks.
+    structured = _extract_jobposting_jsonld(soup, page_url)
+    if structured:
+        details.update(structured)
+
     # 1) Description: concatenate paragraphs and list items, trimmed
     text_blocks: list[str] = []
     for node in soup.select("section, div, article"):
@@ -129,10 +135,11 @@ def extract_job_details_from_page(html: str, page_url: str) -> dict:
                 text_blocks.append(txt)
     if text_blocks:
         desc = " ".join(text_blocks)
-        details["description"] = desc[:2000]
+        if len((details.get("description") or "").strip()) < 400:
+            details["description"] = desc[:8000]
 
     # 2) Salary: look for common patterns
-    full_text = (details.get("description") or soup.get_text(" ", strip=True) or "")[:5000]
+    full_text = (details.get("description") or soup.get_text(" ", strip=True) or "")[:12000]
     salary_match = re.search(
         r"(₹\s?[\d.,]+(?:\s*-\s*₹?\s*[\d.,]+)?\s*(?:lpa|per month|per annum)?|"
         r"\$[\d.,]+(?:\s*-\s*\$?[\d.,]+)?|"
@@ -166,6 +173,15 @@ def extract_job_details_from_page(html: str, page_url: str) -> dict:
     if degree_match:
         details["degree"] = degree_match.group(0).strip()
 
+    # 4.5) Experience hints (for fresher/experienced filtering downstream)
+    exp_match = re.search(
+        r"(\d+\s*(?:\+|to|-)\s*\d*\s*(?:years?|yrs?)|fresher|entry[-\s]*level|0[-\s]*2\s*(?:years?|yrs?))",
+        full_text,
+        re.IGNORECASE,
+    )
+    if exp_match:
+        details["experience_required"] = exp_match.group(0).strip()
+
     # 5) Apply URL (if there is a clear apply button/link)
     for a in soup.find_all("a", href=True):
         txt = a.get_text(" ", strip=True).lower()
@@ -173,7 +189,145 @@ def extract_job_details_from_page(html: str, page_url: str) -> dict:
             details["apply_url"] = a["href"]
             break
 
+    # 6) Location hints and work mode
+    if not details.get("location"):
+        loc_match = re.search(
+            r"\b(?:location|job location)\s*[:\-]\s*([A-Za-z][A-Za-z0-9 ,./()-]{2,80})",
+            full_text,
+            re.IGNORECASE,
+        )
+        if loc_match:
+            details["location"] = loc_match.group(1).strip()
+
+    mode_text = full_text.lower()
+    if "work_type" not in details:
+        if any(k in mode_text for k in ("work from home", "wfh", "remote")):
+            details["work_type"] = "Remote"
+        elif "hybrid" in mode_text:
+            details["work_type"] = "Hybrid"
+        elif any(k in mode_text for k in ("onsite", "on-site", "work from office", "office only")):
+            details["work_type"] = "Onsite"
+
     return details
+
+
+def _extract_jobposting_jsonld(soup: BeautifulSoup, page_url: str) -> dict:
+    """Extract high-confidence fields from schema.org JobPosting blocks."""
+    details: dict = {}
+
+    def _iter_nodes(node):
+        if isinstance(node, list):
+            for x in node:
+                yield from _iter_nodes(x)
+            return
+        if isinstance(node, dict):
+            typ = str(node.get("@type") or "").lower()
+            if typ == "jobposting" or "jobposting" in typ:
+                yield node
+            for v in node.values():
+                if isinstance(v, (dict, list)):
+                    yield from _iter_nodes(v)
+
+    for script in soup.find_all("script", attrs={"type": "application/ld+json"}):
+        txt = (script.string or script.get_text() or "").strip()
+        if not txt:
+            continue
+        try:
+            payload = json.loads(txt)
+        except Exception:
+            continue
+        for jp in _iter_nodes(payload):
+            if not isinstance(jp, dict):
+                continue
+            desc = str(jp.get("description") or "").strip()
+            if desc:
+                details["description"] = BeautifulSoup(desc, "html.parser").get_text(" ", strip=True)[:8000]
+
+            emp = jp.get("employmentType")
+            if isinstance(emp, list):
+                emp = ", ".join(str(x) for x in emp if x)
+            if emp:
+                details["work_type"] = str(emp)[:80]
+
+            dpost = jp.get("datePosted")
+            if dpost:
+                details["job_posted_at_raw"] = str(dpost)[:40]
+
+            # salary from baseSalary object
+            bs = jp.get("baseSalary")
+            if isinstance(bs, dict):
+                val = bs.get("value")
+                cur = bs.get("currency")
+                if isinstance(val, dict):
+                    mn = val.get("minValue")
+                    mx = val.get("maxValue")
+                    unit = val.get("unitText")
+                    if mn is not None or mx is not None:
+                        details["salary"] = f"{cur or ''} {mn or ''}-{mx or ''} {unit or ''}".strip()
+            elif isinstance(bs, (str, int, float)):
+                details["salary"] = str(bs)[:80]
+
+            # location + country
+            loc = jp.get("jobLocation")
+            if isinstance(loc, list):
+                loc = loc[0] if loc else None
+            if isinstance(loc, dict):
+                adr = loc.get("address") or {}
+                city = adr.get("addressLocality")
+                region = adr.get("addressRegion")
+                country = adr.get("addressCountry")
+                chunks = [str(x).strip() for x in (city, region) if x]
+                if chunks:
+                    details["location"] = ", ".join(chunks)[:120]
+                    details["location_detail"] = details["location"]
+                if country:
+                    details["country"] = str(country)[:60]
+
+            apl = jp.get("url") or jp.get("applyUrl")
+            if apl:
+                details["apply_url"] = _to_absolute_url(str(apl), page_url)
+
+            quals = jp.get("qualifications")
+            if quals:
+                details["degree"] = str(BeautifulSoup(str(quals), "html.parser").get_text(" ", strip=True))[:120]
+
+            skills = jp.get("skills")
+            if isinstance(skills, str):
+                parts = [x.strip() for x in re.split(r",|;|\|", skills) if x.strip()]
+                if parts:
+                    details["skills"] = parts[:25]
+            elif isinstance(skills, list):
+                parts = [str(x).strip() for x in skills if str(x).strip()]
+                if parts:
+                    details["skills"] = parts[:25]
+
+            break
+        if details:
+            break
+    return details
+
+
+def _detail_field_score(extra: dict) -> int:
+    """Rough completeness score for detail extraction quality."""
+    score = 0
+    desc = (extra.get("description") or "").strip()
+    if len(desc) >= 300:
+        score += 2
+    elif len(desc) >= 120:
+        score += 1
+    if extra.get("salary"):
+        score += 1
+    if extra.get("experience_required"):
+        score += 1
+    if extra.get("skills") and isinstance(extra.get("skills"), list) and len(extra.get("skills")) >= 3:
+        score += 1
+    if extra.get("location") or extra.get("location_detail"):
+        score += 1
+    if extra.get("work_type"):
+        score += 1
+    if extra.get("apply_url"):
+        score += 1
+    return score
 
 
 # Full set of keys we want in every job JSON (matches Google Sheet columns).
@@ -204,6 +358,9 @@ DIGITAL_MARKETING_TERMS = (
 
 ALWAYS_EXCLUDED_SOURCE_TOKENS = (
     "internshala.com",
+    # Many listing URLs resolve to thin/category pages with duplicate generic titles.
+    "webpulseindia.com",
+    "webpulse.co.in",
 )
 
 
@@ -549,6 +706,7 @@ def _filter_jobs_for_target_profile(jobs: list[dict], *, focus_digital_marketing
     )
 
     def experience_ok(desc: str) -> bool:
+        cap = float(settings.JOB_BOARD_CRAWL_PROFILE_MAX_EXPERIENCE_YEARS)
         exp = parse_experience(desc.lower())
         if exp.get("is_fresher"):
             return True
@@ -557,10 +715,13 @@ def _filter_jobs_for_target_profile(jobs: list[dict], *, focus_digital_marketing
         # If we cannot parse, keep it (better recall).
         if mn is None and mx is None:
             return True
-        if mn is not None and mn > 2:
-            return False
-        if mx is not None and mx > 2:
-            return False
+        try:
+            if mn is not None and float(mn) > cap:
+                return False
+            if mx is not None and float(mx) > cap:
+                return False
+        except (TypeError, ValueError):
+            return True
         return True
 
     def location_ok(job: dict) -> bool:
@@ -955,16 +1116,29 @@ def main() -> int:
                     if _is_non_job_or_spam(title, url, early_combined):
                         continue
                     seen_urls.add(url)
-                    # Fetch job detail page for richer fields (best-effort, but skip on error)
+                    # Layer 2: detail crawl on job URL (and alternate apply URL if present).
                     extra: dict = {}
-                    try:
-                        _sleep_source_delay(args.source_request_delay, args.source_request_jitter)
-                        rate_limit_before_request(url)
-                        detail_resp = client.get(url)
-                        detail_resp.raise_for_status()
-                        extra = extract_job_details_from_page(detail_resp.text, url)
-                    except Exception:
-                        extra = {}
+                    detail_candidates = [url]
+                    raw_apply = _to_absolute_url(str(j.get("apply_url") or ""), entry_url)
+                    if raw_apply and raw_apply not in detail_candidates:
+                        detail_candidates.append(raw_apply)
+                    best_score = -1
+                    for du in detail_candidates:
+                        try:
+                            _sleep_source_delay(args.source_request_delay, args.source_request_jitter)
+                            rate_limit_before_request(du)
+                            detail_resp = client.get(du)
+                            detail_resp.raise_for_status()
+                            cand = extract_job_details_from_page(detail_resp.text, du)
+                            score = _detail_field_score(cand)
+                            if score > best_score:
+                                best_score = score
+                                extra = cand
+                            # Good enough detail quality, no need to try more URLs.
+                            if score >= 4:
+                                break
+                        except Exception:
+                            continue
                     job = {
                         "title": title,
                         "company": company,

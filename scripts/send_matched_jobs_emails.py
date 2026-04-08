@@ -127,25 +127,70 @@ def token_match(needle: str, haystack_text: str, haystack_tokens: Set[str]) -> b
 
 
 def fetch_students(conn, limit: int) -> List[StudentRow]:
+    # Backward-compatible student fetch:
+    # - Preferred: students.email
+    # - Fallback: students.user_id -> users.email
+    col_rows = conn.execute(
+        text(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'students'
+            """
+        )
+    )
+    student_cols = {str(r[0]) for r in col_rows}
+    has_email_col = "email" in student_cols
+    has_user_id_col = "user_id" in student_cols
+
+    email_expr = "lower(trim(s.email))"
+    join_clause = ""
+    where_email = "s.email IS NOT NULL AND btrim(s.email) <> ''"
+    if not has_email_col and has_user_id_col:
+        email_expr = "lower(trim(u.email))"
+        join_clause = "LEFT JOIN users u ON u.id = s.user_id"
+        where_email = "u.email IS NOT NULL AND btrim(u.email) <> ''"
+    elif not has_email_col:
+        # No available email path in current schema.
+        return []
+
+    def _col_expr(col: str, fallback_sql: str, cast_jsonb: bool = False) -> str:
+        if col in student_cols:
+            return f"s.{col}"
+        if cast_jsonb:
+            return f"{fallback_sql}::jsonb"
+        return fallback_sql
+
+    skills_expr = _col_expr("skills", "'[]'", cast_jsonb=True)
+    technical_skills_expr = _col_expr("technical_skills", "'[]'", cast_jsonb=True)
+    preferred_role_expr = _col_expr("preferred_job_role", "'[]'", cast_jsonb=True)
+    preference_expr = _col_expr("preference", "'{}'", cast_jsonb=True)
+    job_category_expr = _col_expr("job_category", "''")
+    full_name_expr = _col_expr("full_name", "''")
+    email_notifications_expr = "s.email_notifications" if "email_notifications" in student_cols else "TRUE"
+    status_expr = "s.status" if "status" in student_cols else "'active'"
+    created_at_expr = "s.created_at" if "created_at" in student_cols else "s.id"
+
     limit_clause = "LIMIT :limit" if limit > 0 else ""
     result = conn.execute(
         text(
             f"""
             SELECT
-                id::text AS id,
-                COALESCE(full_name, '') AS full_name,
-                lower(trim(email)) AS email,
-                COALESCE(skills, '[]'::jsonb) AS skills,
-                COALESCE(technical_skills, '[]'::jsonb) AS technical_skills,
-                COALESCE(preferred_job_role, '[]'::jsonb) AS preferred_job_role,
-                COALESCE(preference, '{{}}'::jsonb) AS preference,
-                COALESCE(job_category, '') AS job_category
-            FROM students
-            WHERE email IS NOT NULL
-              AND btrim(email) <> ''
-              AND COALESCE(email_notifications, TRUE) = TRUE
-              AND COALESCE(status, 'active') = 'active'
-            ORDER BY created_at DESC
+                s.id::text AS id,
+                COALESCE({full_name_expr}, '') AS full_name,
+                {email_expr} AS email,
+                COALESCE({skills_expr}, '[]'::jsonb) AS skills,
+                COALESCE({technical_skills_expr}, '[]'::jsonb) AS technical_skills,
+                COALESCE({preferred_role_expr}, '[]'::jsonb) AS preferred_job_role,
+                COALESCE({preference_expr}, '{{}}'::jsonb) AS preference,
+                COALESCE({job_category_expr}, '') AS job_category
+            FROM students s
+            {join_clause}
+            WHERE {where_email}
+              AND COALESCE({email_notifications_expr}, TRUE) = TRUE
+              AND COALESCE({status_expr}, 'active') = 'active'
+            ORDER BY {created_at_expr} DESC
             {limit_clause}
             """
         ),

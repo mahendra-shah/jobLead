@@ -3,14 +3,13 @@ Scikit-learn based job classifier
 Uses TF-IDF + Random Forest for classification
 """
 
-import pickle
 import joblib
 import json
 import os
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Literal, Optional
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
@@ -25,31 +24,50 @@ from app.ml.base_classifier import (
 from app.ml.utils.text_preprocessor import text_preprocessor
 from app.ml.utils.feature_extractor import feature_extractor
 
-
 class SklearnClassifier(BaseClassifier):
     """
     Scikit-learn Random Forest classifier for job detection
     Uses TF-IDF for text features + hand-crafted features
+
+    Default (profile=None): load/save ML_CLASSIFIER_LEGACY_BASENAME only — shared Telegram & tooling.
+    profile=\"job_board\": load/save ML_JOB_BOARD_CLASSIFIER_BASENAME; if missing, load legacy for inference.
     """
-    
+
     MODEL_DIR = Path(__file__).parent / "models"
-    MODEL_FILE = MODEL_DIR / "job_classifier.pkl"
-    METADATA_FILE = MODEL_DIR / "model_metadata.json"
-    
-    def __init__(self):
+
+    def __init__(self, profile: Optional[Literal["job_board"]] = None):
         super().__init__()
+        self.profile: Optional[Literal["job_board"]] = profile
         self.vectorizer: Optional[TfidfVectorizer] = None
         self.classifier: Optional[RandomForestClassifier] = None
         self.feature_names: Optional[List[str]] = None
         self.threshold = 0.5
-        
+        self._artifact_path, load_path = self._resolve_paths(profile)
+
         self.MODEL_DIR.mkdir(parents=True, exist_ok=True)
-        
-        if self.MODEL_FILE.exists():
+
+        if load_path is not None and load_path.exists():
             try:
-                self.load_model(str(self.MODEL_FILE))
+                self.load_model(str(load_path))
             except Exception as e:
                 print(f"⚠️  Failed to load model: {e}")
+
+    def _resolve_paths(
+        self, profile: Optional[Literal["job_board"]]
+    ) -> tuple[Path, Optional[Path]]:
+        """(Train/save path, path to load — may differ for job_board when only legacy exists)."""
+        from app.config import settings
+
+        base = self.MODEL_DIR
+        legacy = base / settings.ML_CLASSIFIER_LEGACY_BASENAME
+        if profile == "job_board":
+            board = base / settings.ML_JOB_BOARD_CLASSIFIER_BASENAME
+            if board.exists():
+                return board, board
+            if legacy.exists():
+                return board, legacy
+            return board, None
+        return legacy, legacy if legacy.exists() else None
     
     def classify(self, text: str) -> ClassificationResult:
         """Classify if text contains a job posting"""
@@ -244,7 +262,7 @@ class SklearnClassifier(BaseClassifier):
             self.model_version = f"v{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             self.last_trained = datetime.now()
             
-            self.save_model(str(self.MODEL_FILE))
+            self.save_model(str(self._artifact_path))
             
             metrics = {
                 "success": True,
@@ -295,7 +313,8 @@ class SklearnClassifier(BaseClassifier):
                 'file_size_mb': os.path.getsize(path) / (1024 * 1024),
             }
             
-            with open(self.METADATA_FILE, 'w') as f:
+            meta_path = Path(path).with_name(Path(path).stem + "_metadata.json")
+            with open(meta_path, "w", encoding="utf-8") as f:
                 json.dump(metadata, f, indent=2)
             
             print(f"✅ Model saved to {path}")

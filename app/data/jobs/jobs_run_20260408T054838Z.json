@@ -1,0 +1,31 @@
+{
+  "meta": {
+    "generated_at_utc": "2026-04-08T05:51:13Z",
+    "sources_used": 5,
+    "total_jobs": 1
+  },
+  "jobs": [
+    {
+      "title": "Job: Control Room Analyst rabobank.jobs",
+      "company": "stackoverflow.com",
+      "location": null,
+      "url": "https://rabobank.jobs/en/job/control-room-analyst/JR_00135072/",
+      "source_domain": "stackoverflow.com",
+      "source_discovered_date": null,
+      "job_posted_at_raw": null,
+      "crawled_at_utc": "2026-04-08T05:50:19Z",
+      "segment": "Non-tech",
+      "category": "Data / Analytics",
+      "location_type": "",
+      "location_detail": "",
+      "country": "",
+      "work_type": "",
+      "seniority": "",
+      "salary": "",
+      "skills": [],
+      "degree": "",
+      "description": "",
+      "apply_url": "https://rabobank.jobs/en/job/control-room-analyst/JR_00135072/"
+    }
+  ]
+}

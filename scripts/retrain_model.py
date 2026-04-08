@@ -52,8 +52,8 @@ def load_training_data(training_data_file: Path) -> dict:
         return None
 
 
-def retrain_model(training_data: dict) -> bool:
-    """Retrain the ML model with updated training data."""
+def retrain_model(training_data: dict, *, job_board_artifact: bool = False) -> bool:
+    """Retrain the ML model. Default writes legacy job_classifier.pkl; optional separate job-board file."""
     
     examples = training_data.get('examples', [])
     
@@ -64,22 +64,24 @@ def retrain_model(training_data: dict) -> bool:
     if len(examples) < 20:
         logger.warning(f"⚠️  Only {len(examples)} training examples. Recommend at least 50 for good accuracy.")
     
-    logger.info("🧠 Initializing Sklearn Classifier...")
-    ml_classifier = SklearnClassifier()
+    if job_board_artifact:
+        logger.info("🧠 Initializing Sklearn Classifier (job_board artefact)...")
+        ml_classifier = SklearnClassifier(profile="job_board")
+    else:
+        logger.info("🧠 Initializing Sklearn Classifier (default / shared artefact)...")
+        ml_classifier = SklearnClassifier()
     
     logger.info("🔄 Starting model training...")
     logger.info("   This may take a few minutes...")
     
     try:
         # Train the model
-        success = ml_classifier.train(examples)
-        
-        if success:
+        metrics = ml_classifier.train(examples)
+        if isinstance(metrics, dict) and metrics.get("success"):
             logger.info("✅ Model trained successfully!")
             return True
-        else:
-            logger.error("❌ Model training failed!")
-            return False
+        logger.error("❌ Model training failed!")
+        return False
     
     except Exception as e:
         logger.error(f"❌ Error during training: {e}")
@@ -112,7 +114,16 @@ def update_training_metadata(training_data_file: Path, model_info: dict):
 
 def main():
     """Main retraining workflow."""
-    
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Retrain sklearn job/not-job classifier")
+    parser.add_argument(
+        "--job-board-artifact",
+        action="store_true",
+        help="Train into job_classifier_job_board.pkl instead of the default job_classifier.pkl",
+    )
+    args = parser.parse_args()
+
     logger.info("=" * 80)
     logger.info("🔄 ML Model Retraining Script")
     logger.info("=" * 80)
@@ -133,7 +144,7 @@ def main():
     logger.info("🧠 Starting Model Retraining")
     logger.info("=" * 80)
     
-    success = retrain_model(training_data)
+    success = retrain_model(training_data, job_board_artifact=args.job_board_artifact)
     
     if success:
         # Update metadata
@@ -154,7 +165,11 @@ def main():
         
         # Test the model
         logger.info("🧪 Testing model with sample predictions...")
-        ml_classifier = SklearnClassifier()
+        ml_classifier = (
+            SklearnClassifier(profile="job_board")
+            if args.job_board_artifact
+            else SklearnClassifier()
+        )
         
         test_job = "We are hiring Python developers with 2 years experience. Send resume to hr@company.com"
         test_non_job = "Hi guys, looking for job opportunities. Anyone hiring?"

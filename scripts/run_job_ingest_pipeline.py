@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-One batched end-to-end run:
+End-to-end job-board pipeline (single command; runs steps in order):
 
-  1) Crawl next window of Mongo sources (checkpointed offset)
-  2) Upsert crawled jobs → Mongo job_ingest
-  3) ML + profile gate → verified / rejected
-  4) Sync verified Mongo rows → Postgres jobs (source=job_board)
-  5) Optional: Google Sheet from Postgres (--append-sheet for same-day accumulation)
+  1) Fetch jobs from crawl sources (Mongo-configured sources, checkpointed).
+  2) Store each listing in MongoDB collection ``job_ingest`` (``--write-job-ingest`` on crawl).
+  3) Run ML classifier + gates: ``process_job_ingest_ml`` → ``ml_status`` verified / rejected.
+  4) Sync verified Mongo rows → Postgres ``jobs`` table (``source=job_board``).
+  5) Export Postgres → Google Sheet (tab per IST date; use ``--append-sheet`` for same-day batches).
 
 State file: app/data/pipeline/crawl_batch_state.json
 """
@@ -40,7 +40,18 @@ def _save_state(data: dict) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Batched crawl → job_ingest → ML → Postgres sync → Sheet (or JSON-fallback → Sheet)"
+        description=(
+            "End-to-end: crawl sources → Mongo job_ingest → ML → Postgres → Google Sheet "
+            "(or JSON-only fallback when Mongo is down)."
+        ),
+        epilog=(
+            "Example (full chain, append to today’s sheet tab):\n"
+            "  %(prog)s --batch-size 2 --ml-limit 200 --sync-limit 200 --append-sheet\n"
+            "\n"
+            "ML step forwards to scripts/job_ingest/process_job_ingest_ml.py; "
+            "use --no-strict-india / --no-depth-profile / --no-require-remote as needed."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--batch-size", type=int, default=12, help="Sources to crawl this run")
     parser.add_argument(
@@ -139,6 +150,21 @@ def main() -> int:
         "--reset-checkpoint",
         action="store_true",
         help="Ignore saved crawl_batch_state.json and start from source_offset=0 for this run.",
+    )
+    parser.add_argument(
+        "--no-depth-profile",
+        action="store_true",
+        help="Forward to process_job_ingest_ml.py (disable description-based depth filter).",
+    )
+    parser.add_argument(
+        "--no-require-remote",
+        action="store_true",
+        help="Forward to process_job_ingest_ml.py (allow jobs without remote/hybrid/WFH in text).",
+    )
+    parser.add_argument(
+        "--no-require-role-track",
+        action="store_true",
+        help="Forward to process_job_ingest_ml.py (allow jobs outside marketing/sales/tech tracks).",
     )
     args = parser.parse_args()
 
@@ -269,6 +295,10 @@ def main() -> int:
 
     batch_id = f"batch_{off}_{args.batch_size}"
     print(f"Checkpoint source_offset={off} batch_size={args.batch_size} total_active_sources={total}")
+    print(
+        "\n[1/5] Fetch from sources + [2/5] upsert Mongo job_ingest (crawl with --write-job-ingest) ...\n",
+        flush=True,
+    )
 
     crawl_cmd = [
         py,
@@ -313,15 +343,27 @@ def main() -> int:
     if args.sleep_after_crawl > 0:
         time.sleep(float(args.sleep_after_crawl))
 
-    print(">>> ML: process_job_ingest_ml (this can take several minutes) ...", flush=True)
+    print(
+        "\n[3/5] ML classifier + gates (scripts/job_ingest/process_job_ingest_ml.py) ...\n",
+        flush=True,
+    )
     ml_cmd = [py, "scripts/job_ingest/process_job_ingest_ml.py", "--limit", str(args.ml_limit)]
     if args.no_strict_india:
         ml_cmd.append("--no-strict-india")
+    if args.no_depth_profile:
+        ml_cmd.append("--no-depth-profile")
+    if args.no_require_remote:
+        ml_cmd.append("--no-require-remote")
+    if args.no_require_role_track:
+        ml_cmd.append("--no-require-role-track")
     r2 = subprocess.run(ml_cmd, cwd=ROOT)
     if r2.returncode != 0:
         return r2.returncode
 
-    print(f">>> Postgres: sync_verified_to_postgres (limit={args.sync_limit}) ...", flush=True)
+    print(
+        f"\n[4/5] Postgres: sync verified Mongo rows → jobs (limit={args.sync_limit}) ...\n",
+        flush=True,
+    )
     r3 = subprocess.run(
         [
             py,
@@ -335,7 +377,10 @@ def main() -> int:
         return r3.returncode
 
     if not args.no_sheet:
-        print(">>> Google Sheets: export_job_board_jobs_to_sheets (chunked writes) ...", flush=True)
+        print(
+            "\n[5/5] Google Sheet: export_job_board_jobs_to_sheets --from-postgres ...\n",
+            flush=True,
+        )
         cmd = [
             py,
             "scripts/export_job_board_jobs_to_sheets.py",
