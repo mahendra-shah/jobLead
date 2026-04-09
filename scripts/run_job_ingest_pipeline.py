@@ -379,13 +379,13 @@ def main() -> int:
 
     if not args.no_sheet:
         print(
-            "\n[5/5] Google Sheet: export_job_board_jobs_to_sheets --from-postgres ...\n",
+            "\n[5/5] Google Sheet: export_job_board_jobs_to_sheets --from-mongo-verified ...\n",
             flush=True,
         )
         cmd = [
             py,
             "scripts/export_job_board_jobs_to_sheets.py",
-            "--from-postgres",
+            "--from-mongo-verified",
         ]
         if args.append_sheet:
             cmd.append("--append-jobs")

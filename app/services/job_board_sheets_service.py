@@ -765,6 +765,145 @@ class JobBoardSheetsService:
             "start_row": start_row_1based,
         }
 
+    def export_jobs_from_mongo_verified(
+        self,
+        *,
+        date_str: Optional[str] = None,
+        append: bool = False,
+        limit: int = 50000,
+        source_platform: str = "job_board",
+    ) -> Dict:
+        """Export Mongo job_ingest verified rows for IST date to <date>_jobs tab."""
+        if not date_str:
+            date_str = self._default_ist_date_str()
+        tab_name = f"{date_str}_jobs"
+
+        from app.services.mongodb_job_ingest_service import MongoJobIngestService
+
+        mongo = MongoJobIngestService()
+        jobs = mongo.list_verified_payloads_for_ist_date(
+            date_str=date_str,
+            limit=int(limit),
+            source_platform=source_platform,
+        )
+        if not jobs:
+            logger.info("No Mongo verified jobs found for %s (source_platform=%s)", date_str, source_platform)
+            return {
+                "status": "no_jobs",
+                "date": date_str,
+                "tab_name": tab_name,
+                "jobs_exported": 0,
+                "append": append,
+                "source": "mongo_verified",
+            }
+
+        headers = [
+            "Segment (Tech / Non-tech)",
+            "Category",
+            "Job Title",
+            "Company",
+            "Location Type",
+            "Location Detail",
+            "Country",
+            "Work Type",
+            "Seniority Level",
+            "Salary",
+            "Skills",
+            "Degree / Education",
+            "Job Description (full)",
+            "Apply URL",
+            "Source Domain",
+            "Source Discovered Date",
+            "Job Posted At (raw)",
+            "Date & time (India)",
+            "Crawled At (UTC)",
+        ]
+        sheet_id = self._ensure_tab_with_headers(tab_name, headers, self.JOB_COLUMN_WIDTHS)
+        num_cols = len(headers)
+        if not append:
+            self._clear_data_rows(tab_name, num_cols=num_cols)
+        start_row_1based = 2
+
+        rows: List[List[str]] = []
+        for job in jobs:
+            title = job.get("title") or ""
+            source_domain = job.get("source_domain") or ""
+            segment = job.get("segment") or ""
+            category = job.get("category") or ""
+            if not segment or not category:
+                s, c = self._classify_job(title, source_domain)
+                segment = segment or s
+                category = category or c
+            lt, ld, co, wt, sr, sal_der, sk_der, deg_der = self._derive_job_metadata(job)
+            location_type = job.get("location_type") or lt
+            location_detail = job.get("location_detail") or job.get("location") or ld
+            country = job.get("country") or co
+            work_type = job.get("work_type") or wt
+            seniority = job.get("seniority") or sr
+            salary = job.get("salary") or sal_der
+            degree = job.get("degree") or deg_der
+            skills_val = job.get("skills")
+            if isinstance(skills_val, list):
+                skills = ", ".join(str(s) for s in skills_val) if skills_val else sk_der
+            else:
+                skills = (skills_val or sk_der) if isinstance(skills_val, str) else sk_der
+            description = self._sheet_description_cell(
+                job.get("description") or job.get("raw_text") or ""
+            )
+            apply_url = job.get("apply_url") or job.get("url") or ""
+
+            rows.append(
+                [
+                    segment,
+                    category,
+                    title,
+                    job.get("company") or "",
+                    location_type,
+                    location_detail,
+                    country,
+                    work_type,
+                    seniority,
+                    salary,
+                    skills,
+                    degree,
+                    description,
+                    apply_url,
+                    source_domain,
+                    job.get("source_discovered_date") or "",
+                    job.get("job_posted_at_raw") or "",
+                    self._crawled_at_ist_simple(job.get("crawled_at_utc") or ""),
+                    job.get("crawled_at_utc") or "",
+                ]
+            )
+
+        if append:
+            grid_n = self._sheet_grid_row_count(tab_name)
+            self._ensure_row_capacity(tab_name, grid_n + len(rows) + 100)
+            self._append_rows_chunked(tab_name, rows, chunk_size=25)
+            start_row_1based = 0
+        else:
+            end_row = start_row_1based + len(rows) - 1
+            self._ensure_row_capacity(tab_name, end_row)
+            self._update_rows_chunked(tab_name, num_cols, start_row_1based, rows, chunk_size=25)
+        if sheet_id is not None and not append and len(rows) <= 400:
+            self._format_data_cells(
+                tab_name,
+                sheet_id,
+                len(headers),
+                len(rows),
+                data_start_row_0based=start_row_1based - 1,
+            )
+
+        return {
+            "status": "success",
+            "date": date_str,
+            "tab_name": tab_name,
+            "jobs_exported": len(rows),
+            "append": append,
+            "start_row": start_row_1based,
+            "source": "mongo_verified",
+        }
+
     def export_jobs_from_postgres(
         self,
         db: Session,

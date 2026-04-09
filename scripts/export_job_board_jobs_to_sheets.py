@@ -78,6 +78,11 @@ def main() -> int:
         help="Export jobs from Postgres jobs table (source=job_board) instead of JSON.",
     )
     parser.add_argument(
+        "--from-mongo-verified",
+        action="store_true",
+        help="Export jobs from Mongo job_ingest where ml_status=verified for the given IST date.",
+    )
+    parser.add_argument(
         "--postgres-source",
         type=str,
         default="job_board",
@@ -96,6 +101,10 @@ def main() -> int:
         help="When --from-postgres: cap rows per source domain in daily export (0 = no cap).",
     )
     args = parser.parse_args()
+
+    if args.from_postgres and args.from_mongo_verified:
+        print("export_job_board_jobs_to_sheets: choose one of --from-postgres or --from-mongo-verified", file=sys.stderr)
+        return 1
 
     if args.postgres_all_job_board and not args.from_postgres:
         print("export_job_board_jobs_to_sheets: --postgres-all-job-board requires --from-postgres", file=sys.stderr)
@@ -135,7 +144,18 @@ def main() -> int:
     print(">>> Sheets: sources tab ...", flush=True)
     try:
         sources_result = service.export_sources_from_json(sources_path, ist_date_str)
-        if args.from_postgres:
+        if args.from_mongo_verified:
+            print(
+                ">>> Sheets: jobs tab from Mongo verified (append=%s) ..."
+                % bool(args.append_jobs),
+                flush=True,
+            )
+            jobs_result = service.export_jobs_from_mongo_verified(
+                date_str=ist_date_str,
+                append=bool(args.append_jobs),
+                source_platform="job_board",
+            )
+        elif args.from_postgres:
             local_db_url = os.getenv("LOCAL_DATABASE_URL")
             if local_db_url:
                 sync_database_url = local_db_url

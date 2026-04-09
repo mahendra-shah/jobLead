@@ -272,6 +272,41 @@ class MongoJobIngestService:
             out.append(row)
         return out
 
+    def list_verified_payloads_for_ist_date(
+        self,
+        *,
+        date_str: str,
+        limit: int = 50000,
+        source_platform: str = "job_board",
+    ) -> List[Dict[str, Any]]:
+        """
+        Return payload + ml_scores for verified jobs whose updated_at falls on IST date_str.
+        date_str must be YYYY-MM-DD (IST calendar date).
+        """
+        self._ensure_indexes()
+        assert self._col is not None
+        ref_dt = datetime.strptime(date_str, "%Y-%m-%d")
+        # IST midnight converted to UTC (IST = UTC+05:30).
+        start_utc = datetime(
+            ref_dt.year, ref_dt.month, ref_dt.day, tzinfo=timezone.utc
+        ) - timedelta(hours=5, minutes=30)
+        end_utc = start_utc + timedelta(days=1)
+        q: Dict[str, Any] = {
+            "ml_status": "verified",
+            "updated_at": {"$gte": start_utc, "$lt": end_utc},
+        }
+        if source_platform:
+            q["source_platform"] = source_platform
+
+        out: List[Dict[str, Any]] = []
+        for doc in self._col.find(q).sort("updated_at", -1).limit(int(limit)):
+            row = dict(doc.get("payload") or {})
+            row["_ml_scores"] = doc.get("ml_scores") or {}
+            row["_dedupe_key"] = doc.get("dedupe_key")
+            row["_verified_at"] = doc.get("updated_at")
+            out.append(row)
+        return out
+
     def count_by_status(self) -> Dict[str, int]:
         self._ensure_indexes()
         assert self._col is not None
