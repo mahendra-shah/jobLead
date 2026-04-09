@@ -2,30 +2,30 @@
   "sources": {
     "builtinpune.in": {
       "last_jobs": 60,
-      "last_run_at": "2026-04-08T05:55:46Z",
-      "runs": 34,
-      "total_jobs": 540,
+      "last_run_at": "2026-04-08T11:25:53Z",
+      "runs": 37,
+      "total_jobs": 720,
       "consecutive_low_yield": 0
     },
     "www.ambitionbox.com": {
       "last_jobs": 10,
-      "last_run_at": "2026-04-08T04:41:34Z",
-      "runs": 34,
-      "total_jobs": 340,
+      "last_run_at": "2026-04-09T06:50:32Z",
+      "runs": 38,
+      "total_jobs": 455,
       "consecutive_low_yield": 0
     },
     "www.hirist.tech": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-08T04:41:34Z",
-      "runs": 4,
+      "last_run_at": "2026-04-09T06:50:32Z",
+      "runs": 9,
       "total_jobs": 0,
       "consecutive_low_yield": 0
     },
     "www.linkedin.com": {
-      "last_jobs": 50,
-      "last_run_at": "2026-04-08T05:24:41Z",
-      "runs": 31,
-      "total_jobs": 350,
+      "last_jobs": 35,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 33,
+      "total_jobs": 420,
       "consecutive_low_yield": 0
     },
     "digitalsolutiontech.com": {
@@ -37,15 +37,15 @@
     },
     "in.jobsora.com": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-08T04:55:27Z",
-      "runs": 4,
+      "last_run_at": "2026-04-09T06:50:32Z",
+      "runs": 8,
       "total_jobs": 0,
       "consecutive_low_yield": 0
     },
     "www.mployee.me": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-08T05:24:41Z",
-      "runs": 4,
+      "last_run_at": "2026-04-09T06:50:32Z",
+      "runs": 7,
       "total_jobs": 0,
       "consecutive_low_yield": 0
     },
@@ -58,93 +58,93 @@
     },
     "www.foundit.in": {
       "last_jobs": 10,
-      "last_run_at": "2026-04-08T04:41:34Z",
-      "runs": 4,
-      "total_jobs": 31,
+      "last_run_at": "2026-04-09T06:50:32Z",
+      "runs": 8,
+      "total_jobs": 91,
       "consecutive_low_yield": 0
     },
     "www.naukri.com": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-08T04:41:34Z",
-      "runs": 4,
+      "last_run_at": "2026-04-09T06:50:32Z",
+      "runs": 8,
       "total_jobs": 0,
       "consecutive_low_yield": 0
     },
     "cutshort.io": {
-      "last_jobs": 50,
-      "last_run_at": "2026-04-08T05:11:57Z",
-      "runs": 34,
-      "total_jobs": 380,
+      "last_jobs": 10,
+      "last_run_at": "2026-04-09T06:50:32Z",
+      "runs": 37,
+      "total_jobs": 460,
       "consecutive_low_yield": 0
     },
     "www.topstartups.io": {
-      "last_jobs": 5,
-      "last_run_at": "2026-04-08T05:55:46Z",
-      "runs": 4,
-      "total_jobs": 19,
+      "last_jobs": 4,
+      "last_run_at": "2026-04-08T11:25:53Z",
+      "runs": 7,
+      "total_jobs": 28,
       "consecutive_low_yield": 0
     },
     "apply.careers.hsbc.com": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-08T05:51:13Z",
-      "runs": 4,
+      "last_run_at": "2026-04-08T11:25:53Z",
+      "runs": 7,
       "total_jobs": 0,
       "consecutive_low_yield": 0
     },
     "in.linkedin.com": {
-      "last_jobs": 50,
-      "last_run_at": "2026-04-08T05:24:41Z",
-      "runs": 31,
-      "total_jobs": 350,
+      "last_jobs": 10,
+      "last_run_at": "2026-04-09T06:50:32Z",
+      "runs": 34,
+      "total_jobs": 430,
       "consecutive_low_yield": 0
     },
     "www.placementindia.com": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-08T05:11:57Z",
-      "runs": 4,
+      "last_run_at": "2026-04-09T06:50:32Z",
+      "runs": 7,
       "total_jobs": 0,
       "consecutive_low_yield": 0
     },
     "www.devjobsscanner.com": {
       "last_jobs": 60,
-      "last_run_at": "2026-04-08T05:36:17Z",
-      "runs": 12,
-      "total_jobs": 195,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 13,
+      "total_jobs": 255,
       "consecutive_low_yield": 0
     },
     "www.jobted.in": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-08T04:55:27Z",
-      "runs": 4,
+      "last_run_at": "2026-04-09T06:50:32Z",
+      "runs": 9,
       "total_jobs": 0,
       "consecutive_low_yield": 0
     },
     "careers.capgemini.com": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-08T05:36:17Z",
-      "runs": 4,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 5,
       "total_jobs": 0,
       "consecutive_low_yield": 0
     },
     "echojobs.io": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-08T05:51:13Z",
-      "runs": 4,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 5,
       "total_jobs": 0,
       "consecutive_low_yield": 0
     },
     "www.lullabot.com": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-08T05:38:33Z",
-      "runs": 4,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 5,
       "total_jobs": 0,
       "consecutive_low_yield": 0
     },
     "callabri.com": {
       "last_jobs": 12,
-      "last_run_at": "2026-04-08T05:51:13Z",
-      "runs": 28,
-      "total_jobs": 320,
+      "last_run_at": "2026-04-08T11:25:53Z",
+      "runs": 31,
+      "total_jobs": 356,
       "consecutive_low_yield": 0
     },
     "remoteintech.company": {
@@ -155,179 +155,179 @@
       "consecutive_low_yield": 0
     },
     "builtin.com": {
-      "last_jobs": 37,
-      "last_run_at": "2026-04-08T05:36:17Z",
-      "runs": 27,
-      "total_jobs": 402,
+      "last_jobs": 51,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 28,
+      "total_jobs": 453,
       "consecutive_low_yield": 0
     },
     "clojurejobboard.com": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-08T05:38:33Z",
-      "runs": 3,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 4,
       "total_jobs": 0,
       "consecutive_low_yield": 0
     },
     "cyberjobhunt.in": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-08T05:38:33Z",
-      "runs": 3,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 4,
       "total_jobs": 0,
       "consecutive_low_yield": 0
     },
     "jobs.drupal.org": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-08T05:38:33Z",
-      "runs": 4,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 5,
       "total_jobs": 0,
       "consecutive_low_yield": 0
     },
     "www.golangprojects.com": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-08T05:42:58Z",
-      "runs": 4,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 17,
       "total_jobs": 0,
       "consecutive_low_yield": 0
     },
     "www.higheredjobs.com": {
-      "last_jobs": 0,
-      "last_run_at": "2026-04-08T05:42:58Z",
-      "runs": 4,
-      "total_jobs": 12,
+      "last_jobs": 4,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 17,
+      "total_jobs": 20,
       "consecutive_low_yield": 0
     },
     "nodesk.co": {
       "last_jobs": 1,
-      "last_run_at": "2026-04-08T05:42:58Z",
-      "runs": 4,
-      "total_jobs": 4,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 17,
+      "total_jobs": 17,
       "consecutive_low_yield": 0
     },
     "www.moaijobs.com": {
       "last_jobs": 33,
-      "last_run_at": "2026-04-08T05:42:58Z",
-      "runs": 26,
-      "total_jobs": 398,
+      "last_run_at": "2026-04-08T06:52:21Z",
+      "runs": 29,
+      "total_jobs": 497,
       "consecutive_low_yield": 0
     },
     "www.remotebackendjobs.com": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-08T05:42:58Z",
-      "runs": 4,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 17,
       "total_jobs": 0,
       "consecutive_low_yield": 0
     },
     "www.remotefrontendjobs.com": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-08T05:48:04Z",
-      "runs": 4,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 6,
       "total_jobs": 0,
       "consecutive_low_yield": 0
     },
     "remotegamejobs.com": {
-      "last_jobs": 24,
-      "last_run_at": "2026-04-08T05:48:04Z",
-      "runs": 26,
-      "total_jobs": 374,
+      "last_jobs": 22,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 27,
+      "total_jobs": 396,
       "consecutive_low_yield": 0
     },
     "remotejobs.lat": {
       "last_jobs": 14,
-      "last_run_at": "2026-04-08T05:48:04Z",
-      "runs": 26,
-      "total_jobs": 352,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 27,
+      "total_jobs": 366,
       "consecutive_low_yield": 0
     },
     "uiuxjobsboard.com": {
       "last_jobs": 23,
-      "last_run_at": "2026-04-08T05:38:33Z",
-      "runs": 29,
-      "total_jobs": 411,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 30,
+      "total_jobs": 434,
       "consecutive_low_yield": 0
     },
     "javascript.jobs": {
       "last_jobs": 35,
-      "last_run_at": "2026-04-08T05:48:04Z",
-      "runs": 9,
-      "total_jobs": 130,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 10,
+      "total_jobs": 165,
       "consecutive_low_yield": 0
     },
     "lumenalta.com": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-08T05:48:04Z",
-      "runs": 4,
+      "last_run_at": "2026-04-09T06:07:29Z",
+      "runs": 6,
       "total_jobs": 0,
       "consecutive_low_yield": 0
     },
     "stackoverflow.com": {
       "last_jobs": 26,
-      "last_run_at": "2026-04-08T05:51:13Z",
-      "runs": 7,
-      "total_jobs": 106,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 8,
+      "total_jobs": 132,
       "consecutive_low_yield": 0
     },
     "jobs.citi.com": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-08T05:36:17Z",
-      "runs": 3,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 4,
       "total_jobs": 10,
       "consecutive_low_yield": 0
     },
     "www.freshersworld.com": {
       "last_jobs": 60,
-      "last_run_at": "2026-04-08T05:24:41Z",
-      "runs": 8,
-      "total_jobs": 140,
+      "last_run_at": "2026-04-09T06:50:32Z",
+      "runs": 11,
+      "total_jobs": 320,
       "consecutive_low_yield": 0
     },
     "builtinhyderabad.in": {
-      "last_jobs": 60,
-      "last_run_at": "2026-04-08T05:36:17Z",
-      "runs": 6,
-      "total_jobs": 125,
+      "last_jobs": 4,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 7,
+      "total_jobs": 129,
       "consecutive_low_yield": 0
     },
     "telegram.me": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-08T05:26:43Z",
-      "runs": 3,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 4,
       "total_jobs": 0,
       "consecutive_low_yield": 0
     },
     "t.me": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-08T05:26:43Z",
-      "runs": 4,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 5,
       "total_jobs": 0,
       "consecutive_low_yield": 0
     },
     "careers.cisco.com": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-08T05:51:13Z",
-      "runs": 3,
+      "last_run_at": "2026-04-08T11:25:53Z",
+      "runs": 6,
       "total_jobs": 0,
       "consecutive_low_yield": 0
     },
     "apna.co": {
       "last_jobs": 60,
-      "last_run_at": "2026-04-08T04:55:27Z",
-      "runs": 8,
-      "total_jobs": 155,
+      "last_run_at": "2026-04-09T06:50:32Z",
+      "runs": 13,
+      "total_jobs": 435,
       "consecutive_low_yield": 0
     },
     "www.iimjobs.com": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-08T05:26:43Z",
-      "runs": 5,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 7,
       "total_jobs": 0,
       "consecutive_low_yield": 0
     },
     "careerstn.com": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-02T09:34:02Z",
-      "runs": 4,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 6,
       "total_jobs": 0,
-      "consecutive_low_yield": 4
+      "consecutive_low_yield": 0
     },
     "www.webpulseindia.com": {
       "last_jobs": 60,
@@ -338,51 +338,51 @@
     },
     "www.careerjet.co.in": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-08T05:26:43Z",
-      "runs": 4,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 6,
       "total_jobs": 0,
       "consecutive_low_yield": 0
     },
     "www.crossover.com": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-08T05:26:43Z",
-      "runs": 4,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 5,
       "total_jobs": 0,
       "consecutive_low_yield": 0
     },
     "diveintopython.org": {
       "last_jobs": 58,
-      "last_run_at": "2026-04-08T05:24:41Z",
-      "runs": 10,
-      "total_jobs": 183,
+      "last_run_at": "2026-04-09T06:50:32Z",
+      "runs": 13,
+      "total_jobs": 357,
       "consecutive_low_yield": 0
     },
     "www.adzuna.in": {
       "last_jobs": 56,
-      "last_run_at": "2026-04-08T05:11:57Z",
-      "runs": 10,
-      "total_jobs": 166,
+      "last_run_at": "2026-04-09T06:50:32Z",
+      "runs": 15,
+      "total_jobs": 430,
       "consecutive_low_yield": 0
     },
     "builtindelhi.in": {
       "last_jobs": 60,
-      "last_run_at": "2026-04-08T04:55:27Z",
-      "runs": 10,
-      "total_jobs": 170,
+      "last_run_at": "2026-04-09T06:50:32Z",
+      "runs": 15,
+      "total_jobs": 410,
       "consecutive_low_yield": 0
     },
     "careers.bankofamerica.com": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-08T05:24:41Z",
-      "runs": 4,
+      "last_run_at": "2026-04-09T06:50:32Z",
+      "runs": 7,
       "total_jobs": 0,
       "consecutive_low_yield": 0
     },
     "builtinchennai.in": {
-      "last_jobs": 60,
-      "last_run_at": "2026-04-08T05:11:57Z",
-      "runs": 10,
-      "total_jobs": 170,
+      "last_jobs": 50,
+      "last_run_at": "2026-04-09T06:50:32Z",
+      "runs": 13,
+      "total_jobs": 340,
       "consecutive_low_yield": 0
     },
     "www.seojobs.com": {
@@ -394,22 +394,295 @@
     },
     "www.getclera.com": {
       "last_jobs": 60,
-      "last_run_at": "2026-04-08T05:11:57Z",
-      "runs": 10,
-      "total_jobs": 170,
+      "last_run_at": "2026-04-09T06:50:32Z",
+      "runs": 13,
+      "total_jobs": 350,
       "consecutive_low_yield": 0
     },
     "www.jobs-ups.com": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-08T05:11:57Z",
-      "runs": 4,
+      "last_run_at": "2026-04-09T06:50:32Z",
+      "runs": 7,
       "total_jobs": 0,
       "consecutive_low_yield": 0
     },
     "www.jobhai.com": {
       "last_jobs": 0,
-      "last_run_at": "2026-04-08T05:26:43Z",
-      "runs": 4,
+      "last_run_at": "2026-04-08T09:09:11Z",
+      "runs": 6,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "1password.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:02:16Z",
+      "runs": 2,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "www.affirm.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:02:16Z",
+      "runs": 2,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "www.aha.io": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:02:16Z",
+      "runs": 2,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "alley.com": {
+      "last_jobs": 2,
+      "last_run_at": "2026-04-09T06:02:16Z",
+      "runs": 2,
+      "total_jobs": 4,
+      "consecutive_low_yield": 0
+    },
+    "www.amazee.io": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:02:16Z",
+      "runs": 2,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "array.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:02:16Z",
+      "runs": 2,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "www.articulate.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:02:16Z",
+      "runs": 2,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "www.att.jobs": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:02:16Z",
+      "runs": 2,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "www.okta.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:02:16Z",
+      "runs": 2,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "www.assemblyai.com": {
+      "last_jobs": 8,
+      "last_run_at": "2026-04-09T06:02:16Z",
+      "runs": 2,
+      "total_jobs": 16,
+      "consecutive_low_yield": 0
+    },
+    "www.axelerant.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:02:16Z",
+      "runs": 2,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "www.bandlab.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:02:16Z",
+      "runs": 2,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "www.bebanjo.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:02:16Z",
+      "runs": 2,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "bilsteingroup.com": {
+      "last_jobs": 1,
+      "last_run_at": "2026-04-09T06:02:16Z",
+      "runs": 2,
+      "total_jobs": 2,
+      "consecutive_low_yield": 0
+    },
+    "www.bluespark.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:02:16Z",
+      "runs": 2,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "blend.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:02:16Z",
+      "runs": 2,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "www.smily.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:02:16Z",
+      "runs": 2,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "www.calm.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:02:16Z",
+      "runs": 2,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "canonical.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:02:16Z",
+      "runs": 2,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "labs.ceros.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:02:16Z",
+      "runs": 2,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "www.chef.io": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:07:29Z",
+      "runs": 1,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "www.codeweavers.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:07:29Z",
+      "runs": 1,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "www.collabora.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:07:29Z",
+      "runs": 1,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "consensys.io": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:07:29Z",
+      "runs": 1,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "careers.coursera.com": {
+      "last_jobs": 7,
+      "last_run_at": "2026-04-09T06:07:29Z",
+      "runs": 1,
+      "total_jobs": 7,
+      "consecutive_low_yield": 0
+    },
+    "crometrics.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:07:29Z",
+      "runs": 1,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "crosscan.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:07:29Z",
+      "runs": 1,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "app.crossover.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:07:29Z",
+      "runs": 1,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "customer.io": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:07:29Z",
+      "runs": 1,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "careers.datadoghq.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:07:29Z",
+      "runs": 1,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "www.datastax.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:07:29Z",
+      "runs": 1,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "www.digitalocean.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:07:29Z",
+      "runs": 1,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "www.docker.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:07:29Z",
+      "runs": 1,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "doist.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:07:29Z",
+      "runs": 1,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "careers.doit.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:07:29Z",
+      "runs": 1,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "assoc.drupal.org": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:07:29Z",
+      "runs": 1,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "www.envato.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:07:29Z",
+      "runs": 1,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "www.ergeon.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:07:29Z",
+      "runs": 1,
+      "total_jobs": 0,
+      "consecutive_low_yield": 0
+    },
+    "careers.etsy.com": {
+      "last_jobs": 0,
+      "last_run_at": "2026-04-09T06:07:29Z",
+      "runs": 1,
       "total_jobs": 0,
       "consecutive_low_yield": 0
     }

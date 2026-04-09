@@ -24,7 +24,7 @@ from app.services.job_quality_scorer import get_quality_scorer
 from app.services.mongodb_job_ingest_service import MongoJobIngestService
 from app.config import settings
 from app.utils.india_job_gate import passes_india_relevance
-from app.utils.job_dedupe import build_text_for_ml
+from app.utils.job_dedupe import build_text_for_job_board_ml
 
 
 def _row_for_postgres(payload: dict[str, Any], dedupe_key: str, ml_scores: dict[str, Any]) -> dict[str, Any]:
@@ -67,6 +67,7 @@ def run_job_board_ingest_ml(
         if require_role_track is None
         else require_role_track
     )
+    exp_cap_years = float(settings.JOB_BOARD_MAX_EXPERIENCE_YEARS)
 
     svc = MongoJobIngestService()
     clf = JobBoardIngestClassifier()
@@ -155,7 +156,7 @@ def run_job_board_ingest_ml(
                 svc.patch_payload(dedupe_key, enrich_patch)
                 payload.update(enrich_patch)
 
-            text = build_text_for_ml(payload)
+            text = build_text_for_job_board_ml(payload)
             spam_label = is_non_job_spam(text)
             if spam_label:
                 svc.set_ml_outcome(
@@ -197,7 +198,7 @@ def run_job_board_ingest_ml(
             if use_depth:
                 ok_d, reason_d, depth_det = evaluate_depth_profile(
                     payload,
-                    max_fresher_years=float(settings.MAX_FRESHER_EXPERIENCE_YEARS),
+                    max_fresher_years=exp_cap_years,
                     require_remote_signal=bool(use_remote),
                     require_role_track=bool(use_track),
                 )
@@ -217,9 +218,9 @@ def run_job_board_ingest_ml(
                     stats["title_company"] += 1
                     continue
 
-                if experience_exceeds_fresher_cap(payload, settings.MAX_FRESHER_EXPERIENCE_YEARS):
+                if experience_exceeds_fresher_cap(payload, exp_cap_years):
                     ml_scores["reason_profile"] = "experience_above_fresher_cap"
-                    ml_scores["fresher_cap_years"] = settings.MAX_FRESHER_EXPERIENCE_YEARS
+                    ml_scores["fresher_cap_years"] = exp_cap_years
                     svc.set_ml_outcome(dedupe_key, ml_status="rejected", ml_scores=ml_scores)
                     stats["rejected"] += 1
                     stats["experience_cap"] += 1
@@ -232,7 +233,7 @@ def run_job_board_ingest_ml(
                 continue
 
             job_data = build_job_data_for_quality_scorer(
-                payload, settings.MAX_FRESHER_EXPERIENCE_YEARS
+                payload, int(exp_cap_years)
             )
             q = quality_scorer.score_job(job_data, float(cr.confidence))
             ml_scores["quality_score"] = float(q.quality_score)

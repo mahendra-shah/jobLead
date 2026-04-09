@@ -30,7 +30,7 @@ class SklearnClassifier(BaseClassifier):
     Uses TF-IDF for text features + hand-crafted features
 
     Default (profile=None): load/save ML_CLASSIFIER_LEGACY_BASENAME only — shared Telegram & tooling.
-    profile=\"job_board\": load/save ML_JOB_BOARD_CLASSIFIER_BASENAME; if missing, load legacy for inference.
+    profile=\"job_board\": load/save ML_JOB_BOARD_CLASSIFIER_BASENAME only (no legacy fallback).
     """
 
     MODEL_DIR = Path(__file__).parent / "models"
@@ -62,11 +62,7 @@ class SklearnClassifier(BaseClassifier):
         legacy = base / settings.ML_CLASSIFIER_LEGACY_BASENAME
         if profile == "job_board":
             board = base / settings.ML_JOB_BOARD_CLASSIFIER_BASENAME
-            if board.exists():
-                return board, board
-            if legacy.exists():
-                return board, legacy
-            return board, None
+            return board, board if board.exists() else None
         return legacy, legacy if legacy.exists() else None
     
     def classify(self, text: str) -> ClassificationResult:

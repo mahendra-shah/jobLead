@@ -60,8 +60,8 @@ def main() -> int:
         help="Ignore --iterations and compute runs from remaining crawl-ready sources and checkpoint.",
     )
     parser.add_argument("--batch-size", type=int, default=12, help="Sources (resources) per batch")
-    parser.add_argument("--source-request-delay", type=float, default=0.0, help="Extra per-request delay inside each source crawl")
-    parser.add_argument("--source-request-jitter", type=float, default=0.0, help="Random 0..N per-request delay inside each source crawl")
+    parser.add_argument("--source-request-delay", type=float, default=2.5, help="Extra per-request delay inside each source crawl")
+    parser.add_argument("--source-request-jitter", type=float, default=2.0, help="Random 0..N per-request delay inside each source crawl")
     parser.add_argument(
         "--max-jobs-per-source",
         type=int,

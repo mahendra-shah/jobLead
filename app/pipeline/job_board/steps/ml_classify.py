@@ -21,7 +21,7 @@ from app.services.job_board_ml.telegram_aligned_gates import (
 )
 from app.services.job_quality_scorer import get_quality_scorer
 from app.utils.india_job_gate import passes_india_relevance
-from app.utils.job_dedupe import build_text_for_ml, compute_dedupe_key
+from app.utils.job_dedupe import build_text_for_job_board_ml, compute_dedupe_key
 
 
 def _load_jobs(path: Path) -> list[dict[str, Any]]:
@@ -58,6 +58,7 @@ def classify_jobs_direct(
     use_depth = settings.JOB_BOARD_DEPTH_PROFILE_ENABLED if depth_profile_enabled is None else depth_profile_enabled
     use_remote = settings.JOB_BOARD_REQUIRE_REMOTE_SIGNAL if require_remote_signal is None else require_remote_signal
     use_track = settings.JOB_BOARD_REQUIRE_ROLE_TRACK_MATCH if require_role_track is None else require_role_track
+    exp_cap_years = float(settings.JOB_BOARD_MAX_EXPERIENCE_YEARS)
 
     clf = JobBoardIngestClassifier()
     quality_scorer = get_quality_scorer()
@@ -83,7 +84,7 @@ def classify_jobs_direct(
         if enrich_patch:
             payload.update(enrich_patch)
 
-        text = build_text_for_ml(payload)
+        text = build_text_for_job_board_ml(payload)
         spam_label = is_non_job_spam(text)
         if spam_label:
             stats.spam_prefilter += 1
@@ -108,7 +109,7 @@ def classify_jobs_direct(
             if allow_override and use_depth:
                 ok_d_ovr, reason_d_ovr, depth_det_ovr = evaluate_depth_profile(
                     payload,
-                    max_fresher_years=float(settings.MAX_FRESHER_EXPERIENCE_YEARS),
+                    max_fresher_years=exp_cap_years,
                     require_remote_signal=bool(use_remote),
                     require_role_track=bool(use_track),
                 )
@@ -137,7 +138,7 @@ def classify_jobs_direct(
         if use_depth:
             ok_d, reason_d, depth_det = evaluate_depth_profile(
                 payload,
-                max_fresher_years=float(settings.MAX_FRESHER_EXPERIENCE_YEARS),
+                max_fresher_years=exp_cap_years,
                 require_remote_signal=bool(use_remote),
                 require_role_track=bool(use_track),
             )
@@ -155,7 +156,7 @@ def classify_jobs_direct(
                 reject(reason_tc)
                 continue
 
-            if experience_exceeds_fresher_cap(payload, settings.MAX_FRESHER_EXPERIENCE_YEARS):
+            if experience_exceeds_fresher_cap(payload, exp_cap_years):
                 stats.experience_cap += 1
                 ml_scores["reason_profile"] = "experience_above_fresher_cap"
                 reject("experience_above_fresher_cap")
@@ -166,7 +167,7 @@ def classify_jobs_direct(
             reject("failed_india_relevance")
             continue
 
-        job_data = build_job_data_for_quality_scorer(payload, settings.MAX_FRESHER_EXPERIENCE_YEARS)
+        job_data = build_job_data_for_quality_scorer(payload, int(exp_cap_years))
         q = quality_scorer.score_job(job_data, float(cr.confidence))
         ml_scores["quality_score"] = float(q.quality_score)
         ml_scores["meets_criteria"] = bool(q.meets_criteria)

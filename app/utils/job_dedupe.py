@@ -82,3 +82,24 @@ def build_text_for_ml(job: Dict[str, Any]) -> str:
         desc,
     ]
     return _WS.sub(" ", " ".join(str(p) for p in parts if p)).strip()
+
+
+def build_text_for_job_board_ml(job: Dict[str, Any]) -> str:
+    """
+    Build Step-2 ML text specifically for job-board payloads.
+    Prioritizes apply-flow context because job-board crawl validates both job URL
+    and apply URL in Step 1.
+    """
+    desc = job.get("description") or ""
+    if isinstance(desc, str) and len(desc) > _ML_DESCRIPTION_MAX_CHARS:
+        desc = desc[:_ML_DESCRIPTION_MAX_CHARS]
+    parts = [
+        job.get("title") or "",
+        job.get("company") or "",
+        job.get("location") or job.get("location_detail") or "",
+        job.get("work_type") or job.get("location_type") or "",
+        job.get("apply_url") or "",
+        job.get("url") or "",
+        desc,
+    ]
+    return _WS.sub(" ", " ".join(str(p) for p in parts if p)).strip()

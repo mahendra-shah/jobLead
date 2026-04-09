@@ -57,13 +57,13 @@ def main() -> int:
     parser.add_argument(
         "--source-request-delay",
         type=float,
-        default=0.0,
+        default=2.5,
         help="Extra delay inside each source crawl request (anti-ban).",
     )
     parser.add_argument(
         "--source-request-jitter",
         type=float,
-        default=0.0,
+        default=2.0,
         help="Random extra per-request delay 0..N seconds inside each source crawl.",
     )
     parser.add_argument(
@@ -227,13 +227,13 @@ def main() -> int:
                 str(attempt_off),
                 "--max-jobs-per-source",
                 str(args.max_jobs_per_source),
+                "--source-request-delay",
+                str(args.source_request_delay),
+                "--source-request-jitter",
+                str(args.source_request_jitter),
                 "--out",
                 str(jobs_run_out),
             ]
-            if args.source_request_delay > 0:
-                crawl_cmd.extend(["--source-request-delay", str(args.source_request_delay)])
-            if args.source_request_jitter > 0:
-                crawl_cmd.extend(["--source-request-jitter", str(args.source_request_jitter)])
             if args.prefer_less_known_sources:
                 crawl_cmd.append("--prefer-less-known-sources")
             if args.exclude_popular_sources:
@@ -315,6 +315,7 @@ def main() -> int:
         "--source-request-jitter",
         str(args.source_request_jitter),
         "--write-job-ingest",
+        "--no-json-output",
         "--crawl-batch-id",
         batch_id,
     ]

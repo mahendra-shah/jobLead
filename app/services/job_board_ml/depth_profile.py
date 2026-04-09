@@ -48,6 +48,10 @@ _MIN_YEARS_EXPLICIT = _RE.compile(
 # Tracks: job must match at least one — **only** DM, sales, or web/MERN stack (no generic “engineer” track).
 _TRACKS: Dict[str, List[str]] = {
     "tech_web": [
+        "developer",
+        "web developer",
+        "frontend developer",
+        "full stack developer",
         "html",
         "css",
         "js",
@@ -73,6 +77,8 @@ _TRACKS: Dict[str, List[str]] = {
         "next.js",
         "vite",
         "tailwind",
+        "python",
+        "mongodb",
     ],
     "digital_marketing": [
         "digital marketing",
@@ -106,7 +112,25 @@ _TRACKS: Dict[str, List[str]] = {
         "lead generation",
         "customer acquisition",
     ],
+    "non_tech_ops": [
+        "crm",
+        "customer relationship management",
+        "customer support",
+        "customer success",
+        "hr",
+        "human resources",
+        "recruiter",
+        "recruitment",
+        "talent acquisition",
+        "hr executive",
+        "hr intern",
+    ],
 }
+
+_ALLOWED_WORK_TYPES = _RE.compile(
+    r"\b(?:internship|intern|part[-\s]*time|full[-\s]*time|freelance|freelancer|contract)\b",
+    _RE.IGNORECASE,
+)
 
 
 def _norm_blob(payload: dict[str, Any]) -> str:
@@ -206,7 +230,7 @@ def evaluate_depth_profile(
     Returns (ok, reason_code, details_for_ml_scores).
 
     reason_code examples: ok, missing_title_or_company, no_remote_signal,
-    no_target_role_track, experience_not_fresher, senior_role_excluded.
+    no_target_role_track, experience_not_fresher, senior_role_excluded, unsupported_work_type.
     """
     title = str(payload.get("title") or "").strip()
     company = str(payload.get("company") or "").strip()
@@ -230,11 +254,36 @@ def evaluate_depth_profile(
     if require_role_track and not hits:
         return False, "no_target_role_track", details
 
-    # Remote
+    # Work type / opportunity style (student-focused).
+    work_blob = " ".join(
+        [
+            str(payload.get("work_type") or ""),
+            str(payload.get("employment_type") or ""),
+            str(payload.get("location_type") or ""),
+            lower,
+        ]
+    )
+    work_ok = bool(_ALLOWED_WORK_TYPES.search(work_blob))
+    details["allowed_work_type"] = work_ok
+    if not work_ok:
+        return False, "unsupported_work_type", details
+
+    # Remote-country rule:
+    # - India jobs: allow onsite/hybrid/remote (no remote requirement)
+    # - Non-India jobs: require remote/WFH signal
+    country = str(payload.get("country") or "").strip().lower()
+    location_detail = str(payload.get("location_detail") or payload.get("location") or "").strip().lower()
+    location_type = str(payload.get("location_type") or "").strip().lower()
+    work_type = str(payload.get("work_type") or "").strip().lower()
+    is_india = country in {"india", "in"} or ("india" in location_detail)
     remote_ok = bool(_REMOTE_SIGNAL.search(blob))
-    details["remote_signal"] = remote_ok
-    if require_remote_signal and not remote_ok:
-        return False, "no_remote_signal", details
+    has_remote = remote_ok or any(sig in location_type for sig in ("remote", "work from home", "wfh")) or any(
+        sig in work_type for sig in ("remote", "work from home", "wfh")
+    )
+    details["remote_signal"] = bool(has_remote)
+    details["is_india_job"] = bool(is_india)
+    if require_remote_signal and (not is_india) and (not has_remote):
+        return False, "non_india_without_remote_signal", details
 
     # Fresher / experience from full description
     ok_exp, exp_detail = experience_fits_fresher_cap(blob, max_fresher_years)

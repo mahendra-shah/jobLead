@@ -3944,11 +3944,11 @@
       "international_remote_ok": 7
     }
   },
-  "last_retrained": "2026-01-15T21:29:19.476329",
-  "model_version": 1,
+  "last_retrained": "2026-04-08T11:40:15.220758",
+  "model_version": 2,
   "retrain_info": {
-    "trained_at": "2026-01-15T21:29:19.472311",
-    "training_examples": 228,
+    "trained_at": "2026-04-08T11:40:15.217397",
+    "training_examples": 293,
     "success": true
   }
 }

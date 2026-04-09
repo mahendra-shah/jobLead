@@ -51,13 +51,13 @@ def main() -> int:
     parser.add_argument(
         "--source-request-delay",
         type=float,
-        default=0.0,
+        default=2.5,
         help="Extra delay before each request inside a single source crawl (anti-ban).",
     )
     parser.add_argument(
         "--source-request-jitter",
         type=float,
-        default=0.0,
+        default=2.0,
         help="Random extra delay 0..N seconds before each request inside a source crawl.",
     )
     parser.add_argument(
@@ -198,10 +198,8 @@ def main() -> int:
         args.exclude_popular_sources = True
         if args.batch_size == 15:
             args.batch_size = 12
-        if args.source_request_delay == 0.0:
-            args.source_request_delay = 2.8
-        if args.source_request_jitter == 0.0:
-            args.source_request_jitter = 2.4
+        args.source_request_delay = max(float(args.source_request_delay), 2.8)
+        args.source_request_jitter = max(float(args.source_request_jitter), 2.4)
         if args.max_jobs_per_source == 60:
             args.max_jobs_per_source = 40
         if args.spaced_batches == 0:

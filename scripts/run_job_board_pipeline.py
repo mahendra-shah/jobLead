@@ -69,8 +69,8 @@ def main() -> int:
         default=10,
         help="Cap per popular-domain source (AmbitionBox/Naukri/…); raise for more rows per round.",
     )
-    ap.add_argument("--source-request-delay", type=float, default=0.0)
-    ap.add_argument("--source-request-jitter", type=float, default=0.0)
+    ap.add_argument("--source-request-delay", type=float, default=2.5)
+    ap.add_argument("--source-request-jitter", type=float, default=2.0)
     ap.add_argument("--prefer-less-known-sources", action="store_true")
     ap.add_argument("--exclude-popular-sources", action="store_true")
     ap.add_argument("--focus-digital-marketing", action="store_true")

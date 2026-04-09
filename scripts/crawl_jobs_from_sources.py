@@ -208,6 +208,29 @@ def extract_job_details_from_page(html: str, page_url: str) -> dict:
         elif any(k in mode_text for k in ("onsite", "on-site", "work from office", "office only")):
             details["work_type"] = "Onsite"
 
+    # 7) Company fallback from common metadata / visible labels
+    if not str(details.get("company") or "").strip():
+        for sel in (
+            'meta[name="application-name"]',
+            'meta[name="author"]',
+        ):
+            tag = soup.select_one(sel)
+            if not tag:
+                continue
+            val = str(tag.get("content") or "").strip()
+            if val and "." not in val and len(val) >= 2:
+                details["company"] = val[:120]
+                break
+    if not str(details.get("company") or "").strip():
+        txt = soup.get_text(" ", strip=True)[:12000]
+        m = re.search(
+            r"(?:company|hiring\s+organization|hiring\s+company)\s*[:\-]\s*([A-Za-z0-9][A-Za-z0-9 .,&()\-]{1,90})",
+            txt,
+            re.IGNORECASE,
+        )
+        if m:
+            details["company"] = m.group(1).strip(" -")[:120]
+
     return details
 
 
@@ -252,6 +275,16 @@ def _extract_jobposting_jsonld(soup: BeautifulSoup, page_url: str) -> dict:
             dpost = jp.get("datePosted")
             if dpost:
                 details["job_posted_at_raw"] = str(dpost)[:40]
+
+            org = jp.get("hiringOrganization")
+            if isinstance(org, dict):
+                org_name = str(org.get("name") or "").strip()
+                if org_name:
+                    details["company"] = org_name[:120]
+            elif isinstance(org, str):
+                org_name = str(org).strip()
+                if org_name:
+                    details["company"] = org_name[:120]
 
             # salary from baseSalary object
             bs = jp.get("baseSalary")
@@ -361,6 +394,8 @@ ALWAYS_EXCLUDED_SOURCE_TOKENS = (
     # Many listing URLs resolve to thin/category pages with duplicate generic titles.
     "webpulseindia.com",
     "webpulse.co.in",
+    # Noisy global aggregator for this student-focused pipeline.
+    "moaijobs.com",
 )
 
 
@@ -418,7 +453,9 @@ def _normalize_company_name(raw_company: str, title: str, source_domain: str) ->
         guess = m.group(1).strip(" -")
         if len(guess) >= 2:
             return guess
-    return (source_domain or "").replace("www.", "")
+    # Do not default to source domain (e.g. "apna.co") as company.
+    # If we can't infer a real employer name, keep it empty.
+    return ""
 
 
 def _derive_segment_category(title: str, source_domain: str) -> tuple[str, str]:
@@ -570,7 +607,10 @@ def _is_non_job_or_spam(title: str, url: str, combined_text: str) -> bool:
     # Spam patterns adapted from your earlier Telegram-style prefilter.
     SPAM_PATTERNS = [
         re.compile(
-            r"\b(?:USDT|bitcoin|BTC|ETH|ethereum|crypto\s+earn|earn\s+USDT|\d+\s*USDT\s*=|buy\s+USDT|sell\s+USDT|IMPS.*UPI.*(?:rupee|INR|RS))\b",
+            # Match scammy "earn/buy/sell USDT" style text.
+            # Avoid false positives from pages that only mention bitcoin/crypto
+            # as part of categories (e.g., remote job listing pages).
+            r"\b(?:USDT|crypto\s+earn|earn\s+USDT|\d+\s*USDT\s*=|buy\s+USDT|sell\s+USDT|IMPS.*UPI.*(?:rupee|INR|RS))\b",
             re.IGNORECASE,
         ),
         re.compile(
@@ -578,7 +618,8 @@ def _is_non_job_or_spam(title: str, url: str, combined_text: str) -> bool:
             re.IGNORECASE,
         ),
         re.compile(
-            r"(?:youtube|instagram|telegram)\s+chann?el.*task|promote.*chann?el|online.*youtube.*task|earn.*(?:like|subscribe|view|share)",
+            # Avoid false positives where "learn" contains substring "earn".
+            r"(?:youtube|instagram|telegram)\s+chann?el.*task|promote.*chann?el|online.*youtube.*task|\bear\b.*(?:like|subscribe|view|share)",
             re.IGNORECASE,
         ),
         re.compile(
@@ -595,15 +636,14 @@ def _is_non_job_or_spam(title: str, url: str, combined_text: str) -> bool:
     if "crypto" in txt and any(
         k in txt
         for k in (
+            # Keep this strict: require obvious scam cues.
             "usdt",
-            "bitcoin",
-            "btc",
-            "eth",
-            "defi",
+            "imps",
+            "upi",
+            "buy",
+            "sell",
             "trader",
             "spot trading",
-            "exchange",
-            "token",
         )
     ):
         return True
@@ -705,24 +745,28 @@ def _filter_jobs_for_target_profile(jobs: list[dict], *, focus_digital_marketing
         "coordinator",
     )
 
-    def experience_ok(desc: str) -> bool:
+    def experience_ok(desc: str, title: str) -> bool:
         cap = float(settings.JOB_BOARD_CRAWL_PROFILE_MAX_EXPERIENCE_YEARS)
-        exp = parse_experience(desc.lower())
+        txt = f"{title or ''} {desc or ''}".lower()
+        has_entry_signal = any(
+            kw in txt for kw in ("fresher", "entry", "entry-level", "junior", "intern", "internship")
+        )
+        exp = parse_experience(txt)
         if exp.get("is_fresher"):
             return True
         mn = exp.get("min")
         mx = exp.get("max")
-        # If we cannot parse, keep it (better recall).
+        # If we cannot parse, keep only if explicit entry-level signal exists.
         if mn is None and mx is None:
-            return True
+            return has_entry_signal
         try:
             if mn is not None and float(mn) > cap:
                 return False
             if mx is not None and float(mx) > cap:
                 return False
         except (TypeError, ValueError):
-            return True
-        return True
+            return has_entry_signal
+        return True if (has_entry_signal or (mn is not None or mx is not None)) else False
 
     def location_ok(job: dict) -> bool:
         loc_type = (job.get("location_type") or "").strip()
@@ -734,30 +778,29 @@ def _filter_jobs_for_target_profile(jobs: list[dict], *, focus_digital_marketing
         combined_loc = f"{loc_detail} {desc}".lower()
         city_ok = any(city in combined_loc for city in india_cities)
         india_ok = country == "india"
+        # Keep remote/hybrid jobs from anywhere; otherwise require India signal.
         if remote_ok or india_ok or city_ok:
             return True
-
-        # Fallback: if location fields are missing, keep early-career roles.
-        wt = (job.get("work_type") or "").strip()
-        seniority = (job.get("seniority") or "").strip()
-        if not loc_detail.strip() and not city_ok and country != "india":
-            # If we cannot confirm location at all, prefer recall.
-            return True
-        return seniority in ("Fresher / Entry", "Junior") or wt in ("Internship", "Part-time", "Full-time")
+        return False
 
     def work_ok(job: dict) -> bool:
         wt = (job.get("work_type") or "").strip()
         if not wt:
             return True
-        return wt in ("Internship", "Part-time", "Full-time")
+        # Some sources populate work_type with remote/location mode (Remote/Hybrid/Onsite).
+        # Treat those as acceptable; remote-ness is enforced by location_ok.
+        if wt in ("Remote", "Hybrid", "Onsite"):
+            return True
+        return wt in ("Internship", "Part-time", "Full-time", "Freelance", "Contract")
 
     def seniority_ok(job: dict) -> bool:
         if (job.get("seniority") or "").strip() == "Senior":
             return False
         title = (job.get("title") or "").lower()
-        # Keep only strong seniority markers; allow "Manager" roles to pass
-        # (experience parsing will still gate by <= 2 years).
-        return not any(s in title for s in ("senior", "sr.", "staff", "lead"))
+        # Hard reject obvious senior/experienced roles for student-only targeting.
+        return not any(
+            s in title for s in ("senior", "sr.", "staff", "director", "manager", "lead", "principal")
+        )
 
     filtered: list[dict] = []
     for job in jobs:
@@ -788,7 +831,7 @@ def _filter_jobs_for_target_profile(jobs: list[dict], *, focus_digital_marketing
             continue
         if not seniority_ok(job):
             continue
-        if not experience_ok(desc):
+        if not experience_ok(desc, title):
             continue
 
         filtered.append(job)
@@ -826,6 +869,11 @@ def main() -> int:
         type=Path,
         default=None,
         help="Output jobs JSON (default: app/data/jobs/jobs_run_<timestamp>.json)",
+    )
+    parser.add_argument(
+        "--no-json-output",
+        action="store_true",
+        help="Do not write jobs JSON artifact (Mongo ingest runs only).",
     )
     parser.add_argument(
         "--from-mongo",
@@ -894,13 +942,13 @@ def main() -> int:
     parser.add_argument(
         "--source-request-delay",
         type=float,
-        default=0.0,
+        default=2.5,
         help="Extra delay (seconds) before each request within a source crawl (entry + detail pages).",
     )
     parser.add_argument(
         "--source-request-jitter",
         type=float,
-        default=0.0,
+        default=2.0,
         help="Random extra delay 0..N seconds added to --source-request-delay for each request.",
     )
     parser.add_argument(
@@ -1030,6 +1078,12 @@ def main() -> int:
         f"Crawling {len(to_crawl)} sources from {src_note} (max_sources={args.max_sources}). "
         f"[niche={niche_cnt}, popular={popular_cnt}, popular_cap={args.popular_source_max_jobs}, blocked={blocked_count}]"
     )
+    if float(args.source_request_delay) > 0 or float(args.source_request_jitter) > 0:
+        print(
+            f"Crawl pacing: {args.source_request_delay}s + jitter 0..{args.source_request_jitter}s "
+            "per HTTP request, and the same between sources (except after the last).",
+            flush=True,
+        )
 
     run_ts = iso_now().replace(":", "").replace("-", "")
     default_out = Path(f"app/data/jobs/jobs_run_{run_ts}.json")
@@ -1118,10 +1172,14 @@ def main() -> int:
                     seen_urls.add(url)
                     # Layer 2: detail crawl on job URL (and alternate apply URL if present).
                     extra: dict = {}
-                    detail_candidates = [url]
                     raw_apply = _to_absolute_url(str(j.get("apply_url") or ""), entry_url)
-                    if raw_apply and raw_apply not in detail_candidates:
+                    # Prefer apply page first for detail extraction since Step 2 validates
+                    # final job quality against the apply-flow content.
+                    detail_candidates = []
+                    if raw_apply:
                         detail_candidates.append(raw_apply)
+                    if url and url not in detail_candidates:
+                        detail_candidates.append(url)
                     best_score = -1
                     for du in detail_candidates:
                         try:
@@ -1159,6 +1217,9 @@ def main() -> int:
             source_jobs_count = len(jobs) - source_jobs_before
             per_source_jobs[str(source_domain or "").strip().lower()] = source_jobs_count
             print(f"{source_jobs_count} jobs")
+            # Pace between sources (and after sources with zero HTTP attempts — no inner-loop sleeps).
+            if idx < len(to_crawl):
+                _sleep_source_delay(args.source_request_delay, args.source_request_jitter)
     finally:
         client.close()
 
@@ -1208,6 +1269,8 @@ def main() -> int:
 
         ingest = MongoJobIngestService()
         ing_ok = 0
+        dup_n = 0
+        fail_n = 0
         for j in jobs:
             try:
                 ingest.upsert_from_crawl(
@@ -1217,8 +1280,21 @@ def main() -> int:
                 )
                 ing_ok += 1
             except Exception as ex:
-                print(f"  job_ingest upsert failed: {ex}")
-        print(f"Mongo job_ingest: upserted {ing_ok}/{len(jobs)} jobs (batch={crawl_batch_id}).")
+                msg = str(ex)
+                if "E11000 duplicate key error" in msg:
+                    dup_n += 1
+                    continue
+                fail_n += 1
+                print(f"  job_ingest upsert failed: {msg}")
+        print(
+            "Mongo job_ingest: "
+            f"upserted={ing_ok} duplicates={dup_n} failed={fail_n} total={len(jobs)} "
+            f"(batch={crawl_batch_id})."
+        )
+
+    if args.no_json_output:
+        print("Skipping JSON output (--no-json-output).")
+        return 0
 
     if not args.no_profile_filter:
         before = len(jobs)

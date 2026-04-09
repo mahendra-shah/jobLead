@@ -237,6 +237,9 @@ class Settings(BaseSettings):
     # Can also be overridden via env var: MAX_FRESHER_EXPERIENCE_YEARS=2
     # Default 1: students with little/no prior work experience (stricter than 0–2 yrs boards).
     MAX_FRESHER_EXPERIENCE_YEARS: int = 1
+    # Job-board specific strict cap for students (Step-2 ML/depth).
+    # Default 2 to retain fresher/junior opportunities.
+    JOB_BOARD_MAX_EXPERIENCE_YEARS: int = 2
     # Crawl-stage profile filter only: allow slightly wider experience text so rows reach ML/depth.
     # Final verification still uses MAX_FRESHER_EXPERIENCE_YEARS in depth_profile / ML step.
     JOB_BOARD_CRAWL_PROFILE_MAX_EXPERIENCE_YEARS: int = 2
