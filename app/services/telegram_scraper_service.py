@@ -530,7 +530,6 @@ class TelegramScraperService:
                 if pg_group and account_uuid:
                     # Always update scrape timestamp, even with 0 messages
                     pg_group.last_scraped_at = datetime.now(timezone.utc)
-                    pg_group.last_scraped_by_account = account_uuid
                     
                     # Update message info only if we got messages
                     if messages:

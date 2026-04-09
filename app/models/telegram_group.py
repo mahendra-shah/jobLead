@@ -35,12 +35,8 @@ class TelegramGroup(Base):
     
     # Scraping info
     last_scraped_at = Column(DateTime(timezone=True), nullable=True)
-    last_scraped_by_account = Column(UUID(as_uuid=True), ForeignKey('telegram_accounts.id', ondelete='SET NULL'), nullable=True, index=True)  # Which account last scraped this channel
     last_message_id = Column(String(50), nullable=True)  # Telegram message ID
     last_message_date = Column(DateTime(timezone=True), nullable=True)
-    
-    # Relationship for last scraper account
-    last_scraper_account = relationship("TelegramAccount", foreign_keys=[last_scraped_by_account])
     
     # Health scoring
     health_score = Column(Float, default=100.0, nullable=False)
