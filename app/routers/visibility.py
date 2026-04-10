@@ -65,7 +65,6 @@ class ChannelStatsResponse(BaseModel):
     joined_by_account: Optional[str]   # phone of account that joined
     joined_at: Optional[datetime]
     last_scraped_at: Optional[datetime]
-    last_scraped_by_account: Optional[str]  # phone via relationship
     hours_since_last_scrape: Optional[float]
     total_messages_scraped: int
     job_messages_found: int
@@ -211,11 +210,7 @@ async def get_channels_scraping_stats(
     Returns:
         Channel scraping statistics
     """
-    # Eagerly load the last_scraper_account relationship so we can read
-    # its phone number without triggering lazy-load errors.
-    stmt = select(TelegramGroup).options(
-        selectinload(TelegramGroup.last_scraper_account)
-    )
+    stmt = select(TelegramGroup)
 
     if active_only:
         stmt = stmt.where(TelegramGroup.is_active == True)  # noqa: E712
@@ -244,13 +239,6 @@ async def get_channels_scraping_stats(
             delta = datetime.now(timezone.utc) - scraped_utc
             hours_since = delta.total_seconds() / 3600
 
-        # Phone of the account that last actively scraped this channel
-        # (via the relationship), not just the joining account.
-        last_scraper_phone: Optional[str] = (
-            ch.last_scraper_account.phone
-            if ch.last_scraper_account
-            else None
-        )
 
         results.append(
             ChannelStatsResponse(
@@ -262,7 +250,6 @@ async def get_channels_scraping_stats(
                 joined_by_account=ch.joined_by_phone,
                 joined_at=ch.joined_at,
                 last_scraped_at=ch.last_scraped_at,
-                last_scraped_by_account=last_scraper_phone,
                 hours_since_last_scrape=(
                     round(hours_since, 1) if hours_since is not None else None
                 ),
