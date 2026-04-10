@@ -16,6 +16,7 @@ if PROJECT_ROOT not in sys.path:
 from app.db.session import SyncSessionLocal
 from app.models.telegram_account import TelegramAccount
 
+from app.services.telegram_group_joiner_service import decrypt_credential
 # Load accounts from database with their actual API credentials
 def get_accounts_from_db():
     """Get accounts from database with their API credentials"""
@@ -47,8 +48,11 @@ async def login_account(phone, api_id, api_hash):
     print("=" * 60)
     
     # Convert api_id to int if it's a string
-    api_id = int(api_id) if isinstance(api_id, str) else api_id
-    
+    # api_id = int(api_id) if isinstance(api_id, str) else api_id
+    # Decrypt credentials if needed
+    api_id = decrypt_credential(api_id)
+    api_id = int(api_id)
+    api_hash = decrypt_credential(api_hash)
     client = TelegramClient(f"sessions/{phone}", api_id, api_hash)
     
     try:
