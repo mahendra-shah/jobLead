@@ -298,12 +298,20 @@ class TelegramGroupJoinerService:
             
         except Exception as e:
             logger.error(f"❌ Failed to join @{channel.username}: {e}")
-            
-            account.last_error_message = str(e)[:500]
+            # Auto-deactivate group if username does not exist
+            error_str = str(e)
+            if (
+                "No user has" in error_str and
+                "as username" in error_str
+            ):
+                channel.is_active = False
+                channel.notes = f"Auto-deactivated: {error_str[:100]}"
+                await db.commit()
+                logger.info(f"🚫 Deactivated group @{channel.username} due to invalid username")
+            account.last_error_message = error_str[:500]
             account.last_error_at = datetime.now(timezone.utc)
             await db.commit()
-            
-            self.stats["errors"].append(f"Error joining @{channel.username}: {str(e)[:100]}")
+            self.stats["errors"].append(f"Error joining @{channel.username}: {error_str[:100]}")
             self.stats["failed_joins"] += 1
             return False
     
