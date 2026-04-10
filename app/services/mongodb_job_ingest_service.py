@@ -110,29 +110,61 @@ class MongoJobIngestService:
             "crawl_batch_id": crawl_batch_id,
         }
 
-        self._col.update_one(
-            {"dedupe_key": dedupe_key},
-            {
-                "$set": {
-                    "url_norm": url_norm,
-                    "dedupe_key": dedupe_key,
-                    "source_platform": source_platform,
-                    "source_ref": source_ref,
-                    "payload": payload,
-                    "text_for_ml": text_for_ml,
-                    "updated_at": now,
-                    "last_seen_at": now,
-                },
-                "$setOnInsert": {
-                    "ml_status": "pending",
-                    "first_seen_at": now,
-                    "created_at": now,
-                    "ml_scores": {},
-                },
-                "$inc": {"seen_count": 1},
+        match_query: Dict[str, Any] = {"dedupe_key": dedupe_key}
+        if url_key:
+            # URL hash is primary across title/company variants.
+            match_query = {"$or": [{"url_key": url_key}, {"dedupe_key": dedupe_key}]}
+
+        set_doc: Dict[str, Any] = {
+            "url_norm": url_norm,
+            "dedupe_key": dedupe_key,
+            "source_platform": source_platform,
+            "source_ref": source_ref,
+            "payload": payload,
+            "text_for_ml": text_for_ml,
+            "updated_at": now,
+            "last_seen_at": now,
+        }
+        if url_key:
+            set_doc["url_key"] = url_key
+        update_doc: Dict[str, Any] = {
+            "$set": set_doc,
+            "$setOnInsert": {
+                "ml_status": "pending",
+                "first_seen_at": now,
+                "created_at": now,
+                "ml_scores": {},
             },
-            upsert=True,
-        )
+            "$inc": {"seen_count": 1},
+        }
+        if not url_key:
+            update_doc["$unset"] = {"url_key": ""}
+
+        try:
+            self._col.update_one(match_query, update_doc, upsert=True)
+        except OperationFailure as exc:
+            # 11000: concurrent upserts or doc exists under same url_key with different dedupe_key.
+            if getattr(exc, "code", None) != 11000:
+                raise
+            retry_ok = False
+            if url_key:
+                r = self._col.update_one(
+                    {"url_key": url_key},
+                    {"$set": set_doc, "$inc": {"seen_count": 1}},
+                )
+                retry_ok = bool(r.matched_count)
+            if not retry_ok:
+                r2 = self._col.update_one(
+                    {"dedupe_key": dedupe_key},
+                    {"$set": set_doc, "$inc": {"seen_count": 1}},
+                )
+                retry_ok = bool(r2.matched_count)
+            if not retry_ok:
+                raise
+            logger.debug(
+                "job_ingest upsert recovered after duplicate key (url_key=%s...)",
+                (url_key or "")[:16],
+            )
         return dedupe_key
 
     def claim_next_pending(self) -> Optional[Dict[str, Any]]:
