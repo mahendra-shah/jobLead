@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
+import hashlib
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from pymongo import ASCENDING, MongoClient, ReturnDocument
+from pymongo.errors import DuplicateKeyError, OperationFailure
 
 from app.config import settings
 from app.utils.job_dedupe import build_text_for_ml, compute_dedupe_key, normalize_url
@@ -100,6 +102,7 @@ class MongoJobIngestService:
 
         url = str(job.get("apply_url") or job.get("url") or "").strip()
         url_norm = normalize_url(url)
+        url_key = hashlib.sha256(url_norm.encode("utf-8")).hexdigest() if url_norm else ""
         dedupe_key = compute_dedupe_key(job)
         text_for_ml = build_text_for_ml(job) or url_norm or dedupe_key
         payload = _trim_payload(job)
@@ -142,23 +145,33 @@ class MongoJobIngestService:
 
         try:
             self._col.update_one(match_query, update_doc, upsert=True)
-        except OperationFailure as exc:
+        except (OperationFailure, DuplicateKeyError) as exc:
             # 11000: concurrent upserts or doc exists under same url_key with different dedupe_key.
-            if getattr(exc, "code", None) != 11000:
+            code = getattr(exc, "code", None)
+            if code is None and hasattr(exc, "details") and isinstance(getattr(exc, "details"), dict):
+                code = exc.details.get("code")
+            if code != 11000:
                 raise
             retry_ok = False
-            if url_key:
-                r = self._col.update_one(
+            # Primary recovery: dedupe_key is the unique identity for this collection.
+            r_dk = self._col.update_one(
+                {"dedupe_key": dedupe_key},
+                {"$set": set_doc, "$inc": {"seen_count": 1}},
+                upsert=False,
+            )
+            retry_ok = bool(r_dk.matched_count)
+
+            # Secondary recovery: match by URL key but avoid mutating dedupe_key to prevent
+            # conflicts if URL happened to match another existing row.
+            if not retry_ok and url_key:
+                safe_set_doc = {k: v for k, v in set_doc.items() if k != "dedupe_key"}
+                r_url = self._col.update_one(
                     {"url_key": url_key},
-                    {"$set": set_doc, "$inc": {"seen_count": 1}},
+                    {"$set": safe_set_doc, "$inc": {"seen_count": 1}},
+                    upsert=False,
                 )
-                retry_ok = bool(r.matched_count)
-            if not retry_ok:
-                r2 = self._col.update_one(
-                    {"dedupe_key": dedupe_key},
-                    {"$set": set_doc, "$inc": {"seen_count": 1}},
-                )
-                retry_ok = bool(r2.matched_count)
+                retry_ok = bool(r_url.matched_count)
+
             if not retry_ok:
                 raise
             logger.debug(

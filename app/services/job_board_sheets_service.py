@@ -689,10 +689,13 @@ class JobBoardSheetsService:
             else:
                 wt = ""
             salary_raw = ""
-            if isinstance(j.salary_range, dict):
-                salary_raw = str(j.salary_range.get("raw") or "")
-            if not salary_raw and (j.salary_min is not None or j.salary_max is not None):
-                salary_raw = f"{j.salary_min or ''}-{j.salary_max or ''}".strip("-")
+            salary_range = getattr(j, "salary_range", None)
+            if isinstance(salary_range, dict):
+                salary_raw = str(salary_range.get("raw") or "")
+            salary_min = getattr(j, "salary_min", None)
+            salary_max = getattr(j, "salary_max", None)
+            if not salary_raw and (salary_min is not None or salary_max is not None):
+                salary_raw = f"{salary_min or ''}-{salary_max or ''}".strip("-")
             skills = ", ".join(j.skills_required or []) if isinstance(j.skills_required, list) else ""
 
             created_utc = j.created_at.isoformat() if j.created_at else ""
@@ -710,7 +713,7 @@ class JobBoardSheetsService:
                     j.location or "",
                     "",
                     wt,
-                    j.experience_required or "",
+                    getattr(j, "experience_required", None) or getattr(j, "experience", None) or "",
                     salary_raw,
                     skills,
                     "",
