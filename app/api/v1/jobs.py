@@ -155,7 +155,7 @@ async def list_jobs(
                 Job.id,
                 Job.title,
                 Job.company_id,
-                Company.name.label('company_name'),
+                Job.company_name,
                 Job.description,
                 Job.skills_required,
                 Job.experience,
@@ -173,7 +173,6 @@ async def list_jobs(
                 Job.updated_at,
                 func.count().over().label('total_count')  # Window function for total
             )
-            .outerjoin(Company, Job.company_id == Company.id)
             .where(where_clause)
             .order_by(order_clause)
             .offset((page - 1) * size)
@@ -193,7 +192,7 @@ async def list_jobs(
                 Job.id,
                 Job.title,
                 Job.company_id,
-                Company.name.label('company_name'),
+                Job.company_name,
                 Job.description,
                 Job.skills_required,
                 Job.experience,
@@ -210,7 +209,6 @@ async def list_jobs(
                 Job.created_at,
                 Job.updated_at
             )
-            .outerjoin(Company, Job.company_id == Company.id)
             .where(where_clause)
             .order_by(order_clause)
             .offset((page - 1) * size)
