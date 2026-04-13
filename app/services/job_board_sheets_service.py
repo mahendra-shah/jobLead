@@ -18,7 +18,7 @@ from urllib.parse import urlparse
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from sqlalchemy.orm import Session  # kept for future DB-based exports
-from sqlalchemy import and_, select
+from sqlalchemy import and_, desc, or_, select
 
 import pytz
 
@@ -679,11 +679,17 @@ class JobBoardSheetsService:
             .where(
                 and_(
                     Job.source == source_value,
-                    Job.created_at >= start_utc,
-                    Job.created_at < end_utc,
+                    or_(
+                        and_(Job.created_at >= start_utc, Job.created_at < end_utc),
+                        and_(
+                            Job.updated_at.is_not(None),
+                            Job.updated_at >= start_utc,
+                            Job.updated_at < end_utc,
+                        ),
+                    ),
                 )
             )
-            .order_by(Job.created_at.desc())
+            .order_by(desc(Job.updated_at).nulls_last(), desc(Job.created_at))
         )
         jobs = db.execute(query).scalars().all()
         if not jobs:

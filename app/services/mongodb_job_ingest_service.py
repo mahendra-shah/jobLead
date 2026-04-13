@@ -113,11 +113,6 @@ class MongoJobIngestService:
             "crawl_batch_id": crawl_batch_id,
         }
 
-        match_query: Dict[str, Any] = {"dedupe_key": dedupe_key}
-        if url_key:
-            # URL hash is primary across title/company variants.
-            match_query = {"$or": [{"url_key": url_key}, {"dedupe_key": dedupe_key}]}
-
         set_doc: Dict[str, Any] = {
             "url_norm": url_norm,
             "dedupe_key": dedupe_key,
@@ -143,40 +138,46 @@ class MongoJobIngestService:
         if not url_key:
             update_doc["$unset"] = {"url_key": ""}
 
+        def _touch_by_url_key() -> bool:
+            """Update existing row by canonical URL hash; never rewrite dedupe_key here."""
+            if not url_key:
+                return False
+            safe_set_doc = {k: v for k, v in set_doc.items() if k != "dedupe_key"}
+            r_url = self._col.update_one(
+                {"url_key": url_key},
+                {"$set": safe_set_doc, "$inc": {"seen_count": 1}},
+                upsert=False,
+            )
+            return bool(r_url.matched_count)
+
+        # Avoid $or + upsert here: it can attempt insert and hit unique url_key duplicates.
+        if _touch_by_url_key():
+            return dedupe_key
+
         try:
-            self._col.update_one(match_query, update_doc, upsert=True)
+            self._col.update_one({"dedupe_key": dedupe_key}, update_doc, upsert=True)
         except (OperationFailure, DuplicateKeyError) as exc:
-            # 11000: concurrent upserts or doc exists under same url_key with different dedupe_key.
             code = getattr(exc, "code", None)
-            if code is None and hasattr(exc, "details") and isinstance(getattr(exc, "details"), dict):
+            if code is None and hasattr(exc, "details") and isinstance(getattr(exc, "details", None), dict):
                 code = exc.details.get("code")
             if code != 11000:
                 raise
-            retry_ok = False
-            # Primary recovery: dedupe_key is the unique identity for this collection.
+            if _touch_by_url_key():
+                logger.debug(
+                    "job_ingest upsert recovered after duplicate key (url_key=%s...)",
+                    (url_key or "")[:16],
+                )
+                return dedupe_key
             r_dk = self._col.update_one(
                 {"dedupe_key": dedupe_key},
                 {"$set": set_doc, "$inc": {"seen_count": 1}},
                 upsert=False,
             )
-            retry_ok = bool(r_dk.matched_count)
-
-            # Secondary recovery: match by URL key but avoid mutating dedupe_key to prevent
-            # conflicts if URL happened to match another existing row.
-            if not retry_ok and url_key:
-                safe_set_doc = {k: v for k, v in set_doc.items() if k != "dedupe_key"}
-                r_url = self._col.update_one(
-                    {"url_key": url_key},
-                    {"$set": safe_set_doc, "$inc": {"seen_count": 1}},
-                    upsert=False,
-                )
-                retry_ok = bool(r_url.matched_count)
-
-            if not retry_ok:
+            if not r_dk.matched_count:
                 raise
             logger.debug(
-                "job_ingest upsert recovered after duplicate key (url_key=%s...)",
-                (url_key or "")[:16],
+                "job_ingest upsert recovered after duplicate key (dedupe_key=%s...)",
+                (dedupe_key or "")[:16],
             )
         return dedupe_key
 

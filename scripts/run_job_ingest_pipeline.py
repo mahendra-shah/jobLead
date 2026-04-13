@@ -83,10 +83,10 @@ def main() -> int:
     parser.add_argument(
         "--sync-limit",
         type=int,
-        default=0,
+        default=100,
         help=(
             "Max verified Mongo rows to sync to Postgres this run. "
-            "0 means use --ml-limit (recommended for fast per-batch exports)."
+            "Use a small value for fast per-batch exports (recommended: 50-200)."
         ),
     )
     parser.add_argument("--no-sheet", action="store_true", help="Skip Google Sheets export")
@@ -292,7 +292,7 @@ def main() -> int:
     if r2.returncode != 0:
         return r2.returncode
 
-    sync_limit = int(args.sync_limit) if int(args.sync_limit) > 0 else int(args.ml_limit)
+    sync_limit = int(max(1, int(args.sync_limit)))
     print(f">>> Step: sync_verified_to_postgres (limit={sync_limit})")
     r3 = subprocess.run(
         [py, "scripts/job_ingest/sync_verified_to_postgres.py", "--limit", str(sync_limit)],

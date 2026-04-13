@@ -13,7 +13,7 @@ Modes
     without hammering boards (rate limits / 403s). Same ML → Postgres → sheet each part.
 
 Prerequisites: MongoDB, PostgreSQL (DATABASE_URL or LOCAL_DATABASE_URL), job_board_sources, credentials + JOB_BOARD_SHEET_ID.
-If Mongo is down, --mongo-fallback-json (on by default) switches to JSON-only crawl merge (no ML / no Postgres sync).
+If Mongo is down, use --mongo-fallback-json to switch to JSON-only crawl merge (no ML / no Postgres sync).
 
 Recommended (workday, 10–15 sources per part, ~5–10 min between parts):
   python3 scripts/run_daily_ingest_automation.py --all-day
@@ -67,6 +67,12 @@ def main() -> int:
         help="Cap job candidates per source (faster + less waste)",
     )
     parser.add_argument("--ml-limit", type=int, default=600, help="Max ML rows per batch")
+    parser.add_argument(
+        "--sync-limit",
+        type=int,
+        default=100,
+        help="Max verified rows synced to Postgres per batch (kept small for faster sheet updates).",
+    )
     parser.add_argument("--prefer-less-known-sources", action="store_true", help="Prioritize lesser-known source domains")
     parser.add_argument("--exclude-popular-sources", action="store_true", help="Skip major/common boards")
     parser.add_argument("--focus-digital-marketing", action="store_true", help="Focus output on digital-marketing roles")
@@ -133,7 +139,7 @@ def main() -> int:
     parser.add_argument(
         "--disable-mongo-fallback",
         action="store_true",
-        help="Do not auto-switch to JSON-only flow when Mongo is down (may crash if Mongo is unavailable).",
+        help="Deprecated; fallback is already disabled by default unless --mongo-fallback-json is set.",
     )
     parser.add_argument(
         "--sources-file",
@@ -211,6 +217,8 @@ def main() -> int:
             str(args.max_jobs_per_source),
             "--ml-limit",
             str(args.ml_limit),
+            "--sync-limit",
+            str(args.sync_limit),
             "--sleep-min",
             str(args.sleep_min),
             "--sleep-max",
@@ -230,7 +238,8 @@ def main() -> int:
             pilot_cmd.append("--no-append-sheet")
         if args.no_strict_india:
             pilot_cmd.append("--no-strict-india")
-        # Match single-pass resilience: pilot forwards --mongo-fallback-json by default.
+        if args.mongo_fallback_json:
+            pilot_cmd.append("--mongo-fallback-json")
         if args.disable_mongo_fallback:
             pilot_cmd.append("--disable-mongo-fallback")
         mode = "all-day spaced" if args.all_day else "spaced pilot"
@@ -250,6 +259,8 @@ def main() -> int:
         str(args.max_jobs_per_source),
         "--ml-limit",
         str(args.ml_limit),
+        "--sync-limit",
+        str(args.sync_limit),
     ]
     if args.prefer_less_known_sources:
         pipe_cmd.append("--prefer-less-known-sources")
@@ -263,9 +274,8 @@ def main() -> int:
         pipe_cmd.append("--append-sheet")
     if args.no_strict_india:
         pipe_cmd.append("--no-strict-india")
-    # Default: be resilient. If Mongo is down, the pipeline will switch to JSON-only fallback
-    # (and will print a WARNING). This lets the "one daily command" always succeed.
-    should_enable_fallback = bool(args.mongo_fallback_json) or not bool(args.disable_mongo_fallback)
+    # Disaster mode only: fallback is opt-in with --mongo-fallback-json.
+    should_enable_fallback = bool(args.mongo_fallback_json)
 
     if should_enable_fallback:
         pipe_cmd.append("--mongo-fallback-json")
