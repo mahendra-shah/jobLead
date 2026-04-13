@@ -42,6 +42,12 @@ def main() -> int:
     )
     parser.add_argument("--ml-limit", type=int, default=400)
     parser.add_argument(
+        "--sync-limit",
+        type=int,
+        default=100,
+        help="Max verified rows synced to Postgres per iteration (smaller = faster iterations).",
+    )
+    parser.add_argument(
         "--sleep-min",
         type=float,
         default=120.0,
@@ -62,9 +68,14 @@ def main() -> int:
     parser.add_argument("--no-append-sheet", action="store_true")
     parser.add_argument("--no-strict-india", action="store_true")
     parser.add_argument(
+        "--mongo-fallback-json",
+        action="store_true",
+        help="Disaster mode only: if Mongo is down, use JSON-only crawl fallback.",
+    )
+    parser.add_argument(
         "--disable-mongo-fallback",
         action="store_true",
-        help="Do not auto-switch to JSON-only crawl when Mongo is down.",
+        help="Deprecated; fallback is already disabled by default unless --mongo-fallback-json is set.",
     )
     parser.add_argument(
         "--sleep-after-fail",
@@ -98,8 +109,10 @@ def main() -> int:
             str(args.max_jobs_per_source),
             "--ml-limit",
             str(args.ml_limit),
+            "--sync-limit",
+            str(args.sync_limit),
         ]
-        if not args.disable_mongo_fallback:
+        if args.mongo_fallback_json and not args.disable_mongo_fallback:
             cmd.append("--mongo-fallback-json")
         if args.prefer_less_known_sources:
             cmd.append("--prefer-less-known-sources")
