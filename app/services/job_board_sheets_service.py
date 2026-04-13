@@ -24,6 +24,7 @@ import pytz
 
 from app.config import settings
 from app.models.job import Job
+from app.utils.job_dedupe import normalize_url
 from app.utils.timezone import IST, ist_today_utc_window
 
 logger = logging.getLogger(__name__)
@@ -235,6 +236,38 @@ class JobBoardSheetsService:
     def _default_ist_date_str(self) -> str:
         _, _, ist_date_str = ist_today_utc_window()
         return ist_date_str
+
+    @staticmethod
+    def _job_row_key(row: List[str]) -> str:
+        """
+        Stable dedupe key for job rows written to sheet.
+        Prefer canonical apply URL; fallback to title+company+location+source_domain.
+        """
+        apply_url = normalize_url(str(row[13] or "").strip()) if len(row) > 13 else ""
+        if apply_url:
+            return f"url:{apply_url}"
+        title = str(row[2] or "").strip().lower() if len(row) > 2 else ""
+        company = str(row[3] or "").strip().lower() if len(row) > 3 else ""
+        location = str(row[5] or "").strip().lower() if len(row) > 5 else ""
+        source_domain = str(row[14] or "").strip().lower() if len(row) > 14 else ""
+        return f"fallback:{title}|{company}|{location}|{source_domain}"
+
+    def _existing_job_row_keys(self, tab_name: str, num_cols: int) -> set[str]:
+        """Read current sheet rows and return dedupe keys for existing jobs."""
+        end_col = chr(ord("A") + min(max(num_cols - 1, 0), 25))
+        res = (
+            self.sheets.values()
+            .get(spreadsheetId=self.sheet_id, range=f"{tab_name}!A2:{end_col}")
+            .execute()
+        )
+        vals = res.get("values") or []
+        out: set[str] = set()
+        for raw in vals:
+            row = [str(x) if x is not None else "" for x in raw]
+            if len(row) < num_cols:
+                row.extend([""] * (num_cols - len(row)))
+            out.add(self._job_row_key(row))
+        return out
 
     # ── Classification helpers ────────────────────────────────────────────────
 
@@ -521,10 +554,12 @@ class JobBoardSheetsService:
         if not append:
             self._clear_data_rows(tab_name, num_cols=num_cols)
             start_row_1based = 2
+            seen_keys: set[str] = set()
         else:
             start_row_1based = self._next_append_row_1based(tab_name)
             if start_row_1based < 2:
                 start_row_1based = 2
+            seen_keys = self._existing_job_row_keys(tab_name, num_cols)
 
         rows: List[List[str]] = []
         for job in jobs:
@@ -553,29 +588,41 @@ class JobBoardSheetsService:
             description = (job.get("description") or job.get("raw_text") or "")[:240]
             apply_url = job.get("apply_url") or job.get("url") or ""
 
-            rows.append(
-                [
-                    segment,
-                    category,
-                    title,
-                    job.get("company") or "",
-                    location_type,
-                    location_detail,
-                    country,
-                    work_type,
-                    seniority,
-                    salary,
-                    skills,
-                    degree,
-                    description,
-                    apply_url,
-                    source_domain,
-                    job.get("source_discovered_date") or "",
-                    job.get("job_posted_at_raw") or "",
-                    self._crawled_at_ist_simple(job.get("crawled_at_utc") or ""),
-                    job.get("crawled_at_utc") or "",
-                ]
-            )
+            row = [
+                segment,
+                category,
+                title,
+                job.get("company") or "",
+                location_type,
+                location_detail,
+                country,
+                work_type,
+                seniority,
+                salary,
+                skills,
+                degree,
+                description,
+                apply_url,
+                source_domain,
+                job.get("source_discovered_date") or "",
+                job.get("job_posted_at_raw") or "",
+                self._crawled_at_ist_simple(job.get("crawled_at_utc") or ""),
+                job.get("crawled_at_utc") or "",
+            ]
+            key = self._job_row_key(row)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            rows.append(row)
+
+        if not rows:
+            return {
+                "status": "no_new_jobs",
+                "date": date_str,
+                "tab_name": tab_name,
+                "jobs_exported": 0,
+                "append": append,
+            }
 
         end_col = chr(ord("A") + len(headers) - 1)
         end_row = start_row_1based + len(rows) - 1
@@ -673,9 +720,11 @@ class JobBoardSheetsService:
 
         if append:
             start_row_1based = self._next_append_row_1based(tab_name)
+            seen_keys = self._existing_job_row_keys(tab_name, len(headers))
         else:
             self._clear_data_rows(tab_name, num_cols=len(headers))
             start_row_1based = 2
+            seen_keys = set()
 
         rows: List[List[str]] = []
         for j in jobs:
@@ -703,29 +752,42 @@ class JobBoardSheetsService:
             if j.created_at:
                 created_ist = j.created_at.replace(tzinfo=pytz.utc).astimezone(IST).strftime("%Y-%m-%d %H:%M")
 
-            rows.append(
-                [
-                    segment,
-                    category,
-                    j.title or "",
-                    j.company_name or "",
-                    j.work_type or "",
-                    j.location or "",
-                    "",
-                    wt,
-                    getattr(j, "experience_required", None) or getattr(j, "experience", None) or "",
-                    salary_raw,
-                    skills,
-                    "",
-                    (j.description or "")[:500],
-                    source_url,
-                    source_domain,
-                    "",
-                    "",
-                    created_ist,
-                    created_utc,
-                ]
-            )
+            row = [
+                segment,
+                category,
+                j.title or "",
+                j.company_name or "",
+                j.work_type or "",
+                j.location or "",
+                "",
+                wt,
+                getattr(j, "experience_required", None) or getattr(j, "experience", None) or "",
+                salary_raw,
+                skills,
+                "",
+                (j.description or "")[:500],
+                source_url,
+                source_domain,
+                "",
+                "",
+                created_ist,
+                created_utc,
+            ]
+            key = self._job_row_key(row)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            rows.append(row)
+
+        if not rows:
+            return {
+                "status": "no_new_jobs",
+                "date": date_str,
+                "tab_name": tab_name,
+                "jobs_exported": 0,
+                "append": append,
+                "source": source_value,
+            }
 
         end_col = chr(ord("A") + len(headers) - 1)
         end_row = start_row_1based + len(rows) - 1
