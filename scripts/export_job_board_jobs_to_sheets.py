@@ -3,8 +3,12 @@
 
 This script reads:
 
-- app/data/discovery_sources_test.json  →  <IST_DATE>_sources tab
-- app/data/jobs/jobs_master.json        →  <IST_DATE>_jobs tab
+- sources JSON (first existing):
+    app/data/discovery_sources_test.json
+    app/data/crawl_ready_sources.json
+    app/data/discovery_sources_seed.json
+    → sources tab
+- app/data/jobs/jobs_master.json → <IST_DATE>_jobs tab
 
 The target sheet is configured via JOB_BOARD_SHEET_ID in .env and uses the
 same service-account credentials.json as the Telegram exporter.
@@ -34,6 +38,16 @@ from app.config import settings  # noqa: E402
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Export job-board sources + jobs to Google Sheets")
+    parser.add_argument(
+        "--sources-json",
+        type=Path,
+        default=None,
+        help=(
+            "Optional sources file. If omitted, exporter auto-selects first existing from "
+            "app/data/discovery_sources_test.json, app/data/crawl_ready_sources.json, "
+            "app/data/discovery_sources_seed.json."
+        ),
+    )
     parser.add_argument(
         "--date",
         type=str,
@@ -70,7 +84,17 @@ def main() -> int:
         _, _, ist_date_str = ist_today_utc_window()
 
     data_dir = PROJECT_ROOT / "app" / "data"
-    sources_path = data_dir / "discovery_sources_test.json"
+    if args.sources_json is not None:
+        sources_path = args.sources_json
+        if not sources_path.is_absolute():
+            sources_path = PROJECT_ROOT / sources_path
+    else:
+        sources_candidates = [
+            data_dir / "discovery_sources_test.json",
+            data_dir / "crawl_ready_sources.json",
+            data_dir / "discovery_sources_seed.json",
+        ]
+        sources_path = next((p for p in sources_candidates if p.exists()), None)
     if args.jobs_json is not None:
         jobs_path = args.jobs_json
         if not jobs_path.is_absolute():
@@ -80,7 +104,20 @@ def main() -> int:
 
     service = JobBoardSheetsService()
 
-    sources_result = service.export_sources_from_json(sources_path, ist_date_str)
+    if sources_path is not None and sources_path.exists():
+        sources_result = service.export_sources_from_json(sources_path, ist_date_str)
+    else:
+        sources_result = {
+            "status": "skipped_missing_file",
+            "date": ist_date_str,
+            "tab_name": "sources",
+            "sources_exported": 0,
+            "path": str(sources_path) if sources_path is not None else "",
+        }
+        print(
+            "Sources export skipped: no sources JSON file found "
+            "(checked default candidates under app/data)."
+        )
     if args.from_postgres:
         local_db_url = os.getenv("LOCAL_DATABASE_URL")
         if local_db_url:

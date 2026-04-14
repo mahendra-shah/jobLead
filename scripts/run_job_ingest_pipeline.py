@@ -24,6 +24,8 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from app.utils.timezone import ist_today_utc_window
+
 STATE_PATH = ROOT / "app" / "data" / "pipeline" / "crawl_batch_state.json"
 
 
@@ -78,6 +80,15 @@ def main() -> int:
         help="Keep digital-marketing oriented jobs in profile filter step.",
     )
     parser.add_argument("--ml-limit", type=int, default=500, help="Max job_ingest docs to process this run")
+    parser.add_argument(
+        "--sync-limit",
+        type=int,
+        default=100,
+        help=(
+            "Max verified Mongo rows to sync to Postgres this run. "
+            "Use a small value for fast per-batch exports (recommended: 50-200)."
+        ),
+    )
     parser.add_argument("--no-sheet", action="store_true", help="Skip Google Sheets export")
     parser.add_argument(
         "--append-sheet",
@@ -114,6 +125,8 @@ def main() -> int:
     args = parser.parse_args()
 
     py = sys.executable
+    _, _, ist_date_str = ist_today_utc_window()
+    daily_jobs_run_out = ROOT / "app" / "data" / "jobs" / f"jobs_run_{ist_date_str}.json"
 
     from app.services.mongodb_job_board_source_service import MongoJobBoardSourcesService
 
@@ -131,7 +144,7 @@ def main() -> int:
                 "ERROR: MongoDB is required for this run but is not reachable.\n"
                 f"  {e}\n"
                 "  Fix: start MongoDB and/or set MONGODB_URI in .env. "
-                "Or run without --disable-mongo-fallback to use JSON-only crawl when Mongo is down.",
+                "Or run with --mongo-fallback-json to use JSON-only crawl when Mongo is down.",
                 file=sys.stderr,
             )
             return 1
@@ -160,7 +173,7 @@ def main() -> int:
                 f"Checkpoint source_offset={attempt_off} batch_size={args.batch_size} total_active_sources=0 (try {attempt + 1}/{max_retries + 1})"
             )
 
-            jobs_run_out = ROOT / "app" / "data" / "jobs" / f"jobs_run_{batch_id}.json"
+            jobs_run_out = daily_jobs_run_out
             crawl_cmd = [
                 py,
                 "scripts/crawl_jobs_from_sources.py",
@@ -247,6 +260,8 @@ def main() -> int:
         str(args.source_request_delay),
         "--source-request-jitter",
         str(args.source_request_jitter),
+        "--out",
+        str(daily_jobs_run_out),
         "--write-job-ingest",
         "--crawl-batch-id",
         batch_id,
@@ -277,11 +292,17 @@ def main() -> int:
     if r2.returncode != 0:
         return r2.returncode
 
-    r3 = subprocess.run([py, "scripts/job_ingest/sync_verified_to_postgres.py"], cwd=ROOT)
+    sync_limit = int(max(1, int(args.sync_limit)))
+    print(f">>> Step: sync_verified_to_postgres (limit={sync_limit})")
+    r3 = subprocess.run(
+        [py, "scripts/job_ingest/sync_verified_to_postgres.py", "--limit", str(sync_limit)],
+        cwd=ROOT,
+    )
     if r3.returncode != 0:
         return r3.returncode
 
     if not args.no_sheet:
+        print(">>> Step: export_job_board_jobs_to_sheets (--from-postgres)")
         cmd = [
             py,
             "scripts/export_job_board_jobs_to_sheets.py",

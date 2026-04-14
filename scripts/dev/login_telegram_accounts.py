@@ -7,15 +7,20 @@ import asyncio
 from telethon import TelegramClient
 import os
 import sys
+from pathlib import Path
 
 # Ensure project root is on sys.path so `app` imports work when running from scripts/dev
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, os.pardir, os.pardir))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
+
+SESSIONS_DIR = Path(PROJECT_ROOT) / "sessions"
+SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 from app.db.session import SyncSessionLocal
 from app.models.telegram_account import TelegramAccount
 
+from app.services.telegram_group_joiner_service import decrypt_credential
 # Load accounts from database with their actual API credentials
 def get_accounts_from_db():
     """Get accounts from database with their API credentials"""
@@ -47,9 +52,14 @@ async def login_account(phone, api_id, api_hash):
     print("=" * 60)
     
     # Convert api_id to int if it's a string
-    api_id = int(api_id) if isinstance(api_id, str) else api_id
-    
-    client = TelegramClient(f"sessions/{phone}", api_id, api_hash)
+    # api_id = int(api_id) if isinstance(api_id, str) else api_id
+    # Decrypt credentials if needed
+    api_id = decrypt_credential(api_id)
+    api_id = int(api_id)
+    api_hash = decrypt_credential(api_hash)
+    safe_phone = str(phone).replace("+", "").replace(" ", "")
+    session_path = str(SESSIONS_DIR / f"telegram_{safe_phone}")
+    client = TelegramClient(session_path, api_id, api_hash)
     
     try:
         await client.start(phone=phone)

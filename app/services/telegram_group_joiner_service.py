@@ -21,6 +21,7 @@ import random
 import base64
 from typing import List, Dict, Optional
 from datetime import datetime, timezone
+from pathlib import Path
 
 from sqlalchemy import select
 from telethon import TelegramClient
@@ -29,7 +30,9 @@ from telethon.errors import (
     ChannelPrivateError,
     UserAlreadyParticipantError,
     UserBannedInChannelError,
-    InviteHashExpiredError
+    InviteHashExpiredError,
+    UsernameInvalidError,
+    UsernameNotOccupiedError,
 )
 from telethon.tl.functions.channels import JoinChannelRequest
 from cryptography.fernet import Fernet
@@ -43,6 +46,8 @@ from app.models.telegram_account import TelegramAccount, HealthStatus
 from app.utils.slack_notifier import slack_notifier
 
 logger = logging.getLogger(__name__)
+ROOT = Path(__file__).resolve().parents[2]
+SESSIONS_DIR = ROOT / "sessions"
 
 
 # Decryption utilities
@@ -135,6 +140,7 @@ class TelegramGroupJoinerService:
             Dict mapping phone -> TelegramClient
         """
         clients = {}
+        SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
         
         for account in accounts:
             try:
@@ -143,8 +149,10 @@ class TelegramGroupJoinerService:
                 api_hash = decrypt_credential(account.api_hash)
                 
                 # Create client
+                safe_phone = str(account.phone).replace("+", "").replace(" ", "")
+                session_path = str(SESSIONS_DIR / f"telegram_{safe_phone}")
                 client = TelegramClient(
-                    f"sessions/{account.phone}",
+                    session_path,
                     api_id,
                     api_hash
                 )
@@ -186,10 +194,21 @@ class TelegramGroupJoinerService:
             bool: True if successfully joined
         """
         try:
-            logger.info(f"🔗 Joining @{channel.username} with {account.phone}...")
+            raw_username = str(channel.username or "").strip()
+            username = raw_username.lstrip("@")
+            if not username:
+                logger.error("❌ Channel has empty username; deactivating record")
+                channel.is_active = False
+                channel.deactivation_reason = "invalid_or_missing_username"
+                await db.commit()
+                self.stats["errors"].append("Invalid username: <empty>")
+                self.stats["failed_joins"] += 1
+                return False
+
+            logger.info(f"🔗 Joining @{username} with {account.phone}...")
             
             # Get channel entity
-            entity = await client.get_entity(channel.username)
+            entity = await client.get_entity(username)
             
             # Check if already participant
             try:
@@ -266,6 +285,18 @@ class TelegramGroupJoinerService:
             await db.commit()
             
             self.stats["errors"].append(f"Private/deleted: @{channel.username}")
+            self.stats["failed_joins"] += 1
+            return False
+
+        except (UsernameInvalidError, UsernameNotOccupiedError, ValueError):
+            logger.error(f"❌ Channel @{channel.username} has invalid/non-existent username")
+
+            # Deactivate invalid usernames to prevent repeated failures every cycle.
+            channel.is_active = False
+            channel.deactivation_reason = "invalid_or_missing_username"
+            await db.commit()
+
+            self.stats["errors"].append(f"Invalid/non-existent username: @{channel.username}")
             self.stats["failed_joins"] += 1
             return False
             

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import logging
+import hashlib
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from pymongo import ASCENDING, MongoClient, ReturnDocument
+from pymongo.errors import DuplicateKeyError, OperationFailure
 
 from app.config import settings
 from app.utils.job_dedupe import build_text_for_ml, compute_dedupe_key, normalize_url
@@ -37,21 +40,47 @@ class MongoJobIngestService:
         if self._client is not None:
             return
 
-        def _try_connect(uri: str) -> Optional[MongoClient]:
-            try:
-                client = MongoClient(
-                    uri,
-                    serverSelectionTimeoutMS=5000,
-                    connectTimeoutMS=5000,
-                    socketTimeoutMS=20000,
-                )
-                client.admin.command("ping")
-                return client
-            except Exception:
-                return None
+        def _try_connect_with_retries(uri: str, *, label: str) -> Optional[MongoClient]:
+            attempts = 4
+            backoff_seconds = [1.5, 3.0, 5.0]
+            last_exc: Optional[Exception] = None
+
+            for i in range(attempts):
+                try:
+                    client = MongoClient(
+                        uri,
+                        serverSelectionTimeoutMS=8000,
+                        connectTimeoutMS=8000,
+                        socketTimeoutMS=25000,
+                    )
+                    client.admin.command("ping")
+                    if i > 0:
+                        logger.info("Mongo %s connection recovered on retry %d/%d", label, i + 1, attempts)
+                    return client
+                except Exception as exc:
+                    last_exc = exc
+                    if i < attempts - 1:
+                        sleep_s = backoff_seconds[min(i, len(backoff_seconds) - 1)]
+                        logger.warning(
+                            "Mongo %s connect attempt %d/%d failed: %s; retrying in %.1fs",
+                            label,
+                            i + 1,
+                            attempts,
+                            str(exc),
+                            sleep_s,
+                        )
+                        time.sleep(sleep_s)
+
+            logger.error(
+                "Mongo %s connect failed after %d attempts: %s",
+                label,
+                attempts,
+                str(last_exc) if last_exc else "unknown error",
+            )
+            return None
 
         uri_primary = settings.MONGODB_URI
-        client = _try_connect(uri_primary)
+        client = _try_connect_with_retries(uri_primary, label="primary")
 
         if (
             client is None
@@ -66,7 +95,7 @@ class MongoJobIngestService:
             else:
                 uri_atlas = f"mongodb+srv://{settings.MONGODB_CLUSTER}/?retryWrites=true&w=majority"
             logger.warning("Local Mongo not reachable; falling back to Atlas URI.")
-            client = _try_connect(uri_atlas)
+            client = _try_connect_with_retries(uri_atlas, label="atlas-fallback")
 
         if client is None:
             raise RuntimeError(f"MongoDB connection failed for uri: {uri_primary!r}")
@@ -100,6 +129,7 @@ class MongoJobIngestService:
 
         url = str(job.get("apply_url") or job.get("url") or "").strip()
         url_norm = normalize_url(url)
+        url_key = hashlib.sha256(url_norm.encode("utf-8")).hexdigest() if url_norm else ""
         dedupe_key = compute_dedupe_key(job)
         text_for_ml = build_text_for_ml(job) or url_norm or dedupe_key
         payload = _trim_payload(job)
@@ -110,29 +140,72 @@ class MongoJobIngestService:
             "crawl_batch_id": crawl_batch_id,
         }
 
-        self._col.update_one(
-            {"dedupe_key": dedupe_key},
-            {
-                "$set": {
-                    "url_norm": url_norm,
-                    "dedupe_key": dedupe_key,
-                    "source_platform": source_platform,
-                    "source_ref": source_ref,
-                    "payload": payload,
-                    "text_for_ml": text_for_ml,
-                    "updated_at": now,
-                    "last_seen_at": now,
-                },
-                "$setOnInsert": {
-                    "ml_status": "pending",
-                    "first_seen_at": now,
-                    "created_at": now,
-                    "ml_scores": {},
-                },
-                "$inc": {"seen_count": 1},
+        set_doc: Dict[str, Any] = {
+            "url_norm": url_norm,
+            "dedupe_key": dedupe_key,
+            "source_platform": source_platform,
+            "source_ref": source_ref,
+            "payload": payload,
+            "text_for_ml": text_for_ml,
+            "updated_at": now,
+            "last_seen_at": now,
+        }
+        if url_key:
+            set_doc["url_key"] = url_key
+        update_doc: Dict[str, Any] = {
+            "$set": set_doc,
+            "$setOnInsert": {
+                "ml_status": "pending",
+                "first_seen_at": now,
+                "created_at": now,
+                "ml_scores": {},
             },
-            upsert=True,
-        )
+            "$inc": {"seen_count": 1},
+        }
+        if not url_key:
+            update_doc["$unset"] = {"url_key": ""}
+
+        def _touch_by_url_key() -> bool:
+            """Update existing row by canonical URL hash; never rewrite dedupe_key here."""
+            if not url_key:
+                return False
+            safe_set_doc = {k: v for k, v in set_doc.items() if k != "dedupe_key"}
+            r_url = self._col.update_one(
+                {"url_key": url_key},
+                {"$set": safe_set_doc, "$inc": {"seen_count": 1}},
+                upsert=False,
+            )
+            return bool(r_url.matched_count)
+
+        # Avoid $or + upsert here: it can attempt insert and hit unique url_key duplicates.
+        if _touch_by_url_key():
+            return dedupe_key
+
+        try:
+            self._col.update_one({"dedupe_key": dedupe_key}, update_doc, upsert=True)
+        except (OperationFailure, DuplicateKeyError) as exc:
+            code = getattr(exc, "code", None)
+            if code is None and hasattr(exc, "details") and isinstance(getattr(exc, "details", None), dict):
+                code = exc.details.get("code")
+            if code != 11000:
+                raise
+            if _touch_by_url_key():
+                logger.debug(
+                    "job_ingest upsert recovered after duplicate key (url_key=%s...)",
+                    (url_key or "")[:16],
+                )
+                return dedupe_key
+            r_dk = self._col.update_one(
+                {"dedupe_key": dedupe_key},
+                {"$set": set_doc, "$inc": {"seen_count": 1}},
+                upsert=False,
+            )
+            if not r_dk.matched_count:
+                raise
+            logger.debug(
+                "job_ingest upsert recovered after duplicate key (dedupe_key=%s...)",
+                (dedupe_key or "")[:16],
+            )
         return dedupe_key
 
     def claim_next_pending(self) -> Optional[Dict[str, Any]]:
