@@ -71,6 +71,30 @@ def _source_domain(row: dict[str, Any], source_url: str) -> str:
     return ""
 
 
+def _column_max_lengths(engine_columns: list[dict[str, Any]]) -> dict[str, int]:
+    """Return VARCHAR max lengths by column name from inspector metadata."""
+    limits: dict[str, int] = {}
+    for col in engine_columns:
+        name = str(col.get("name") or "")
+        typ = col.get("type")
+        if not name or typ is None:
+            continue
+        length = getattr(typ, "length", None)
+        if isinstance(length, int) and length > 0:
+            limits[name] = length
+    return limits
+
+
+def _apply_varchar_limits(values: dict[str, Any], limits: dict[str, int]) -> dict[str, Any]:
+    """Trim string values to DB varchar limits to avoid insert/update failures."""
+    out = dict(values)
+    for key, max_len in limits.items():
+        val = out.get(key)
+        if isinstance(val, str) and len(val) > max_len:
+            out[key] = val[:max_len]
+    return out
+
+
 def sync_job_board_rows(
     engine: Engine,
     rows: list[dict[str, Any]],
@@ -83,7 +107,9 @@ def sync_job_board_rows(
         return stats
 
     inspector = inspect(engine)
-    cols = {c["name"] for c in inspector.get_columns("jobs")}
+    engine_columns = inspector.get_columns("jobs")
+    cols = {c["name"] for c in engine_columns}
+    varchar_limits = _column_max_lengths(engine_columns)
     now = datetime.now(timezone.utc).replace(tzinfo=None)
 
     with engine.begin() as conn:
@@ -121,6 +147,8 @@ def sync_job_board_rows(
             insert_values = {"id": str(uuid.uuid4()), "created_at": now, **payload}
             payload = {k: v for k, v in payload.items() if k in cols}
             insert_values = {k: v for k, v in insert_values.items() if k in cols}
+            payload = _apply_varchar_limits(payload, varchar_limits)
+            insert_values = _apply_varchar_limits(insert_values, varchar_limits)
 
             if "title" in insert_values and not insert_values["title"]:
                 stats.skipped += 1

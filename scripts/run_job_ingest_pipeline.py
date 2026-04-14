@@ -144,7 +144,7 @@ def main() -> int:
                 "ERROR: MongoDB is required for this run but is not reachable.\n"
                 f"  {e}\n"
                 "  Fix: start MongoDB and/or set MONGODB_URI in .env. "
-                "Or run without --disable-mongo-fallback to use JSON-only crawl when Mongo is down.",
+                "Or run with --mongo-fallback-json to use JSON-only crawl when Mongo is down.",
                 file=sys.stderr,
             )
             return 1

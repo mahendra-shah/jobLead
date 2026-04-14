@@ -3,7 +3,7 @@
 Daily scheduler for job-ingest automation on EC2.
 
 Runs once per day at a fixed local time (default: 06:00 Asia/Kolkata),
-and triggers the existing daily pipeline in all-day mode with 12 batches.
+and triggers the existing daily pipeline in all-day mode.
 """
 
 from __future__ import annotations
@@ -48,8 +48,6 @@ def _build_command(args: argparse.Namespace) -> list[str]:
         str(args.python_bin),
         str(RUNNER),
         "--all-day",
-        "--spaced-batches",
-        str(args.spaced_batches),
         "--batch-size",
         str(args.batch_size),
         "--max-jobs-per-source",
@@ -64,6 +62,8 @@ def _build_command(args: argparse.Namespace) -> list[str]:
         str(args.sleep_max),
         "--no-append-sheet",
     ]
+    if int(args.spaced_batches) > 0:
+        cmd.extend(["--spaced-batches", str(args.spaced_batches)])
     if args.disable_mongo_fallback:
         cmd.append("--disable-mongo-fallback")
     if args.student_pipeline_only:
@@ -78,13 +78,13 @@ def main() -> int:
     parser.add_argument("--time", default="06:00", help="Daily local run time HH:MM (default: 06:00)")
     parser.add_argument("--timezone", default="Asia/Kolkata", help="IANA timezone (default: Asia/Kolkata)")
     parser.add_argument("--python-bin", type=Path, default=DEFAULT_PYTHON, help="Python interpreter path")
-    parser.add_argument("--spaced-batches", type=int, default=12, help="Daily spaced batches count")
-    parser.add_argument("--batch-size", type=int, default=12, help="Sources per batch")
+    parser.add_argument("--spaced-batches", type=int, default=0, help="Daily spaced batches count (0 = script default)")
+    parser.add_argument("--batch-size", type=int, default=20, help="Sources per batch")
     parser.add_argument("--max-jobs-per-source", type=int, default=40, help="Cap jobs per source")
     parser.add_argument("--ml-limit", type=int, default=600, help="Max ML rows per batch")
     parser.add_argument("--sync-limit", type=int, default=200, help="Max Postgres sync rows per batch")
-    parser.add_argument("--sleep-min", type=float, default=300.0, help="Seconds between batches (min)")
-    parser.add_argument("--sleep-max", type=float, default=600.0, help="Seconds between batches (max)")
+    parser.add_argument("--sleep-min", type=float, default=60.0, help="Seconds between batches (min)")
+    parser.add_argument("--sleep-max", type=float, default=120.0, help="Seconds between batches (max)")
     parser.add_argument("--disable-mongo-fallback", action="store_true", help="Fail if Mongo is unavailable")
     parser.add_argument("--student-pipeline-only", action="store_true", help="Use student eligible sources only")
     parser.add_argument("--run-now", action="store_true", help="Run immediately once, then continue scheduling")

@@ -7,12 +7,16 @@ import asyncio
 from telethon import TelegramClient
 import os
 import sys
+from pathlib import Path
 
 # Ensure project root is on sys.path so `app` imports work when running from scripts/dev
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, os.pardir, os.pardir))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
+
+SESSIONS_DIR = Path(PROJECT_ROOT) / "sessions"
+SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 from app.db.session import SyncSessionLocal
 from app.models.telegram_account import TelegramAccount
 
@@ -53,7 +57,9 @@ async def login_account(phone, api_id, api_hash):
     api_id = decrypt_credential(api_id)
     api_id = int(api_id)
     api_hash = decrypt_credential(api_hash)
-    client = TelegramClient(f"sessions/{phone}", api_id, api_hash)
+    safe_phone = str(phone).replace("+", "").replace(" ", "")
+    session_path = str(SESSIONS_DIR / f"telegram_{safe_phone}")
+    client = TelegramClient(session_path, api_id, api_hash)
     
     try:
         await client.start(phone=phone)

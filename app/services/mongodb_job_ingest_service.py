@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import hashlib
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -39,21 +40,47 @@ class MongoJobIngestService:
         if self._client is not None:
             return
 
-        def _try_connect(uri: str) -> Optional[MongoClient]:
-            try:
-                client = MongoClient(
-                    uri,
-                    serverSelectionTimeoutMS=5000,
-                    connectTimeoutMS=5000,
-                    socketTimeoutMS=20000,
-                )
-                client.admin.command("ping")
-                return client
-            except Exception:
-                return None
+        def _try_connect_with_retries(uri: str, *, label: str) -> Optional[MongoClient]:
+            attempts = 4
+            backoff_seconds = [1.5, 3.0, 5.0]
+            last_exc: Optional[Exception] = None
+
+            for i in range(attempts):
+                try:
+                    client = MongoClient(
+                        uri,
+                        serverSelectionTimeoutMS=8000,
+                        connectTimeoutMS=8000,
+                        socketTimeoutMS=25000,
+                    )
+                    client.admin.command("ping")
+                    if i > 0:
+                        logger.info("Mongo %s connection recovered on retry %d/%d", label, i + 1, attempts)
+                    return client
+                except Exception as exc:
+                    last_exc = exc
+                    if i < attempts - 1:
+                        sleep_s = backoff_seconds[min(i, len(backoff_seconds) - 1)]
+                        logger.warning(
+                            "Mongo %s connect attempt %d/%d failed: %s; retrying in %.1fs",
+                            label,
+                            i + 1,
+                            attempts,
+                            str(exc),
+                            sleep_s,
+                        )
+                        time.sleep(sleep_s)
+
+            logger.error(
+                "Mongo %s connect failed after %d attempts: %s",
+                label,
+                attempts,
+                str(last_exc) if last_exc else "unknown error",
+            )
+            return None
 
         uri_primary = settings.MONGODB_URI
-        client = _try_connect(uri_primary)
+        client = _try_connect_with_retries(uri_primary, label="primary")
 
         if (
             client is None
@@ -68,7 +95,7 @@ class MongoJobIngestService:
             else:
                 uri_atlas = f"mongodb+srv://{settings.MONGODB_CLUSTER}/?retryWrites=true&w=majority"
             logger.warning("Local Mongo not reachable; falling back to Atlas URI.")
-            client = _try_connect(uri_atlas)
+            client = _try_connect_with_retries(uri_atlas, label="atlas-fallback")
 
         if client is None:
             raise RuntimeError(f"MongoDB connection failed for uri: {uri_primary!r}")
