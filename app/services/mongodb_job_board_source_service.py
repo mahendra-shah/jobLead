@@ -325,7 +325,7 @@ class MongoJobBoardSourcesService:
 
     @staticmethod
     def mongo_doc_to_phase2_source(doc: Dict[str, Any]) -> Dict[str, Any]:
-        """Shape expected by scripts/crawl_jobs_from_sources.py (matches JSON export)."""
+        """Shape expected by scripts/job_board_flow/crawl_jobs_from_sources.py (matches JSON export)."""
         _id = doc.get("_id")
         sid = str(_id) if _id is not None else ""
         meta = dict(doc.get("metadata") or {})

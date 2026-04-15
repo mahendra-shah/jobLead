@@ -1,6 +1,6 @@
 {
   "meta": {
-    "description": "Phase 1 discovery seed: India city-wise job boards and programming communities. Run scripts/run_discovery_phases.py to import.",
+    "description": "Phase 1 discovery seed: India city-wise job boards and programming communities. Run scripts/job_board_flow/run_discovery_phases.py to import.",
     "phases": [1, 2, 3, 4],
     "target_total": 1000
   },

@@ -51,7 +51,7 @@ How we go next on the remaining discovery/crawl items, in order, and what we nee
 
 - **Reach 1k discovery sources**
   - Expand `app/data/discovery_sources_seed.json` (e.g. from Ultimate-Tech-Jobs, more cities, more Telegram/Discord).
-  - Run `scripts/run_discovery_phases.py` in phases until count ≥ 1000.
+  - Run `scripts/job_board_flow/run_discovery_phases.py` in phases until count ≥ 1000.
 - **Optional**: Script to export `discovery_sources` to JSON/CSV and upload to S3 (once you give bucket + IAM).
 
 ### Phase 1b – After 1k (needs your decisions 2.1)
