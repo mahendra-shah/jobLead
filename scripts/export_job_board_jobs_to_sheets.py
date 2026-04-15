@@ -76,6 +76,11 @@ def main() -> int:
         default="job_board",
         help="When --from-postgres: filter jobs.source by this value (default: job_board).",
     )
+    parser.add_argument(
+        "--skip-url-validation",
+        action="store_true",
+        help="Do not HEAD/GET apply URLs before export (faster; may include dead links).",
+    )
     args = parser.parse_args()
 
     if args.date:
@@ -135,13 +140,17 @@ def main() -> int:
                 date_str=ist_date_str,
                 append=bool(args.append_jobs),
                 source_value=str(args.postgres_source or "job_board"),
+                validate_apply_urls=not bool(args.skip_url_validation),
             )
         finally:
             db.close()
             engine.dispose()
     else:
         jobs_result = service.export_jobs_from_json(
-            jobs_path, ist_date_str, append=bool(args.append_jobs)
+            jobs_path,
+            ist_date_str,
+            append=bool(args.append_jobs),
+            validate_apply_urls=not bool(args.skip_url_validation),
         )
 
     print("Sources export:", sources_result)

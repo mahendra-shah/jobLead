@@ -255,9 +255,115 @@ def fetch_shortlisted_sources(api_base: str, page_size: int = 50) -> list:
     return resp.json().get("sources") or []
 
 
+def _fw_cta_title(title: str) -> bool:
+    """True if anchor text is a generic CTA (Freshersworld lists often use 'View & Apply')."""
+    x = (title or "").strip().lower()
+    if not x:
+        return True
+    if x in {
+        "view & apply",
+        "view and apply",
+        "apply now",
+        "apply",
+        "read more",
+        "view details",
+        "view job",
+        "click here",
+        "new",
+        "hot job",
+    }:
+        return True
+    if len(x) <= 14 and "apply" in x:
+        return True
+    return False
+
+
+def _fw_title_from_job_path(path: str) -> str:
+    """Build a readable title from /jobs/{slug}-{id} when listing cards hide the real title."""
+    seg = path.strip("/").split("/")[-1] if path else ""
+    if not seg:
+        return ""
+    seg = re.sub(r"-\d{6,}$", "", seg, flags=re.I)
+    seg = seg.replace("-", " ").strip()
+    if len(seg) < 6:
+        return ""
+    return seg.title()
+
+
+def _extract_freshersworld_jobs(
+    html: str, page_url: str, source_name: str, source_id: str
+) -> List[dict]:
+    """
+    Freshersworld listing pages often put the real role in the URL slug while the
+    visible link text is only 'View & Apply'. Prefer slug-derived titles and card context.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    seen: set = set()
+    jobs: List[dict] = []
+
+    def add_fw(title: str, href: str, location: str = "", company: str = "") -> None:
+        if not href:
+            return
+        full_url = urljoin(page_url, href)
+        if "freshersworld.com" not in full_url.lower():
+            return
+        path = urlparse(full_url).path
+        if not re.search(r"/jobs/.+-\d{6,}/?$", path, re.I):
+            return
+        title_clean = (title or "").strip()
+        if _fw_cta_title(title_clean):
+            title_clean = _fw_title_from_job_path(path)
+        if not title_clean or _fw_cta_title(title_clean):
+            return
+        h = url_hash(full_url)
+        if h in seen:
+            return
+        seen.add(h)
+        jobs.append(
+            make_job(
+                title_clean[:500],
+                full_url,
+                source_name,
+                source_id,
+                company=company.strip() if company else "",
+                location=location.strip() if location else "",
+            )
+        )
+
+    for a in soup.find_all("a", href=True):
+        href = a.get("href") or ""
+        if "/jobs/" not in href.lower():
+            continue
+        full = urljoin(page_url, href)
+        if "freshersworld.com" not in full.lower():
+            continue
+        title_guess = (a.get("title") or "").strip()
+        if not title_guess:
+            prev_heading = a.find_previous(["h2", "h3", "h4"])
+            if prev_heading:
+                title_guess = prev_heading.get_text(" ", strip=True)
+        if not title_guess:
+            title_guess = a.get_text(" ", strip=True)
+        company = ""
+        location = ""
+        parent = a.find_parent(class_=re.compile(r"job|card|listing|item|result|box", re.I))
+        if parent:
+            co = parent.find(class_=re.compile(r"company|employer|org", re.I))
+            loc = parent.find(class_=re.compile(r"location|city|place|loc\b", re.I))
+            if co:
+                company = co.get_text(" ", strip=True)
+            if loc:
+                location = loc.get_text(" ", strip=True)
+        add_fw(title_guess, href, location=location, company=company)
+
+    return jobs
+
+
 def extract_jobs_from_html(
     html: str, page_url: str, source_name: str, source_id: str
 ) -> List[dict]:
+    if page_url and "freshersworld.com" in page_url.lower():
+        return _extract_freshersworld_jobs(html, page_url, source_name, source_id)
     soup = BeautifulSoup(html, "html.parser")
     seen: set        = set()
     jobs: List[dict] = []

@@ -171,6 +171,7 @@ DIGITAL_MARKETING_TERMS = (
     "marketing",
     "seo",
     "sem",
+    "smo",
     "ppc",
     "google ads",
     "meta ads",
@@ -179,6 +180,9 @@ DIGITAL_MARKETING_TERMS = (
     "content marketing",
     "growth marketing",
     "brand marketing",
+    "email marketing",
+    "marketing analyst",
+    "marketing executive",
 )
 
 ALWAYS_EXCLUDED_SOURCE_TOKENS = (
@@ -257,11 +261,33 @@ def _normalize_company_name(raw_company: str, title: str, source_domain: str) ->
     return (source_domain or "").replace("www.", "")
 
 
-def _derive_segment_category(title: str, source_domain: str) -> tuple[str, str]:
-    """Derive Segment (Tech/Non-tech) and Category from title and domain."""
-    t = (title or "").lower()
+def _derive_segment_category(title: str, source_domain: str, description: str = "") -> tuple[str, str]:
+    """Derive Segment (Tech/Non-tech) and Category from title, description, and domain."""
+    t = f"{(title or '')} {(description or '')}".lower()
     domain = (source_domain or "").lower()
-    tech_kw = ["developer", "engineer", "software", "backend", "frontend", "full stack", "devops", "sre", "qa engineer", "mobile developer"]
+    tech_kw = [
+        "developer",
+        "engineer",
+        "software",
+        "backend",
+        "frontend",
+        "full stack",
+        "devops",
+        "sre",
+        "qa engineer",
+        "mobile developer",
+        "programmer",
+        "java",
+        "python",
+        "react",
+        "node.js",
+        "kubernetes",
+        "cloud engineer",
+        "database",
+        "sql",
+        "ml engineer",
+        "ai engineer",
+    ]
     data_kw = [
         "data analyst",
         "data analytics",
@@ -275,7 +301,23 @@ def _derive_segment_category(title: str, source_domain: str) -> tuple[str, str]:
         "analytics",
     ]
     sales_kw = ["sales", "account executive", "business development", "bdm"]
-    marketing_kw = ["marketing", "growth", "seo", "content", "performance"]
+    marketing_kw = [
+        "marketing",
+        "digital marketing",
+        "growth",
+        "seo",
+        "sem",
+        "smo",
+        "content",
+        "performance",
+        "ppc",
+        "google ads",
+        "meta ads",
+        "social media marketing",
+        "brand",
+        "copywriter",
+        "copywriting",
+    ]
     support_kw = ["customer support", "customer success", "support specialist"]
     hr_kw = ["hr ", "talent acquisition", "recruiter", "recruitment"]
     finance_kw = ["finance", "accountant", "controller", "fp&a", "audit"]
@@ -293,8 +335,40 @@ def _derive_segment_category(title: str, source_domain: str) -> tuple[str, str]:
     if any_kw(support_kw): return "Non-tech", "Customer Support / Success"
     if any_kw(hr_kw): return "Non-tech", "HR / Talent"
     if any_kw(finance_kw): return "Non-tech", "Finance / Accounting"
-    if any(d in domain for d in ["github", "remoteintech", "stackoverflow"]): return "Tech", "Other / Unknown"
-    return "Unknown", "Other / Unknown"
+    if any(d in domain for d in ["github", "remoteintech", "stackoverflow"]):
+        return "Tech", "Other / Unknown"
+    tech_signals = (
+        "sql",
+        "java",
+        "python",
+        "api",
+        "aws",
+        "azure",
+        "gcp",
+        "docker",
+        "linux",
+        "c++",
+        ".net",
+        "angular",
+        "typescript",
+    )
+    nontech_signals = (
+        "bpo",
+        "kpo",
+        "telecaller",
+        "voice process",
+        "non-voice",
+        "data entry",
+        "back office",
+        "receptionist",
+    )
+    th = sum(1 for s in tech_signals if s in t)
+    nh = sum(1 for s in nontech_signals if s in t)
+    if th > nh:
+        return "Tech", "Software / Engineering"
+    if nh > th:
+        return "Non-tech", "Other / Unknown"
+    return "Non-tech", "Other / Unknown"
 
 
 def _derive_location_work_seniority(job: dict) -> dict:
@@ -307,7 +381,11 @@ def _derive_location_work_seniority(job: dict) -> dict:
     out["location_type"] = "Remote" if "remote" in combined else ("Hybrid" if "hybrid" in combined else ("Onsite" if location else ""))
     out["location_detail"] = location
     out["country"] = ""
-    if re.search(r"\bindia\b", combined):
+    india_city_pat = (
+        r"\b(bangalore|bengaluru|hyderabad|chennai|mumbai|delhi|ncr|new delhi|pune|kolkata"
+        r"|noida|gurgaon|gurugram|ahmedabad|kochi|coimbatore|indore|jaipur|bhopal|vizag)\b"
+    )
+    if re.search(r"\bindia\b", combined) or re.search(india_city_pat, combined):
         out["country"] = "India"
     elif re.search(r"\b(united states|usa|u\.s\.a?)\b", combined):
         out["country"] = "United States"
@@ -324,18 +402,34 @@ def _derive_location_work_seniority(job: dict) -> dict:
     elif "contract" in desc: out["work_type"] = "Contract"
     elif "full-time" in desc or "full time" in desc: out["work_type"] = "Full-time"
     else: out["work_type"] = ""
-    if any(w in title for w in ["intern", "fresher", "graduate", "entry level", "entry-level"]): out["seniority"] = "Fresher / Entry"
-    elif "junior" in title: out["seniority"] = "Junior"
-    elif "senior" in title or "lead" in title: out["seniority"] = "Senior"
-    else: out["seniority"] = ""
+    if any(w in title for w in ["intern", "fresher", "graduate", "entry level", "entry-level", "trainee"]):
+        out["seniority"] = "Fresher / Entry"
+    elif "junior" in title:
+        out["seniority"] = "Junior"
+    elif "senior" in title or "lead" in title:
+        out["seniority"] = "Senior"
+    else:
+        out["seniority"] = ""
+    if not out["seniority"] and re.search(
+        r"\b(fresher|fresh graduate|entry level|0\s*-\s*1\s*yr|0\s*to\s*1\s*year|walk-?in)\b",
+        combined,
+    ):
+        out["seniority"] = "Fresher / Entry"
+    if not out["seniority"]:
+        out["seniority"] = "Fresher / Entry"
     return out
 
 
 def _normalize_job(job: dict) -> dict:
     """Ensure job has all JOB_KEYS; derive segment/category/location/work/seniority if missing."""
-    segment, category = _derive_segment_category(job.get("title") or "", job.get("source_domain") or "")
-    job.setdefault("segment", segment)
-    job.setdefault("category", category)
+    desc_for_class = job.get("description") or ""
+    segment, category = _derive_segment_category(
+        job.get("title") or "",
+        job.get("source_domain") or "",
+        desc_for_class,
+    )
+    job["segment"] = segment
+    job["category"] = category
     derived = _derive_location_work_seniority(job)
     for k, v in derived.items():
         job.setdefault(k, v)
@@ -383,6 +477,8 @@ def _is_non_job_or_spam(title: str, url: str, combined_text: str) -> bool:
         "apply now",
         "view job",
         "view jobs",
+        "view & apply",
+        "view and apply",
         "post a job",
     )
     if any(m in t for m in NON_JOB_TITLE_MARKERS):
@@ -705,7 +801,7 @@ def main() -> int:
     parser.add_argument(
         "--popular-source-max-jobs",
         type=int,
-        default=10,
+        default=20,
         help="Per-source cap for popular domains (used unless --exclude-popular-sources).",
     )
     parser.add_argument(

@@ -181,6 +181,9 @@ class Settings(BaseSettings):
     # Scraping
     TELEGRAM_SCRAPE_INTERVAL_MINUTES: int = 30
     JOB_RETENTION_DAYS: int = 90
+    JOB_BOARD_MONGO_RETENTION_DAYS: int = 7
+    JOB_BOARD_MONGO_CLEANUP_HOUR_IST: int = 3
+    JOB_BOARD_MONGO_CLEANUP_MINUTE_IST: int = 30
 
     # Job-board single-batch scheduler (safe defaults: one batch every 30 min)
     JOB_BOARD_SCHEDULER_ENABLED: bool = True

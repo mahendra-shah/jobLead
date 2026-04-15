@@ -10,11 +10,14 @@ produced by the discovery/crawling pipeline:
 
 import json
 import logging
+import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 from urllib.parse import urlparse
 
+import httpx
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from sqlalchemy.orm import Session  # kept for future DB-based exports
@@ -272,9 +275,9 @@ class JobBoardSheetsService:
     # ── Classification helpers ────────────────────────────────────────────────
 
     @staticmethod
-    def _classify_job(title: str, source_domain: str) -> Tuple[str, str]:
-        """Roughly classify job as Tech / Non-tech + category from title."""
-        t = (title or "").lower()
+    def _classify_job(title: str, source_domain: str, description: str = "") -> Tuple[str, str]:
+        """Classify job as Tech / Non-tech + category from title, description, and domain."""
+        t = f"{(title or '')} {(description or '')}".lower()
         domain = (source_domain or "").lower()
 
         tech_keywords = [
@@ -299,12 +302,36 @@ class JobBoardSheetsService:
             "site reliability",
         ]
         sales_keywords = ["sales", "account executive", "business development", "bdm"]
-        marketing_keywords = ["marketing", "growth", "seo", "content", "performance"]
+        marketing_keywords = [
+            "marketing",
+            "digital marketing",
+            "growth",
+            "seo",
+            "sem",
+            "smo",
+            "content",
+            "performance",
+            "ppc",
+            "google ads",
+            "meta ads",
+            "social media marketing",
+            "brand",
+            "copywriter",
+            "copywriting",
+        ]
         support_keywords = ["customer support", "customer success", "support specialist"]
         hr_keywords = ["hr ", "talent acquisition", "recruiter", "recruitment"]
         finance_keywords = ["finance", "accountant", "controller", "fp&a", "audit"]
         product_keywords = ["product manager", "product owner"]
         design_keywords = ["designer", "ux", "ui", "product design", "graphic design"]
+        data_keywords = [
+            "data analyst",
+            "data analytics",
+            "data analysis",
+            "data manager",
+            "data entry",
+            "business analyst",
+        ]
 
         def any_kw(kws: List[str]) -> bool:
             return any(kw in t for kw in kws)
@@ -313,8 +340,11 @@ class JobBoardSheetsService:
         if any_kw(tech_keywords):
             segment = "Tech"
             category = "Software / Engineering"
+        elif any_kw(data_keywords):
+            segment = "Non-tech"
+            category = "Data / Analytics"
         elif any_kw(product_keywords):
-            segment = "Tech"
+            segment = "Non-tech"
             category = "Product Management"
         elif any_kw(design_keywords):
             segment = "Tech"
@@ -338,11 +368,74 @@ class JobBoardSheetsService:
             # Fallback: if domain clearly tech-focused, bias towards Tech
             if any(d in domain for d in ["github", "remoteintech", "stackoverflow"]):
                 segment = "Tech"
+                category = "Other / Unknown"
             else:
-                segment = "Unknown"
-            category = "Other / Unknown"
+                tech_signals = (
+                    "sql",
+                    "javascript",
+                    "python",
+                    "api",
+                    "typescript",
+                )
+                nontech_signals = (
+                    "bpo",
+                    "kpo",
+                    "telecaller",
+                    "voice process",
+                    "data entry",
+                    "back office",
+                )
+                th = sum(1 for s in tech_signals if s in t)
+                nh = sum(1 for s in nontech_signals if s in t)
+                if th > nh:
+                    segment = "Tech"
+                else:
+                    segment = "Non-tech"
+                category = "Other / Unknown"
 
         return segment, category
+
+    @staticmethod
+    def _apply_url_likely_valid(url: str) -> bool:
+        """HEAD/GET check; on network errors assume valid to avoid dropping rows on transient failures."""
+        u = (url or "").strip()
+        if not u.startswith("http"):
+            return False
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (compatible; PlacementJobBoardExporter/1.0; +https://example.invalid)"
+            )
+        }
+        try:
+            with httpx.Client(timeout=12.0, follow_redirects=True, headers=headers) as client:
+                r = client.head(u)
+                if r.status_code in (404, 410):
+                    return False
+                if r.status_code in (405, 501):
+                    r = client.get(u)
+                    return r.status_code not in (404, 410)
+                if r.status_code in (401, 403, 429):
+                    return True
+                return r.status_code < 500
+        except Exception:
+            return True
+
+    @classmethod
+    def _invalid_apply_urls(cls, urls: List[str], *, max_workers: int = 6) -> Set[str]:
+        uniq = sorted({normalize_url(x) for x in urls if x and x.startswith("http")})
+        bad: Set[str] = set()
+        if not uniq:
+            return bad
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = {pool.submit(cls._apply_url_likely_valid, u): u for u in uniq}
+            for fut in as_completed(futures):
+                original = futures[fut]
+                try:
+                    if not fut.result():
+                        bad.add(normalize_url(original))
+                except Exception:
+                    pass
+        return bad
 
     @staticmethod
     def _crawled_at_ist_simple(utc_str: str) -> str:
@@ -384,6 +477,15 @@ class JobBoardSheetsService:
             if c in loc_combined:
                 country = c.title()
                 break
+        if not country and (
+            re.search(r"\bindia\b", loc_combined)
+            or re.search(
+                r"\b(bangalore|bengaluru|hyderabad|chennai|mumbai|delhi|ncr|pune|kolkata"
+                r"|noida|gurgaon|gurugram|ahmedabad|kochi|coimbatore|indore|jaipur)\b",
+                loc_combined,
+            )
+        ):
+            country = "India"
 
         work_type = ""
         if any(w in title for w in ["intern", "internship"]):
@@ -396,16 +498,42 @@ class JobBoardSheetsService:
             work_type = "Full-time"
 
         seniority = ""
-        if any(w in title for w in ["intern", "fresher", "graduate", "entry level", "entry-level"]):
+        if any(w in title for w in ["intern", "fresher", "graduate", "entry level", "entry-level", "trainee"]):
             seniority = "Fresher / Entry"
         elif "junior" in title:
             seniority = "Junior"
         elif "senior" in title or "lead" in title:
             seniority = "Senior"
+        if not seniority and re.search(
+            r"\b(fresher|fresh graduate|entry level|0\s*-\s*1\s*yr|walk-?in)\b",
+            loc_combined,
+        ):
+            seniority = "Fresher / Entry"
+        if not seniority:
+            seniority = "Fresher / Entry"
 
         salary = job.get("salary") or job.get("salary_text") or ""
-        skills = ", ".join(job.get("skills") or []) if isinstance(job.get("skills"), list) else (job.get("skills") or "")
+        skills = ""
+        raw_skills = job.get("skills")
+        if isinstance(raw_skills, list):
+            skills = ", ".join(str(s) for s in raw_skills if s)
+        elif isinstance(raw_skills, str) and raw_skills.strip():
+            skills = raw_skills.strip()
+        if not skills and desc:
+            m = re.search(r"(?:key\s+)?skills?[:\s\-]+([^.;\n]{10,400})", desc, re.I)
+            if m:
+                chunk = m.group(1)
+                parts = [x.strip() for x in re.split(r"[,|•\n]", chunk) if len(x.strip()) > 2]
+                skills = ", ".join(parts[:20])
         degree = job.get("degree") or job.get("education") or ""
+        if not degree and desc:
+            dm = re.search(
+                r"(b\.?tech|bachelor['’]s?|bsc|b\.sc|mca|m\.tech|master['’]s?|b\.e\.|mba|bba|any graduate)",
+                desc,
+                re.IGNORECASE,
+            )
+            if dm:
+                degree = dm.group(0).strip()
 
         return location_type, location_detail, country, work_type, seniority, salary, skills, degree
     # ── Public API: JSON exports ──────────────────────────────────────────────
@@ -503,12 +631,14 @@ class JobBoardSheetsService:
         date_str: Optional[str] = None,
         *,
         append: bool = False,
+        validate_apply_urls: bool = True,
     ) -> Dict:
         """Export crawled jobs from JSON to a <date>_jobs tab.
 
         If append=False (default), existing data rows are cleared and replaced (full refresh).
         If append=True, new rows are written below existing data so the same IST date tab
         accumulates all verified/export batches for that day without overwriting.
+        If validate_apply_urls=True, rows whose apply URL returns 404/410 are skipped.
         """
         if not date_str:
             date_str = self._default_ist_date_str()
@@ -526,7 +656,23 @@ class JobBoardSheetsService:
                 "tab_name": tab_name,
                 "jobs_exported": 0,
                 "append": append,
+                "apply_urls_skipped": 0,
             }
+
+        invalid_apply: Set[str] = set()
+        if validate_apply_urls:
+            candidates = [str(job.get("apply_url") or job.get("url") or "") for job in jobs]
+            invalid_apply = self._invalid_apply_urls(candidates)
+            if invalid_apply:
+                logger.info(
+                    "Skipping %d jobs with unreachable apply URLs (404/410)",
+                    sum(
+                        1
+                        for job in jobs
+                        if normalize_url(str(job.get("apply_url") or job.get("url") or ""))
+                        in invalid_apply
+                    ),
+                )
 
         headers = [
             "Segment (Tech / Non-tech)",
@@ -562,22 +708,20 @@ class JobBoardSheetsService:
             seen_keys = self._existing_job_row_keys(tab_name, num_cols)
 
         rows: List[List[str]] = []
+        skipped_bad_url = 0
         for job in jobs:
             title = job.get("title") or ""
             source_domain = job.get("source_domain") or ""
-            # Prefer fields from JSON (crawler now fills them); fall back to derived
-            segment = job.get("segment") or ""
-            category = job.get("category") or ""
-            if not segment or not category:
-                s, c = self._classify_job(title, source_domain)
-                segment = segment or s
-                category = category or c
-            lt, ld, co, wt, sr, sal_der, sk_der, deg_der = self._derive_job_metadata(job)
+            desc_full = (job.get("description") or job.get("raw_text") or "")[:8000]
+            segment, category = self._classify_job(title, source_domain, desc_full)
+            meta_job = dict(job)
+            meta_job["description"] = desc_full
+            lt, ld, co, wt, sr, sal_der, sk_der, deg_der = self._derive_job_metadata(meta_job)
             location_type = job.get("location_type") or lt
             location_detail = job.get("location_detail") or job.get("location") or ld
             country = job.get("country") or co
             work_type = job.get("work_type") or wt
-            seniority = job.get("seniority") or sr
+            seniority = (job.get("seniority") or "").strip() or sr
             salary = job.get("salary") or sal_der
             degree = job.get("degree") or deg_der
             skills_val = job.get("skills")
@@ -585,8 +729,12 @@ class JobBoardSheetsService:
                 skills = ", ".join(str(s) for s in skills_val) if skills_val else sk_der
             else:
                 skills = (skills_val or sk_der) if isinstance(skills_val, str) else sk_der
-            description = (job.get("description") or job.get("raw_text") or "")[:240]
+            description = desc_full[:240]
             apply_url = job.get("apply_url") or job.get("url") or ""
+            if validate_apply_urls and invalid_apply:
+                if normalize_url(str(apply_url)) in invalid_apply:
+                    skipped_bad_url += 1
+                    continue
 
             row = [
                 segment,
@@ -622,6 +770,7 @@ class JobBoardSheetsService:
                 "tab_name": tab_name,
                 "jobs_exported": 0,
                 "append": append,
+                "apply_urls_skipped": skipped_bad_url,
             }
 
         end_col = chr(ord("A") + len(headers) - 1)
@@ -643,11 +792,12 @@ class JobBoardSheetsService:
             )
 
         logger.info(
-            "Exported %d jobs to '%s' (append=%s, start_row=%s)",
+            "Exported %d jobs to '%s' (append=%s, start_row=%s, apply_urls_skipped=%s)",
             len(rows),
             tab_name,
             append,
             start_row_1based,
+            skipped_bad_url,
         )
         return {
             "status": "success",
@@ -656,6 +806,7 @@ class JobBoardSheetsService:
             "jobs_exported": len(rows),
             "append": append,
             "start_row": start_row_1based,
+            "apply_urls_skipped": skipped_bad_url,
         }
 
     def export_jobs_from_postgres(
@@ -665,6 +816,7 @@ class JobBoardSheetsService:
         date_str: Optional[str] = None,
         append: bool = False,
         source_value: str = "job_board",
+        validate_apply_urls: bool = True,
     ) -> Dict:
         """Export Postgres jobs (filtered by source + IST date) to <date>_jobs tab."""
         if not date_str:
@@ -699,7 +851,12 @@ class JobBoardSheetsService:
                 "tab_name": tab_name,
                 "jobs_exported": 0,
                 "append": append,
+                "apply_urls_skipped": 0,
             }
+
+        invalid_apply: Set[str] = set()
+        if validate_apply_urls:
+            invalid_apply = self._invalid_apply_urls([str(j.source_url or "") for j in jobs])
 
         headers = [
             "Segment (Tech / Non-tech)",
@@ -733,25 +890,67 @@ class JobBoardSheetsService:
             seen_keys = set()
 
         rows: List[List[str]] = []
+        skipped_bad_url = 0
         for j in jobs:
             source_url = j.source_url or ""
             source_domain = j.source_channel_name or (urlparse(source_url).netloc if source_url else "")
-            segment, category = self._classify_job(j.title or "", source_domain or "")
-            if j.job_type:
-                wt = str(j.job_type).strip()
-            elif j.employment_type:
-                wt = str(j.employment_type).strip()
-            else:
-                wt = ""
-            salary_raw = ""
+            if validate_apply_urls and invalid_apply:
+                if normalize_url(str(source_url)) in invalid_apply:
+                    skipped_bad_url += 1
+                    continue
+
+            desc_full = (j.description or "")[:8000]
+            segment, category = self._classify_job(j.title or "", source_domain or "", desc_full)
+
+            salary_raw = (j.salary or "").strip() if j.salary else ""
             salary_range = getattr(j, "salary_range", None)
-            if isinstance(salary_range, dict):
+            if isinstance(salary_range, dict) and not salary_raw:
                 salary_raw = str(salary_range.get("raw") or "")
             salary_min = getattr(j, "salary_min", None)
             salary_max = getattr(j, "salary_max", None)
             if not salary_raw and (salary_min is not None or salary_max is not None):
                 salary_raw = f"{salary_min or ''}-{salary_max or ''}".strip("-")
+
+            pseudo = {
+                "title": j.title or "",
+                "location": j.location or "",
+                "description": desc_full,
+                "skills": j.skills_required if isinstance(j.skills_required, list) else [],
+                "salary": salary_raw,
+            }
+            lt, ld, co, wt_meta, sr_meta, _sal_d, sk_der, deg_der = self._derive_job_metadata(pseudo)
+
+            wt_db = (j.work_type or "").strip().lower()
+            if wt_db in ("remote", "wfh", "work from home"):
+                location_type = lt or "Remote"
+            elif wt_db == "hybrid":
+                location_type = lt or "Hybrid"
+            elif wt_db in ("on-site", "onsite", "office"):
+                location_type = lt or "Onsite"
+            else:
+                location_type = lt or ""
+
+            location_detail = ld or (j.location or "") or ""
+            country = co or ""
+
+            emp = (j.employment_type or "").strip().lower()
+            if emp in ("fulltime", "full_time", "full-time"):
+                work_type_col = "Full-time"
+            elif emp in ("parttime", "part_time", "part-time"):
+                work_type_col = "Part-time"
+            elif emp in ("contract", "contractor"):
+                work_type_col = "Contract"
+            elif emp in ("internship", "intern"):
+                work_type_col = "Internship"
+            elif j.employment_type:
+                work_type_col = str(j.employment_type).strip()
+            else:
+                work_type_col = wt_meta or ""
+
+            seniority = (getattr(j, "experience", None) or "").strip() or sr_meta
             skills = ", ".join(j.skills_required or []) if isinstance(j.skills_required, list) else ""
+            if not skills.strip():
+                skills = sk_der
 
             created_utc = j.created_at.isoformat() if j.created_at else ""
             created_ist = ""
@@ -763,14 +962,14 @@ class JobBoardSheetsService:
                 category,
                 j.title or "",
                 j.company_name or "",
-                j.work_type or "",
-                j.location or "",
-                "",
-                wt,
-                getattr(j, "experience_required", None) or getattr(j, "experience", None) or "",
+                location_type,
+                location_detail,
+                country,
+                work_type_col,
+                seniority,
                 salary_raw,
                 skills,
-                "",
+                deg_der,
                 (j.description or "")[:500],
                 source_url,
                 source_domain,
@@ -793,6 +992,7 @@ class JobBoardSheetsService:
                 "jobs_exported": 0,
                 "append": append,
                 "source": source_value,
+                "apply_urls_skipped": skipped_bad_url,
             }
 
         end_col = chr(ord("A") + len(headers) - 1)
@@ -821,6 +1021,7 @@ class JobBoardSheetsService:
             "append": append,
             "start_row": start_row_1based,
             "source": source_value,
+            "apply_urls_skipped": skipped_bad_url,
         }
 
 
