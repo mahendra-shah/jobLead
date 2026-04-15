@@ -127,6 +127,11 @@ def main() -> int:
         help="With spaced-batches: stop after N minutes (0 = no limit)",
     )
     parser.add_argument(
+        "--continue-on-fail",
+        action="store_true",
+        help="With spaced batches: continue remaining parts after a failed iteration (default is fail-fast).",
+    )
+    parser.add_argument(
         "--no-strict-india",
         action="store_true",
         help="Disable India-only ML gate (forwarded to pipeline)",
@@ -234,6 +239,8 @@ def main() -> int:
             pilot_cmd.append("--student-pipeline-only")
         if args.max_wall_minutes > 0:
             pilot_cmd.extend(["--max-wall-minutes", str(args.max_wall_minutes)])
+        if args.continue_on_fail:
+            pilot_cmd.append("--continue-on-fail")
         if args.no_append_sheet:
             pilot_cmd.append("--no-append-sheet")
         if args.no_strict_india:

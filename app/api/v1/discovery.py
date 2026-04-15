@@ -63,18 +63,18 @@ async def discovery_summary(db: AsyncSession = Depends(get_db)):
     )
 
 
-@router.get("/pilot-cities", response_model=PilotCitiesResponse)
-async def get_pilot_cities():
-    """Return 20 India + 20 outside India pilot cities."""
-    data = load_pilot_cities()
-    return PilotCitiesResponse(india=data["india"], outside_india=data["outside_india"])
+# @router.get("/pilot-cities", response_model=PilotCitiesResponse)
+# async def get_pilot_cities():
+#     """Return 20 India + 20 outside India pilot cities."""
+#     data = load_pilot_cities()
+#     return PilotCitiesResponse(india=data["india"], outside_india=data["outside_india"])
 
 
-@router.get("/fresher-keywords", response_model=FresherKeywordsResponse)
-async def get_fresher_keywords():
-    """Return fresher pilot keywords for discovery and filtering."""
-    data = load_fresher_keywords()
-    return FresherKeywordsResponse(keywords=data["keywords"])
+# @router.get("/fresher-keywords", response_model=FresherKeywordsResponse)
+# async def get_fresher_keywords():
+#     """Return fresher pilot keywords for discovery and filtering."""
+#     data = load_fresher_keywords()
+#     return FresherKeywordsResponse(keywords=data["keywords"])
 
 
 @router.get("/sources", response_model=DiscoverySourceListResponse)
@@ -146,24 +146,24 @@ async def list_shortlisted_sources(
     )
 
 
-@router.post("/shortlist", response_model=ShortlistResponse)
-async def run_shortlist(
-    max_shortlist: int = Query(200, ge=1, le=500),
-    db: AsyncSession = Depends(get_db),
-):
-    """Run heuristics to mark up to max_shortlist sources as shortlisted (name/url keywords)."""
-    count, total = await run_shortlist_heuristics(db, max_shortlist=max_shortlist)
-    await db.commit()
-    return ShortlistResponse(
-        shortlisted_count=count,
-        total_sources=total,
-        message=f"Shortlisted {count} of {total} sources (heuristics + optional manual review).",
-    )
+# @router.post("/shortlist", response_model=ShortlistResponse)
+# async def run_shortlist(
+#     max_shortlist: int = Query(200, ge=1, le=500),
+#     db: AsyncSession = Depends(get_db),
+# ):
+#     """Run heuristics to mark up to max_shortlist sources as shortlisted (name/url keywords)."""
+#     count, total = await run_shortlist_heuristics(db, max_shortlist=max_shortlist)
+#     await db.commit()
+#     return ShortlistResponse(
+#         shortlisted_count=count,
+#         total_sources=total,
+#         message=f"Shortlisted {count} of {total} sources (heuristics + optional manual review).",
+#     )
 
 
-@router.post("/sync-telegram", response_model=SyncTelegramResponse)
-async def sync_telegram_from_discovery(db: AsyncSession = Depends(get_db)):
-    """Sync shortlisted Telegram discovery sources into telegram_groups so scraper can fetch jobs."""
-    synced, skipped, errors = await sync_shortlisted_telegram_to_groups(db)
-    await db.commit()
-    return SyncTelegramResponse(synced=synced, skipped=skipped, errors=errors[:20])
+# @router.post("/sync-telegram", response_model=SyncTelegramResponse)
+# async def sync_telegram_from_discovery(db: AsyncSession = Depends(get_db)):
+#     """Sync shortlisted Telegram discovery sources into telegram_groups so scraper can fetch jobs."""
+#     synced, skipped, errors = await sync_shortlisted_telegram_to_groups(db)
+#     await db.commit()
+#     return SyncTelegramResponse(synced=synced, skipped=skipped, errors=errors[:20])

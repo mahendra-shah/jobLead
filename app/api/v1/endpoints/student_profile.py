@@ -569,124 +569,124 @@ async def update_my_profile(
 
 # ==================== Resume CRUD Endpoints ====================
 
-@router.post("/resume", status_code=status.HTTP_201_CREATED)
-async def upload_resume(
-    file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Upload student resume (PDF only, max 5MB)
+# @router.post("/resume", status_code=status.HTTP_201_CREATED)
+# async def upload_resume(
+#     file: UploadFile = File(...),
+#     current_user: User = Depends(get_current_user),
+#     db: AsyncSession = Depends(get_db)
+# ):
+#     """
+#     Upload student resume (PDF only, max 5MB)
     
-    **Auth**: Student (JWT required)
+#     **Auth**: Student (JWT required)
     
-    **Validation**:
-    - File type: PDF only
-    - File size: Maximum 5MB
-    """
-    try:
-        # Validate file type
-        if not file.filename or not file.filename.lower().endswith('.pdf'):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Only PDF files are allowed"
-            )
+#     **Validation**:
+#     - File type: PDF only
+#     - File size: Maximum 5MB
+#     """
+#     try:
+#         # Validate file type
+#         if not file.filename or not file.filename.lower().endswith('.pdf'):
+#             raise HTTPException(
+#                 status_code=status.HTTP_400_BAD_REQUEST,
+#                 detail="Only PDF files are allowed"
+#             )
         
-        # Read file content
-        content = await file.read()
+#         # Read file content
+#         content = await file.read()
         
-        # Validate file size (5MB)
-        if len(content) > 5 * 1024 * 1024:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="File size must be less than 5MB"
-            )
+#         # Validate file size (5MB)
+#         if len(content) > 5 * 1024 * 1024:
+#             raise HTTPException(
+#                 status_code=status.HTTP_400_BAD_REQUEST,
+#                 detail="File size must be less than 5MB"
+#             )
         
-        # Get student, create if doesn't exist
-        student = await get_student_for_current_user(db, current_user)
+#         # Get student, create if doesn't exist
+#         student = await get_student_for_current_user(db, current_user)
         
-        if not student:
-            # Create basic student profile if it doesn't exist
-            full_name = current_user.email.split('@')[0] if current_user.email else 'Student'
-            student = Student(
-                email=current_user.email,
-                full_name=full_name
-            )
-            db.add(student)
-            await db.flush()  # Flush to get student.id
+#         if not student:
+#             # Create basic student profile if it doesn't exist
+#             full_name = current_user.email.split('@')[0] if current_user.email else 'Student'
+#             student = Student(
+#                 email=current_user.email,
+#                 full_name=full_name
+#             )
+#             db.add(student)
+#             await db.flush()  # Flush to get student.id
         
-        # Delete old resume if exists
-        if student.resume_url:
-            delete_resume_file(student.resume_url)
+#         # Delete old resume if exists
+#         if student.resume_url:
+#             delete_resume_file(student.resume_url)
         
-        # Upload new resume
-        student_id = str(student.id) if hasattr(student, 'id') and student.id else str(current_user.id)
-        resume_url = save_resume(content, file.filename, student_id)
+#         # Upload new resume
+#         student_id = str(student.id) if hasattr(student, 'id') and student.id else str(current_user.id)
+#         resume_url = save_resume(content, file.filename, student_id)
         
-        # Update student record
-        student.resume_url = resume_url
-        await db.commit()
-        await db.refresh(student)
+#         # Update student record
+#         student.resume_url = resume_url
+#         await db.commit()
+#         await db.refresh(student)
         
-        return {
-            "message": "Resume uploaded successfully",
-            "resume_url": resume_url
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Error in upload_resume: {str(e)}")
-        print(traceback.format_exc())
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to upload resume: {str(e)}"
-        )
+#         return {
+#             "message": "Resume uploaded successfully",
+#             "resume_url": resume_url
+#         }
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         print(f"Error in upload_resume: {str(e)}")
+#         print(traceback.format_exc())
+#         await db.rollback()
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail=f"Failed to upload resume: {str(e)}"
+#         )
 
 
-@router.delete("/resume")
-async def delete_resume(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Delete student resume
+# @router.delete("/resume")
+# async def delete_resume(
+#     current_user: User = Depends(get_current_user),
+#     db: AsyncSession = Depends(get_db)
+# ):
+#     """
+#     Delete student resume
     
-    **Auth**: Student (JWT required)
-    """
-    try:
-        student = await get_student_for_current_user(db, current_user)
+#     **Auth**: Student (JWT required)
+#     """
+#     try:
+#         student = await get_student_for_current_user(db, current_user)
         
-        if not student:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Student profile not found"
-            )
+#         if not student:
+#             raise HTTPException(
+#                 status_code=status.HTTP_404_NOT_FOUND,
+#                 detail="Student profile not found"
+#             )
         
-        if not student.resume_url:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No resume found"
-            )
+#         if not student.resume_url:
+#             raise HTTPException(
+#                 status_code=status.HTTP_404_NOT_FOUND,
+#                 detail="No resume found"
+#             )
         
-        # Delete resume
-        delete_resume_file(student.resume_url)
+#         # Delete resume
+#         delete_resume_file(student.resume_url)
         
-        # Update student record
-        student.resume_url = None
-        await db.commit()
+#         # Update student record
+#         student.resume_url = None
+#         await db.commit()
         
-        return {"message": "Resume deleted successfully"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Error in delete_resume: {str(e)}")
-        print(traceback.format_exc())
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete resume: {str(e)}"
-        )
+#         return {"message": "Resume deleted successfully"}
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         print(f"Error in delete_resume: {str(e)}")
+#         print(traceback.format_exc())
+#         await db.rollback()
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail=f"Failed to delete resume: {str(e)}"
+#         )
 
 
 # ==================== Profile Completeness Endpoint ====================
@@ -910,57 +910,57 @@ async def get_profile_completeness(
 
 # ==================== Resume File Serving Endpoint ====================
 
-@router.get("/resumes/{student_id}/{filename}")
-async def get_resume_file(
-    student_id: str,
-    filename: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Serve resume file from local storage
+# @router.get("/resumes/{student_id}/{filename}")
+# async def get_resume_file(
+#     student_id: str,
+#     filename: str,
+#     current_user: User = Depends(get_current_user),
+#     db: AsyncSession = Depends(get_db)
+# ):
+#     """
+#     Serve resume file from local storage
     
-    **Auth**: Student (JWT required)
-    **Note**: Only the file owner can access their resume
-    """
-    try:
-        # Verify student owns this resume
-        student = await get_student_for_current_user(db, current_user)
-        if not student:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Student profile not found"
-            )
+#     **Auth**: Student (JWT required)
+#     **Note**: Only the file owner can access their resume
+#     """
+#     try:
+#         # Verify student owns this resume
+#         student = await get_student_for_current_user(db, current_user)
+#         if not student:
+#             raise HTTPException(
+#                 status_code=status.HTTP_404_NOT_FOUND,
+#                 detail="Student profile not found"
+#             )
         
-        # Verify the student_id matches
-        student_id_str = str(student.id) if hasattr(student, 'id') and student.id else str(current_user.id)
-        if student_id != student_id_str:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have permission to access this resume"
-            )
+#         # Verify the student_id matches
+#         student_id_str = str(student.id) if hasattr(student, 'id') and student.id else str(current_user.id)
+#         if student_id != student_id_str:
+#             raise HTTPException(
+#                 status_code=status.HTTP_403_FORBIDDEN,
+#                 detail="You don't have permission to access this resume"
+#             )
         
-        # Build file path
-        file_path = RESUME_STORAGE_DIR / student_id / filename
+#         # Build file path
+#         file_path = RESUME_STORAGE_DIR / student_id / filename
         
-        if not file_path.exists():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Resume file not found"
-            )
+#         if not file_path.exists():
+#             raise HTTPException(
+#                 status_code=status.HTTP_404_NOT_FOUND,
+#                 detail="Resume file not found"
+#             )
         
-        # Return file with appropriate content type
-        return FileResponse(
-            path=str(file_path),
-            media_type='application/pdf',
-            filename=filename
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Error serving resume file: {str(e)}")
-        print(traceback.format_exc())
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to serve resume file: {str(e)}"
-        )
+#         # Return file with appropriate content type
+#         return FileResponse(
+#             path=str(file_path),
+#             media_type='application/pdf',
+#             filename=filename
+#         )
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         print(f"Error serving resume file: {str(e)}")
+#         print(traceback.format_exc())
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail=f"Failed to serve resume file: {str(e)}"
+#         )

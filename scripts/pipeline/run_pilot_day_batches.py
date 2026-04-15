@@ -83,6 +83,11 @@ def main() -> int:
         default=60.0,
         help="Extra sleep after a failed iteration before retrying next",
     )
+    parser.add_argument(
+        "--continue-on-fail",
+        action="store_true",
+        help="Continue remaining iterations after a failed batch (default: stop immediately).",
+    )
     args = parser.parse_args()
 
     py = sys.executable
@@ -129,6 +134,9 @@ def main() -> int:
 
         r = subprocess.run(cmd, cwd=ROOT)
         if r.returncode != 0:
+            if not args.continue_on_fail:
+                print(f"Pipeline failed (exit {r.returncode}); stopping pilot runner.")
+                return r.returncode
             print(f"Pipeline failed (exit {r.returncode}); sleeping {args.sleep_after_fail}s")
             time.sleep(float(args.sleep_after_fail))
             continue

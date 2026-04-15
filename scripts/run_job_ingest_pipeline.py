@@ -124,6 +124,26 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    required_scripts = [
+        ROOT / "scripts" / "crawl_jobs_from_sources.py",
+        ROOT / "scripts" / "merge_job_runs.py",
+        ROOT / "scripts" / "job_ingest" / "process_job_ingest_ml.py",
+        ROOT / "scripts" / "job_ingest" / "sync_verified_to_postgres.py",
+    ]
+    if not args.no_sheet:
+        required_scripts.append(ROOT / "scripts" / "export_job_board_jobs_to_sheets.py")
+
+    missing = [p for p in required_scripts if not p.exists()]
+    if missing:
+        print(
+            "ERROR: Required pipeline script(s) are missing. "
+            "Refusing to start crawl to avoid repeated batches without sync/checkpoint advancement.",
+            file=sys.stderr,
+        )
+        for path in missing:
+            print(f"  - {path}", file=sys.stderr)
+        return 2
+
     py = sys.executable
     _, _, ist_date_str = ist_today_utc_window()
     daily_jobs_run_out = ROOT / "app" / "data" / "jobs" / f"jobs_run_{ist_date_str}.json"

@@ -11,7 +11,12 @@ Date: 2026-02-10
 import logging
 import os
 import fcntl
+import signal
+import subprocess
+import sys
+import threading
 from datetime import datetime
+from pathlib import Path
 import pytz
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -27,6 +32,17 @@ logger = logging.getLogger(__name__)
 # Scheduler lock state (prevents duplicate scheduler start across Gunicorn workers)
 _scheduler_lock_fd = None
 _scheduler_lock_acquired = False
+
+# Job-board runner state (one background process per scheduler instance)
+ROOT = Path(__file__).resolve().parents[2]
+JOB_BOARD_RUNNER = ROOT / "scripts" / "run_daily_ingest_automation.py"
+JOB_BOARD_LOG_DIR = ROOT / "logs"
+_jobboard_proc: subprocess.Popen | None = None
+_jobboard_log_thread: threading.Thread | None = None
+_jobboard_log_path: Path | None = None
+_jobboard_started_at: datetime | None = None
+_jobboard_last_exit_code: int | None = None
+_jobboard_last_finished_at: datetime | None = None
 
 
 def _acquire_scheduler_lock() -> bool:
@@ -73,6 +89,170 @@ def _release_scheduler_lock() -> None:
         _scheduler_lock_fd = None
         _scheduler_lock_acquired = False
         logger.info("🔓 Scheduler lock released")
+
+
+def _jobboard_is_running() -> bool:
+    """Return True when the scheduled job-board subprocess is alive."""
+    return _jobboard_proc is not None and _jobboard_proc.poll() is None
+
+
+def _jobboard_runner_args() -> list[str]:
+    """Build safe single-batch arguments for run_daily_ingest_automation.py."""
+    args = [
+        "--batch-size",
+        str(int(settings.JOB_BOARD_BATCH_SIZE)),
+        "--max-jobs-per-source",
+        str(int(settings.JOB_BOARD_MAX_JOBS_PER_SOURCE)),
+        "--ml-limit",
+        str(int(settings.JOB_BOARD_ML_LIMIT)),
+        "--sync-limit",
+        str(int(settings.JOB_BOARD_SYNC_LIMIT)),
+        "--source-request-delay",
+        str(float(settings.JOB_BOARD_SOURCE_REQUEST_DELAY)),
+        "--source-request-jitter",
+        str(float(settings.JOB_BOARD_SOURCE_REQUEST_JITTER)),
+    ]
+    if bool(settings.JOB_BOARD_STUDENT_PIPELINE_ONLY):
+        args.append("--student-pipeline-only")
+    if bool(settings.JOB_BOARD_NO_STRICT_INDIA):
+        args.append("--no-strict-india")
+    return args
+
+
+def _refresh_jobboard_completion_state() -> None:
+    """Capture exit metadata when the background job-board run completes."""
+    global _jobboard_last_exit_code, _jobboard_last_finished_at, _jobboard_proc
+
+    if _jobboard_proc is None:
+        return
+
+    exit_code = _jobboard_proc.poll()
+    if exit_code is None:
+        return
+
+    _jobboard_last_exit_code = int(exit_code)
+    _jobboard_last_finished_at = datetime.now(pytz.utc)
+    _jobboard_proc = None
+
+
+def _drain_jobboard_output(process: subprocess.Popen, output_path: Path) -> None:
+    """Drain subprocess stdout to file and scheduler logs."""
+    with output_path.open("a", encoding="utf-8") as sink:
+        stream = process.stdout
+        if stream is None:
+            return
+        for line in iter(stream.readline, ""):
+            sink.write(line)
+            sink.flush()
+            msg = line.rstrip("\n")
+            if msg:
+                logger.info("[job-board-scheduler] %s", msg)
+        stream.close()
+
+
+def _start_jobboard_run(trigger_reason: str) -> bool:
+    """Start one non-blocking job-board run. Returns True when started."""
+    global _jobboard_proc, _jobboard_log_path, _jobboard_started_at
+    global _jobboard_last_exit_code, _jobboard_last_finished_at, _jobboard_log_thread
+
+    _refresh_jobboard_completion_state()
+
+    if _jobboard_is_running():
+        return False
+
+    if not JOB_BOARD_RUNNER.exists():
+        logger.error(
+            "Job-board runner script missing: %s. Scheduler run skipped.",
+            JOB_BOARD_RUNNER,
+        )
+        return False
+
+    JOB_BOARD_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    started_at = datetime.now(pytz.utc)
+    stamp = started_at.strftime("%Y%m%dT%H%M%SZ")
+    log_path = JOB_BOARD_LOG_DIR / f"jobboard_scheduler_{stamp}.log"
+
+    cmd = [sys.executable, "-u", str(JOB_BOARD_RUNNER), *_jobboard_runner_args()]
+    with log_path.open("a", encoding="utf-8") as logf:
+        logf.write(f"[{started_at.isoformat()}] START ({trigger_reason}) {' '.join(cmd)}\n")
+
+    child_env = os.environ.copy()
+    child_env["PYTHONUNBUFFERED"] = "1"
+
+    proc = subprocess.Popen(
+        cmd,
+        cwd=str(ROOT),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+        start_new_session=True,
+        env=child_env,
+    )
+
+    _jobboard_log_thread = threading.Thread(
+        target=_drain_jobboard_output,
+        args=(proc, log_path),
+        name="jobboard-scheduler-log-drain",
+        daemon=True,
+    )
+    _jobboard_log_thread.start()
+
+    _jobboard_proc = proc
+    _jobboard_log_path = log_path
+    _jobboard_started_at = started_at
+    _jobboard_last_exit_code = None
+    _jobboard_last_finished_at = None
+
+    logger.info(
+        "🚀 Job-board single-batch run started (pid=%s, reason=%s)",
+        proc.pid,
+        trigger_reason,
+    )
+    return True
+
+
+def _stop_jobboard_process() -> None:
+    """Stop running scheduled job-board subprocess during app shutdown."""
+    global _jobboard_proc
+
+    _refresh_jobboard_completion_state()
+    if _jobboard_proc is None:
+        return
+
+    if _jobboard_proc.poll() is not None:
+        _refresh_jobboard_completion_state()
+        return
+
+    try:
+        os.killpg(_jobboard_proc.pid, signal.SIGTERM)
+        _jobboard_proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        logger.warning("Job-board process did not stop after SIGTERM; sending SIGKILL")
+        os.killpg(_jobboard_proc.pid, signal.SIGKILL)
+    except Exception as exc:
+        logger.warning("Failed to stop job-board process cleanly: %s", exc)
+    finally:
+        _refresh_jobboard_completion_state()
+
+
+def _jobboard_status() -> dict:
+    """Expose scheduler-managed job-board run metadata for diagnostics."""
+    _refresh_jobboard_completion_state()
+    running = _jobboard_is_running()
+    duration_seconds = None
+    if running and _jobboard_started_at is not None:
+        duration_seconds = int((datetime.now(pytz.utc) - _jobboard_started_at).total_seconds())
+    return {
+        "running": running,
+        "pid": _jobboard_proc.pid if running and _jobboard_proc else None,
+        "started_at": _jobboard_started_at.isoformat() if _jobboard_started_at else None,
+        "duration_seconds": duration_seconds,
+        "last_exit_code": _jobboard_last_exit_code,
+        "last_finished_at": _jobboard_last_finished_at.isoformat() if _jobboard_last_finished_at else None,
+        "log_file": str(_jobboard_log_path) if _jobboard_log_path else None,
+        "command": [sys.executable, "-u", str(JOB_BOARD_RUNNER), *_jobboard_runner_args()],
+    }
 
 # Global scheduler instance
 scheduler = AsyncIOScheduler(
@@ -341,6 +521,28 @@ async def run_sheets_export() -> dict:
         return {"status": "error", "error": str(e)}
 
 
+async def run_job_board_single_batch() -> dict:
+    """
+    Scheduled task: start one job-board batch in the background.
+
+    Important behavior:
+    - Single-batch invocation only (no --all-day internal loop)
+    - Non-blocking for APScheduler so other jobs can run in parallel
+    - No overlap with an already running job-board batch
+    """
+    _refresh_jobboard_completion_state()
+
+    if _jobboard_is_running():
+        logger.info("⏭️ Job-board run already active; skipping this scheduler tick")
+        return {"status": "skipped", "reason": "already_running", **_jobboard_status()}
+
+    started = _start_jobboard_run(trigger_reason="apscheduler")
+    if not started:
+        return {"status": "error", "reason": "start_failed", **_jobboard_status()}
+
+    return {"status": "started", **_jobboard_status()}
+
+
 def setup_jobs():
     """
     Setup all scheduled jobs.
@@ -392,6 +594,26 @@ def setup_jobs():
         replace_existing=True
     )
     logger.info("   ✅ Added: telegram_group_joiner_5hourly (Every 5 hours)")
+
+    # Job 5: Job-board ingest single-batch runner (interval, non-blocking)
+    if bool(settings.JOB_BOARD_SCHEDULER_ENABLED):
+        interval_min = max(5, int(settings.JOB_BOARD_SCHEDULER_INTERVAL_MINUTES))
+        scheduler.add_job(
+            run_job_board_single_batch,
+            IntervalTrigger(minutes=interval_min),
+            id='job_board_single_batch_interval',
+            name=f'Job Board Single Batch (Every {interval_min} min)',
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=1800,
+        )
+        logger.info(
+            "   ✅ Added: job_board_single_batch_interval (Every %s minutes)",
+            interval_min,
+        )
+    else:
+        logger.info("   ⏸️  Skipped: job_board_single_batch_interval (disabled by config)")
     
     logger.info("✅ All scheduled jobs configured")
 
@@ -443,6 +665,8 @@ def stop_scheduler():
     else:
         logger.warning("⚠️  Scheduler not running")
 
+    _stop_jobboard_process()
+
     _release_scheduler_lock()
 
 
@@ -472,7 +696,8 @@ def get_scheduler_status() -> dict:
     return {
         'running': scheduler.running,
         'total_jobs': len(jobs),
-        'jobs': jobs_info
+        'jobs': jobs_info,
+        'job_board_runner': _jobboard_status(),
     }
 
 

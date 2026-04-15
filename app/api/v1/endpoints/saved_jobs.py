@@ -310,97 +310,97 @@ async def remove_saved_job(
     return None
 
 
-@router.get("/folders", response_model=list[FolderResponse])
-async def list_folders(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    List all folders with job counts
+# @router.get("/folders", response_model=list[FolderResponse])
+# async def list_folders(
+#     current_user: User = Depends(get_current_user),
+#     db: AsyncSession = Depends(get_db)
+# ):
+#     """
+#     List all folders with job counts
     
-    **Auth**: User (JWT required)
-    """
-    # Get folders with counts
-    result = await db.execute(
-        select(
-            SavedJob.folder,
-            func.count(SavedJob.id).label("count")
-        )
-        .where(
-            SavedJob.user_id == current_user.id,
-            SavedJob.folder.isnot(None)
-        )
-        .group_by(SavedJob.folder)
-    )
+#     **Auth**: User (JWT required)
+#     """
+#     # Get folders with counts
+#     result = await db.execute(
+#         select(
+#             SavedJob.folder,
+#             func.count(SavedJob.id).label("count")
+#         )
+#         .where(
+#             SavedJob.user_id == current_user.id,
+#             SavedJob.folder.isnot(None)
+#         )
+#         .group_by(SavedJob.folder)
+#     )
     
-    folders = []
-    for row in result.fetchall():
-        folders.append(FolderResponse(
-            name=row[0],
-            count=row[1]
-        ))
+#     folders = []
+#     for row in result.fetchall():
+#         folders.append(FolderResponse(
+#             name=row[0],
+#             count=row[1]
+#         ))
     
-    # Add "No Folder" count
-    no_folder_result = await db.execute(
-        select(func.count(SavedJob.id))
-        .where(
-            SavedJob.user_id == current_user.id,
-            SavedJob.folder.is_(None)
-        )
-    )
-    no_folder_count = no_folder_result.scalar()
+#     # Add "No Folder" count
+#     no_folder_result = await db.execute(
+#         select(func.count(SavedJob.id))
+#         .where(
+#             SavedJob.user_id == current_user.id,
+#             SavedJob.folder.is_(None)
+#         )
+#     )
+#     no_folder_count = no_folder_result.scalar()
     
-    if no_folder_count > 0:
-        folders.append(FolderResponse(
-            name="No Folder",
-            count=no_folder_count
-        ))
+#     if no_folder_count > 0:
+#         folders.append(FolderResponse(
+#             name="No Folder",
+#             count=no_folder_count
+#         ))
     
-    return folders
+#     return folders
 
 
-@router.get("/check/{job_id}")
-async def check_if_saved(
-    job_id: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Check if a job is already saved
+# @router.get("/check/{job_id}")
+# async def check_if_saved(
+#     job_id: str,
+#     current_user: User = Depends(get_current_user),
+#     db: AsyncSession = Depends(get_db)
+# ):
+#     """
+#     Check if a job is already saved
     
-    **Auth**: User (JWT required)
+#     **Auth**: User (JWT required)
     
-    Useful for UI to show "Saved" vs "Save" button
-    """
-    try:
-        job_uuid = UUID(job_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid job_id format. Must be a valid UUID."
-        )
+#     Useful for UI to show "Saved" vs "Save" button
+#     """
+#     try:
+#         job_uuid = UUID(job_id)
+#     except ValueError:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Invalid job_id format. Must be a valid UUID."
+#         )
     
-    try:
-        # Check if saved
-        result = await db.execute(
-            select(SavedJob).where(
-                SavedJob.user_id == current_user.id,
-                SavedJob.job_id == job_uuid
-            )
-        )
-        saved_job = result.scalar_one_or_none()
-    except SQLAlchemyError:
-        logger.exception("saved_jobs_check_query_failed user_id=%s", current_user.id)
-        return {
-            "job_id": job_id,
-            "is_saved": False,
-            "saved_job_id": None,
-            "folder": None,
-        }
+#     try:
+#         # Check if saved
+#         result = await db.execute(
+#             select(SavedJob).where(
+#                 SavedJob.user_id == current_user.id,
+#                 SavedJob.job_id == job_uuid
+#             )
+#         )
+#         saved_job = result.scalar_one_or_none()
+#     except SQLAlchemyError:
+#         logger.exception("saved_jobs_check_query_failed user_id=%s", current_user.id)
+#         return {
+#             "job_id": job_id,
+#             "is_saved": False,
+#             "saved_job_id": None,
+#             "folder": None,
+#         }
     
-    return {
-        "job_id": job_id,
-        "is_saved": saved_job is not None,
-        "saved_job_id": str(saved_job.id) if saved_job else None,
-        "folder": saved_job.folder if saved_job else None
-    }
+#     return {
+#         "job_id": job_id,
+#         "is_saved": saved_job is not None,
+#         "saved_job_id": str(saved_job.id) if saved_job else None,
+#         "folder": saved_job.folder if saved_job else None
+#     }

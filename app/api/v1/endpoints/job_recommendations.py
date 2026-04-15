@@ -46,7 +46,7 @@ async def _get_student_for_current_user(db: AsyncSession, current_user: User):
     return result.scalar_one_or_none()
 
 
-@router.get("/recommended-jobs", response_model=RecommendedJobsResponse)
+@router.get("/recommended-jobs", tags=["Jobs"], summary="get recomended jobs", response_model=RecommendedJobsResponse)
 async def get_recommended_jobs(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -140,7 +140,7 @@ async def get_recommended_jobs(
     )
 
 
-@router.get("/jobs/{job_id}/similar")
+@router.get("/jobs/{job_id}/similar", tags=["Jobs"], summary="Get jobs by id")
 async def get_similar_jobs(
     job_id: str,
     limit: int = Query(5, ge=1, le=20),
@@ -210,33 +210,33 @@ async def get_similar_jobs(
     }
 
 
-@router.get("/recommendation-stats")
-async def get_recommendation_stats(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Get recommendation statistics for current student.
+# @router.get("/recommendation-stats", tags=["Jobs"], summary="get stats")
+# async def get_recommendation_stats(
+#     current_user: User = Depends(get_current_user),
+#     db: AsyncSession = Depends(get_db)
+# ):
+#     """
+#     Get recommendation statistics for current student.
 
-    Uses lightweight DB count queries and the already-warmed
-    recommendation cache where available.  Never triggers a full
-    re-score of 500 jobs.
+#     Uses lightweight DB count queries and the already-warmed
+#     recommendation cache where available.  Never triggers a full
+#     re-score of 500 jobs.
 
-    **Auth**: Student (JWT required)
+#     **Auth**: Student (JWT required)
 
-    Returns:
-    - total_jobs_available: active high-quality jobs in last 7 days
-    - match_distribution: high/medium/low score bands (from cache)
-    - criteria_matches: skill-match count, fresher-friendly count
-    - top_recommendations: first 5 items from the warmed cache
-    """
-    student = await _get_student_for_current_user(db, current_user)
+#     Returns:
+#     - total_jobs_available: active high-quality jobs in last 7 days
+#     - match_distribution: high/medium/low score bands (from cache)
+#     - criteria_matches: skill-match count, fresher-friendly count
+#     - top_recommendations: first 5 items from the warmed cache
+#     """
+#     student = await _get_student_for_current_user(db, current_user)
 
-    if not student:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Student profile not found"
-        )
+#     if not student:
+#         raise HTTPException(
+#             status_code=status.HTTP_404_NOT_FOUND,
+#             detail="Student profile not found"
+#         )
 
-    recommendation_service = JobRecommendationService(db, get_cache_manager())
-    return await recommendation_service.get_recommendation_counts(student)
+#     recommendation_service = JobRecommendationService(db, get_cache_manager())
+#     return await recommendation_service.get_recommendation_counts(student)

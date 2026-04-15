@@ -46,66 +46,66 @@ router = APIRouter()
 
 # ==================== Scraping Logs ====================
 
-@router.get("/scraping-logs", response_model=ScrapingLogListResponse)
-async def get_scraping_logs(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_superuser),
-    lambda_function: Optional[str] = Query(None, description="Filter by lambda function"),
-    status: Optional[str] = Query(None, description="Filter by status"),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-):
-    """Get paginated list of scraping logs with filters."""
-    # Build query
-    query = select(ScrapingLog)
+# @router.get("/scraping-logs", response_model=ScrapingLogListResponse)
+# async def get_scraping_logs(
+#     db: AsyncSession = Depends(get_db),
+#     current_user: User = Depends(get_current_active_superuser),
+#     lambda_function: Optional[str] = Query(None, description="Filter by lambda function"),
+#     status: Optional[str] = Query(None, description="Filter by status"),
+#     page: int = Query(1, ge=1),
+#     page_size: int = Query(20, ge=1, le=100),
+# ):
+#     """Get paginated list of scraping logs with filters."""
+#     # Build query
+#     query = select(ScrapingLog)
     
-    # Apply filters
-    if lambda_function:
-        query = query.where(ScrapingLog.lambda_function == lambda_function)
-    if status:
-        query = query.where(ScrapingLog.status == status)
+#     # Apply filters
+#     if lambda_function:
+#         query = query.where(ScrapingLog.lambda_function == lambda_function)
+#     if status:
+#         query = query.where(ScrapingLog.status == status)
     
-    # Get total count
-    count_query = select(func.count()).select_from(ScrapingLog)
-    if lambda_function:
-        count_query = count_query.where(ScrapingLog.lambda_function == lambda_function)
-    if status:
-        count_query = count_query.where(ScrapingLog.status == status)
+#     # Get total count
+#     count_query = select(func.count()).select_from(ScrapingLog)
+#     if lambda_function:
+#         count_query = count_query.where(ScrapingLog.lambda_function == lambda_function)
+#     if status:
+#         count_query = count_query.where(ScrapingLog.status == status)
     
-    result = await db.execute(count_query)
-    total = result.scalar()
+#     result = await db.execute(count_query)
+#     total = result.scalar()
     
-    # Apply pagination and ordering
-    query = query.order_by(desc(ScrapingLog.started_at))
-    query = query.offset((page - 1) * page_size).limit(page_size)
+#     # Apply pagination and ordering
+#     query = query.order_by(desc(ScrapingLog.started_at))
+#     query = query.offset((page - 1) * page_size).limit(page_size)
     
-    result = await db.execute(query)
-    logs = result.scalars().all()
+#     result = await db.execute(query)
+#     logs = result.scalars().all()
     
-    return ScrapingLogListResponse(
-        logs=logs,
-        total=total,
-        page=page,
-        page_size=page_size,
-    )
+#     return ScrapingLogListResponse(
+#         logs=logs,
+#         total=total,
+#         page=page,
+#         page_size=page_size,
+#     )
 
 
-@router.get("/scraping-logs/{log_id}", response_model=ScrapingLogResponse)
-async def get_scraping_log(
-    log_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_superuser),
-):
-    """Get detailed scraping log by ID."""
-    result = await db.execute(
-        select(ScrapingLog).where(ScrapingLog.id == log_id)
-    )
-    log = result.scalar_one_or_none()
+# @router.get("/scraping-logs/{log_id}", response_model=ScrapingLogResponse)
+# async def get_scraping_log(
+#     log_id: int,
+#     db: AsyncSession = Depends(get_db),
+#     current_user: User = Depends(get_current_active_superuser),
+# ):
+#     """Get detailed scraping log by ID."""
+#     result = await db.execute(
+#         select(ScrapingLog).where(ScrapingLog.id == log_id)
+#     )
+#     log = result.scalar_one_or_none()
     
-    if not log:
-        raise HTTPException(status_code=404, detail="Scraping log not found")
+#     if not log:
+#         raise HTTPException(status_code=404, detail="Scraping log not found")
     
-    return log
+#     return log
 
 
 # ==================== Telegram Accounts ====================
@@ -349,56 +349,56 @@ async def update_telegram_group(
     return group
 
 
-@router.get("/telegram-groups/{group_id}/health-history", response_model=TelegramGroupHealthHistoryResponse)
-async def get_group_health_history(
-    group_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_superuser),
-    days: int = Query(30, ge=1, le=90),
-):
-    """Get health score trend for a group."""
-    result = await db.execute(
-        select(TelegramGroup).where(TelegramGroup.id == group_id)
-    )
-    group = result.scalar_one_or_none()
+# @router.get("/telegram-groups/{group_id}/health-history", response_model=TelegramGroupHealthHistoryResponse)
+# async def get_group_health_history(
+#     group_id: int,
+#     db: AsyncSession = Depends(get_db),
+#     current_user: User = Depends(get_current_active_superuser),
+#     days: int = Query(30, ge=1, le=90),
+# ):
+#     """Get health score trend for a group."""
+#     result = await db.execute(
+#         select(TelegramGroup).where(TelegramGroup.id == group_id)
+#     )
+#     group = result.scalar_one_or_none()
     
-    if not group:
-        raise HTTPException(status_code=404, detail="Group not found")
+#     if not group:
+#         raise HTTPException(status_code=404, detail="Group not found")
     
-    # Query scraping logs to get historical data
-    since_date = datetime.now(timezone.utc) - timedelta(days=days)
+#     # Query scraping logs to get historical data
+#     since_date = datetime.now(timezone.utc) - timedelta(days=days)
     
-    result = await db.execute(
-        select(ScrapingLog)
-        .where(
-            and_(
-                ScrapingLog.lambda_function == "message_scraper",
-                ScrapingLog.started_at >= since_date,
-                ScrapingLog.status == "success"
-            )
-        )
-        .order_by(ScrapingLog.started_at)
-    )
-    logs = result.scalars().all()
+#     result = await db.execute(
+#         select(ScrapingLog)
+#         .where(
+#             and_(
+#                 ScrapingLog.lambda_function == "message_scraper",
+#                 ScrapingLog.started_at >= since_date,
+#                 ScrapingLog.status == "success"
+#             )
+#         )
+#         .order_by(ScrapingLog.started_at)
+#     )
+#     logs = result.scalars().all()
     
-    # Build history from logs (simplified - in production, store snapshots)
-    history = []
-    for log in logs:
-        if log.metrics and group.username in log.metrics.get("groups_processed", []):
-            history.append(HealthScoreHistory(
-                date=log.completed_at or log.started_at,
-                health_score=group.health_score or 0.0,
-                total_messages=group.total_messages_scraped,
-                job_messages=group.job_messages_found,
-                quality_jobs=group.quality_jobs_found,
-            ))
+#     # Build history from logs (simplified - in production, store snapshots)
+#     history = []
+#     for log in logs:
+#         if log.metrics and group.username in log.metrics.get("groups_processed", []):
+#             history.append(HealthScoreHistory(
+#                 date=log.completed_at or log.started_at,
+#                 health_score=group.health_score or 0.0,
+#                 total_messages=group.total_messages_scraped,
+#                 job_messages=group.job_messages_found,
+#                 quality_jobs=group.quality_jobs_found,
+#             ))
     
-    return TelegramGroupHealthHistoryResponse(
-        group_id=group.id,
-        username=group.username,
-        current_health_score=group.health_score,
-        history=history,
-    )
+#     return TelegramGroupHealthHistoryResponse(
+#         group_id=group.id,
+#         username=group.username,
+#         current_health_score=group.health_score,
+#         history=history,
+#     )
 
 
 # ==================== Dashboard Stats ====================
@@ -607,507 +607,507 @@ async def get_dashboard_stats(
 
 # ==================== Scraping Stats ====================
 
-@router.get("/stats/scraping", response_model=ScrapingStats)
-async def get_scraping_stats(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_superuser),
-):
-    """Get detailed Telegram scraping statistics."""
-    today = datetime.now(timezone.utc).date()
-    since_7_days = datetime.now(timezone.utc) - timedelta(days=7)
-    since_30_days = datetime.now(timezone.utc) - timedelta(days=30)
+# @router.get("/stats/scraping", response_model=ScrapingStats)
+# async def get_scraping_stats(
+#     db: AsyncSession = Depends(get_db),
+#     current_user: User = Depends(get_current_active_superuser),
+# ):
+#     """Get detailed Telegram scraping statistics."""
+#     today = datetime.now(timezone.utc).date()
+#     since_7_days = datetime.now(timezone.utc) - timedelta(days=7)
+#     since_30_days = datetime.now(timezone.utc) - timedelta(days=30)
     
-    # Account stats
-    result = await db.execute(select(func.count()).select_from(TelegramAccount))
-    total_accounts = result.scalar() or 0
+#     # Account stats
+#     result = await db.execute(select(func.count()).select_from(TelegramAccount))
+#     total_accounts = result.scalar() or 0
     
-    result = await db.execute(
-        select(func.count())
-        .select_from(TelegramAccount)
-        .where(TelegramAccount.is_active.is_(True))
-    )
-    active_accounts = result.scalar() or 0
+#     result = await db.execute(
+#         select(func.count())
+#         .select_from(TelegramAccount)
+#         .where(TelegramAccount.is_active.is_(True))
+#     )
+#     active_accounts = result.scalar() or 0
     
-    result = await db.execute(
-        select(func.count())
-        .select_from(TelegramAccount)
-        .where(TelegramAccount.is_banned.is_(True))
-    )
-    banned_accounts = result.scalar() or 0
+#     result = await db.execute(
+#         select(func.count())
+#         .select_from(TelegramAccount)
+#         .where(TelegramAccount.is_banned.is_(True))
+#     )
+#     banned_accounts = result.scalar() or 0
     
-    result = await db.execute(
-        select(func.count(TelegramAccount.id.distinct()))
-        .select_from(TelegramAccount)
-        .where(func.date(TelegramAccount.last_used_at) == today)
-    )
-    accounts_used_today = result.scalar() or 0
+#     result = await db.execute(
+#         select(func.count(TelegramAccount.id.distinct()))
+#         .select_from(TelegramAccount)
+#         .where(func.date(TelegramAccount.last_used_at) == today)
+#     )
+#     accounts_used_today = result.scalar() or 0
     
-    # Channel/Group stats
-    result = await db.execute(select(func.count()).select_from(TelegramGroup))
-    total_channels = result.scalar() or 0
+#     # Channel/Group stats
+#     result = await db.execute(select(func.count()).select_from(TelegramGroup))
+#     total_channels = result.scalar() or 0
     
-    result = await db.execute(
-        select(func.count())
-        .select_from(TelegramGroup)
-        .where(TelegramGroup.is_active.is_(True))
-    )
-    active_channels = result.scalar() or 0
+#     result = await db.execute(
+#         select(func.count())
+#         .select_from(TelegramGroup)
+#         .where(TelegramGroup.is_active.is_(True))
+#     )
+#     active_channels = result.scalar() or 0
     
-    result = await db.execute(
-        select(func.count())
-        .select_from(TelegramGroup)
-        .where(TelegramGroup.is_joined.is_(True))
-    )
-    joined_channels = result.scalar() or 0
+#     result = await db.execute(
+#         select(func.count())
+#         .select_from(TelegramGroup)
+#         .where(TelegramGroup.is_joined.is_(True))
+#     )
+#     joined_channels = result.scalar() or 0
     
-    result = await db.execute(
-        select(func.count())
-        .select_from(TelegramGroup)
-        .where(func.date(TelegramGroup.last_scraped_at) == today)
-    )
-    channels_scraped_today = result.scalar() or 0
+#     result = await db.execute(
+#         select(func.count())
+#         .select_from(TelegramGroup)
+#         .where(func.date(TelegramGroup.last_scraped_at) == today)
+#     )
+#     channels_scraped_today = result.scalar() or 0
     
-    # Message stats (raw_telegram_messages table removed - use MongoDB)
-    total_messages = 0  # Use MongoDB raw_messages collection
-    messages_last_7_days = 0  # Use MongoDB raw_messages collection
-    messages_last_30_days = 0  # Use MongoDB raw_messages collection
-    messages_today = 0  # Use MongoDB raw_messages collection
+#     # Message stats (raw_telegram_messages table removed - use MongoDB)
+#     total_messages = 0  # Use MongoDB raw_messages collection
+#     messages_last_7_days = 0  # Use MongoDB raw_messages collection
+#     messages_last_30_days = 0  # Use MongoDB raw_messages collection
+#     messages_today = 0  # Use MongoDB raw_messages collection
     
-    # Average health score
-    result = await db.execute(
-        select(func.avg(TelegramGroup.health_score))
-        .select_from(TelegramGroup)
-        .where(
-            and_(
-                TelegramGroup.is_joined.is_(True),
-                TelegramGroup.health_score.isnot(None)
-            )
-        )
-    )
-    average_health_score = result.scalar()
+#     # Average health score
+#     result = await db.execute(
+#         select(func.avg(TelegramGroup.health_score))
+#         .select_from(TelegramGroup)
+#         .where(
+#             and_(
+#                 TelegramGroup.is_joined.is_(True),
+#                 TelegramGroup.health_score.isnot(None)
+#             )
+#         )
+#     )
+#     average_health_score = result.scalar()
     
-    # Top 5 channels by quality
-    result = await db.execute(
-        select(
-            TelegramGroup.username,
-            TelegramGroup.title,
-            TelegramGroup.health_score,
-            TelegramGroup.quality_jobs_found
-        )
-        .where(
-            and_(
-                TelegramGroup.is_joined.is_(True),
-                TelegramGroup.health_score.isnot(None)
-            )
-        )
-        .order_by(desc(TelegramGroup.health_score))
-        .limit(5)
-    )
-    top_channels_data = result.fetchall()
-    top_channels = [
-        {
-            "username": row[0],
-            "title": row[1],
-            "health_score": float(row[2]) if row[2] else 0.0,
-            "quality_jobs": row[3] or 0
-        }
-        for row in top_channels_data
-    ]
+#     # Top 5 channels by quality
+#     result = await db.execute(
+#         select(
+#             TelegramGroup.username,
+#             TelegramGroup.title,
+#             TelegramGroup.health_score,
+#             TelegramGroup.quality_jobs_found
+#         )
+#         .where(
+#             and_(
+#                 TelegramGroup.is_joined.is_(True),
+#                 TelegramGroup.health_score.isnot(None)
+#             )
+#         )
+#         .order_by(desc(TelegramGroup.health_score))
+#         .limit(5)
+#     )
+#     top_channels_data = result.fetchall()
+#     top_channels = [
+#         {
+#             "username": row[0],
+#             "title": row[1],
+#             "health_score": float(row[2]) if row[2] else 0.0,
+#             "quality_jobs": row[3] or 0
+#         }
+#         for row in top_channels_data
+#     ]
     
-    return ScrapingStats(
-        total_accounts=total_accounts,
-        active_accounts=active_accounts,
-        banned_accounts=banned_accounts,
-        accounts_used_today=accounts_used_today,
-        total_channels=total_channels,
-        active_channels=active_channels,
-        joined_channels=joined_channels,
-        channels_scraped_today=channels_scraped_today,
-        total_messages=total_messages,
-        messages_last_7_days=messages_last_7_days,
-        messages_last_30_days=messages_last_30_days,
-        messages_today=messages_today,
-        average_health_score=average_health_score,
-        top_channels=top_channels,
-    )
+#     return ScrapingStats(
+#         total_accounts=total_accounts,
+#         active_accounts=active_accounts,
+#         banned_accounts=banned_accounts,
+#         accounts_used_today=accounts_used_today,
+#         total_channels=total_channels,
+#         active_channels=active_channels,
+#         joined_channels=joined_channels,
+#         channels_scraped_today=channels_scraped_today,
+#         total_messages=total_messages,
+#         messages_last_7_days=messages_last_7_days,
+#         messages_last_30_days=messages_last_30_days,
+#         messages_today=messages_today,
+#         average_health_score=average_health_score,
+#         top_channels=top_channels,
+#     )
 
 
 # ==================== Job Stats ====================
 
-@router.get("/stats/jobs", response_model=JobStats)
-async def get_job_stats(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_superuser),
-):
-    """Get detailed job statistics with experience and salary breakdown."""
-    today = datetime.now(timezone.utc).date()
-    since_7_days = datetime.now(timezone.utc) - timedelta(days=7)
-    since_30_days = datetime.now(timezone.utc) - timedelta(days=30)
+# @router.get("/stats/jobs", response_model=JobStats)
+# async def get_job_stats(
+#     db: AsyncSession = Depends(get_db),
+#     current_user: User = Depends(get_current_active_superuser),
+# ):
+#     """Get detailed job statistics with experience and salary breakdown."""
+#     today = datetime.now(timezone.utc).date()
+#     since_7_days = datetime.now(timezone.utc) - timedelta(days=7)
+#     since_30_days = datetime.now(timezone.utc) - timedelta(days=30)
     
-    # Overall job stats
-    result = await db.execute(select(func.count()).select_from(Job))
-    total_jobs = result.scalar() or 0
+#     # Overall job stats
+#     result = await db.execute(select(func.count()).select_from(Job))
+#     total_jobs = result.scalar() or 0
     
-    result = await db.execute(
-        select(func.count())
-        .select_from(Job)
-        .where(Job.is_active.is_(True))
-    )
-    active_jobs = result.scalar() or 0
+#     result = await db.execute(
+#         select(func.count())
+#         .select_from(Job)
+#         .where(Job.is_active.is_(True))
+#     )
+#     active_jobs = result.scalar() or 0
     
-    result = await db.execute(
-        select(func.count())
-        .select_from(Job)
-        .where(Job.is_verified.is_(True))
-    )
-    verified_jobs = result.scalar() or 0
+#     result = await db.execute(
+#         select(func.count())
+#         .select_from(Job)
+#         .where(Job.is_verified.is_(True))
+#     )
+#     verified_jobs = result.scalar() or 0
     
-    result = await db.execute(
-        select(func.count())
-        .select_from(Job)
-        .where(func.date(Job.created_at) == today)
-    )
-    jobs_today = result.scalar() or 0
+#     result = await db.execute(
+#         select(func.count())
+#         .select_from(Job)
+#         .where(func.date(Job.created_at) == today)
+#     )
+#     jobs_today = result.scalar() or 0
     
-    result = await db.execute(
-        select(func.count())
-        .select_from(Job)
-        .where(Job.created_at >= since_7_days)
-    )
-    jobs_last_7_days = result.scalar() or 0
+#     result = await db.execute(
+#         select(func.count())
+#         .select_from(Job)
+#         .where(Job.created_at >= since_7_days)
+#     )
+#     jobs_last_7_days = result.scalar() or 0
     
-    result = await db.execute(
-        select(func.count())
-        .select_from(Job)
-        .where(Job.created_at >= since_30_days)
-    )
-    jobs_last_30_days = result.scalar() or 0
+#     result = await db.execute(
+#         select(func.count())
+#         .select_from(Job)
+#         .where(Job.created_at >= since_30_days)
+#     )
+#     jobs_last_30_days = result.scalar() or 0
     
-    # Experience breakdown
-    result = await db.execute(
-        select(func.count())
-        .select_from(Job)
-        .where(Job.is_fresher.is_(True))
-    )
-    fresher_count = result.scalar() or 0
+#     # Experience breakdown
+#     result = await db.execute(
+#         select(func.count())
+#         .select_from(Job)
+#         .where(Job.is_fresher.is_(True))
+#     )
+#     fresher_count = result.scalar() or 0
     
-    result = await db.execute(
-        select(func.count())
-        .select_from(Job)
-        .where(
-            and_(
-                Job.min_experience.isnot(None),
-                Job.min_experience >= 0,
-                Job.max_experience <= 2
-            )
-        )
-    )
-    junior_count = result.scalar() or 0
+#     result = await db.execute(
+#         select(func.count())
+#         .select_from(Job)
+#         .where(
+#             and_(
+#                 Job.min_experience.isnot(None),
+#                 Job.min_experience >= 0,
+#                 Job.max_experience <= 2
+#             )
+#         )
+#     )
+#     junior_count = result.scalar() or 0
     
-    result = await db.execute(
-        select(func.count())
-        .select_from(Job)
-        .where(
-            and_(
-                Job.min_experience.isnot(None),
-                Job.min_experience > 2,
-                Job.max_experience <= 5
-            )
-        )
-    )
-    mid_count = result.scalar() or 0
+#     result = await db.execute(
+#         select(func.count())
+#         .select_from(Job)
+#         .where(
+#             and_(
+#                 Job.min_experience.isnot(None),
+#                 Job.min_experience > 2,
+#                 Job.max_experience <= 5
+#             )
+#         )
+#     )
+#     mid_count = result.scalar() or 0
     
-    result = await db.execute(
-        select(func.count())
-        .select_from(Job)
-        .where(
-            and_(
-                Job.min_experience.isnot(None),
-                Job.min_experience > 5
-            )
-        )
-    )
-    senior_count = result.scalar() or 0
+#     result = await db.execute(
+#         select(func.count())
+#         .select_from(Job)
+#         .where(
+#             and_(
+#                 Job.min_experience.isnot(None),
+#                 Job.min_experience > 5
+#             )
+#         )
+#     )
+#     senior_count = result.scalar() or 0
     
-    result = await db.execute(
-        select(func.count())
-        .select_from(Job)
-        .where(Job.min_experience.is_(None))
-    )
-    not_specified_count = result.scalar() or 0
+#     result = await db.execute(
+#         select(func.count())
+#         .select_from(Job)
+#         .where(Job.min_experience.is_(None))
+#     )
+#     not_specified_count = result.scalar() or 0
     
-    experience_breakdown = JobExperienceBreakdown(
-        fresher=fresher_count,
-        junior=junior_count,
-        mid=mid_count,
-        senior=senior_count,
-        not_specified=not_specified_count
-    )
+#     experience_breakdown = JobExperienceBreakdown(
+#         fresher=fresher_count,
+#         junior=junior_count,
+#         mid=mid_count,
+#         senior=senior_count,
+#         not_specified=not_specified_count
+#     )
     
-    # Salary stats
-    result = await db.execute(
-        select(func.count())
-        .select_from(Job)
-        .where(Job.min_salary.isnot(None))
-    )
-    jobs_with_salary = result.scalar() or 0
+#     # Salary stats
+#     result = await db.execute(
+#         select(func.count())
+#         .select_from(Job)
+#         .where(Job.min_salary.isnot(None))
+#     )
+#     jobs_with_salary = result.scalar() or 0
     
-    result = await db.execute(
-        select(func.avg(Job.min_salary))
-        .select_from(Job)
-        .where(Job.min_salary.isnot(None))
-    )
-    avg_min_salary = result.scalar()
+#     result = await db.execute(
+#         select(func.avg(Job.min_salary))
+#         .select_from(Job)
+#         .where(Job.min_salary.isnot(None))
+#     )
+#     avg_min_salary = result.scalar()
     
-    result = await db.execute(
-        select(func.avg(Job.max_salary))
-        .select_from(Job)
-        .where(Job.max_salary.isnot(None))
-    )
-    avg_max_salary = result.scalar()
+#     result = await db.execute(
+#         select(func.avg(Job.max_salary))
+#         .select_from(Job)
+#         .where(Job.max_salary.isnot(None))
+#     )
+#     avg_max_salary = result.scalar()
     
-    # Top 5 locations
-    result = await db.execute(
-        select(Job.location, func.count(Job.id).label('count'))
-        .where(Job.location.isnot(None))
-        .group_by(Job.location)
-        .order_by(desc('count'))
-        .limit(5)
-    )
-    top_locations_data = result.fetchall()
-    top_locations = [
-        {"location": row[0], "count": row[1]}
-        for row in top_locations_data
-    ]
+#     # Top 5 locations
+#     result = await db.execute(
+#         select(Job.location, func.count(Job.id).label('count'))
+#         .where(Job.location.isnot(None))
+#         .group_by(Job.location)
+#         .order_by(desc('count'))
+#         .limit(5)
+#     )
+#     top_locations_data = result.fetchall()
+#     top_locations = [
+#         {"location": row[0], "count": row[1]}
+#         for row in top_locations_data
+#     ]
     
-    # Top 5 companies
-    from app.models.company import Company
-    result = await db.execute(
-        select(Company.name, func.count(Job.id).label('count'))
-        .join(Job, Job.company_id == Company.id)
-        .group_by(Company.name)
-        .order_by(desc('count'))
-        .limit(5)
-    )
-    top_companies_data = result.fetchall()
-    top_companies = [
-        {"company": row[0], "count": row[1]}
-        for row in top_companies_data
-    ]
+#     # Top 5 companies
+#     from app.models.company import Company
+#     result = await db.execute(
+#         select(Company.name, func.count(Job.id).label('count'))
+#         .join(Job, Job.company_id == Company.id)
+#         .group_by(Company.name)
+#         .order_by(desc('count'))
+#         .limit(5)
+#     )
+#     top_companies_data = result.fetchall()
+#     top_companies = [
+#         {"company": row[0], "count": row[1]}
+#         for row in top_companies_data
+#     ]
     
-    # Job type breakdown
-    result = await db.execute(
-        select(func.count())
-        .select_from(Job)
-        .where(Job.job_type == 'remote')
-    )
-    remote_jobs = result.scalar() or 0
+#     # Job type breakdown
+#     result = await db.execute(
+#         select(func.count())
+#         .select_from(Job)
+#         .where(Job.job_type == 'remote')
+#     )
+#     remote_jobs = result.scalar() or 0
     
-    result = await db.execute(
-        select(func.count())
-        .select_from(Job)
-        .where(Job.job_type == 'office')
-    )
-    office_jobs = result.scalar() or 0
+#     result = await db.execute(
+#         select(func.count())
+#         .select_from(Job)
+#         .where(Job.job_type == 'office')
+#     )
+#     office_jobs = result.scalar() or 0
     
-    result = await db.execute(
-        select(func.count())
-        .select_from(Job)
-        .where(Job.job_type == 'hybrid')
-    )
-    hybrid_jobs = result.scalar() or 0
+#     result = await db.execute(
+#         select(func.count())
+#         .select_from(Job)
+#         .where(Job.job_type == 'hybrid')
+#     )
+#     hybrid_jobs = result.scalar() or 0
     
-    return JobStats(
-        total_jobs=total_jobs,
-        active_jobs=active_jobs,
-        verified_jobs=verified_jobs,
-        jobs_today=jobs_today,
-        jobs_last_7_days=jobs_last_7_days,
-        jobs_last_30_days=jobs_last_30_days,
-        experience_breakdown=experience_breakdown,
-        jobs_with_salary=jobs_with_salary,
-        avg_min_salary=avg_min_salary,
-        avg_max_salary=avg_max_salary,
-        top_locations=top_locations,
-        top_companies=top_companies,
-        remote_jobs=remote_jobs,
-        office_jobs=office_jobs,
-        hybrid_jobs=hybrid_jobs,
-    )
+#     return JobStats(
+#         total_jobs=total_jobs,
+#         active_jobs=active_jobs,
+#         verified_jobs=verified_jobs,
+#         jobs_today=jobs_today,
+#         jobs_last_7_days=jobs_last_7_days,
+#         jobs_last_30_days=jobs_last_30_days,
+#         experience_breakdown=experience_breakdown,
+#         jobs_with_salary=jobs_with_salary,
+#         avg_min_salary=avg_min_salary,
+#         avg_max_salary=avg_max_salary,
+#         top_locations=top_locations,
+#         top_companies=top_companies,
+#         remote_jobs=remote_jobs,
+#         office_jobs=office_jobs,
+#         hybrid_jobs=hybrid_jobs,
+#     )
 
 
 # ==================== Manual Trigger ====================
 
-@router.post("/trigger-scrape", response_model=TriggerScrapeResponse)
-async def trigger_scrape(
-    request: TriggerScrapeRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_superuser),
-):
-    """Manually trigger Telegram scraping using APScheduler."""
-    import uuid
-    from app.core.scheduler import trigger_job_now
-    from datetime import datetime
-    from app.utils.timezone import now_ist as _now_ist
+# @router.post("/trigger-scrape", response_model=TriggerScrapeResponse)
+# async def trigger_scrape(
+#     request: TriggerScrapeRequest,
+#     db: AsyncSession = Depends(get_db),
+#     current_user: User = Depends(get_current_active_superuser),
+# ):
+#     """Manually trigger Telegram scraping using APScheduler."""
+#     import uuid
+#     from app.core.scheduler import trigger_job_now
+#     from datetime import datetime
+#     from app.utils.timezone import now_ist as _now_ist
 
-    # Check working hours if not forced
-    if not request.force:
-        now_ist = _now_ist()
-        hour = now_ist.hour
+#     # Check working hours if not forced
+#     if not request.force:
+#         now_ist = _now_ist()
+#         hour = now_ist.hour
         
-        if hour < 10 or hour >= 20:
-            return TriggerScrapeResponse(
-                success=False,
-                message="Scraping can only run between 10 AM - 8 PM IST. Use force=true to override.",
-                execution_id=None,
-            )
+#         if hour < 10 or hour >= 20:
+#             return TriggerScrapeResponse(
+#                 success=False,
+#                 message="Scraping can only run between 10 AM - 8 PM IST. Use force=true to override.",
+#                 execution_id=None,
+#             )
     
-    try:
-        # Generate execution ID
-        execution_id = str(uuid.uuid4())
+#     try:
+#         # Generate execution ID
+#         execution_id = str(uuid.uuid4())
         
-        # Trigger the telegram scraper job directly using APScheduler
-        result = await trigger_job_now('telegram_scraper_4hourly')
+#         # Trigger the telegram scraper job directly using APScheduler
+#         result = await trigger_job_now('telegram_scraper_4hourly')
         
-        return TriggerScrapeResponse(
-            success=True,
-            message=f"Successfully triggered telegram scraping",
-            execution_id=execution_id,
-        )
+#         return TriggerScrapeResponse(
+#             success=True,
+#             message=f"Successfully triggered telegram scraping",
+#             execution_id=execution_id,
+#         )
     
-    except Exception as e:
-        return TriggerScrapeResponse(
-            success=False,
-            message=f"Error triggering scraping: {str(e)}",
-            execution_id=None,
-        )
+#     except Exception as e:
+#         return TriggerScrapeResponse(
+#             success=False,
+#             message=f"Error triggering scraping: {str(e)}",
+#             execution_id=None,
+#         )
 
 
 # ==================== Job Scraping Preferences ====================
 
-@router.get(
-    "/job-preferences",
-    response_model=JobPreferencesResponse,
-    summary="Get active job scraping preferences"
-)
-async def get_active_preferences(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_superuser)
-):
-    """
-    Get the currently active job scraping preferences.
+# @router.get(
+#     "/job-preferences",
+#     response_model=JobPreferencesResponse,
+#     summary="Get active job scraping preferences"
+# )
+# async def get_active_preferences(
+#     db: AsyncSession = Depends(get_db),
+#     current_user: User = Depends(get_current_active_superuser)
+# ):
+#     """
+#     Get the currently active job scraping preferences.
     
-    Only admins can access this endpoint.
-    """
-    # Query for active preferences
-    result = await db.execute(
-        select(JobScrapingPreferences).where(
-            JobScrapingPreferences.is_active.is_(True)
-        )
-    )
-    preferences = result.scalar_one_or_none()
+#     Only admins can access this endpoint.
+#     """
+#     # Query for active preferences
+#     result = await db.execute(
+#         select(JobScrapingPreferences).where(
+#             JobScrapingPreferences.is_active.is_(True)
+#         )
+#     )
+#     preferences = result.scalar_one_or_none()
     
-    if not preferences:
-        raise HTTPException(
-            status_code=404,
-            detail="No active job scraping preferences found. Please create default preferences."
-        )
+#     if not preferences:
+#         raise HTTPException(
+#             status_code=404,
+#             detail="No active job scraping preferences found. Please create default preferences."
+#         )
     
-    return preferences
+#     return preferences
 
 
-@router.put(
-    "/job-preferences",
-    response_model=JobPreferencesResponse,
-    summary="Update job scraping preferences"
-)
-async def update_preferences(
-    prefs_update: JobPreferencesUpdate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_superuser)
-):
-    """
-    Update the active job scraping preferences.
+# @router.put(
+#     "/job-preferences",
+#     response_model=JobPreferencesResponse,
+#     summary="Update job scraping preferences"
+# )
+# async def update_preferences(
+#     prefs_update: JobPreferencesUpdate,
+#     db: AsyncSession = Depends(get_db),
+#     current_user: User = Depends(get_current_active_superuser)
+# ):
+#     """
+#     Update the active job scraping preferences.
     
-    This will update the existing active preferences with new values.
-    Only admins can access this endpoint.
-    """
-    # Get current active preferences
-    result = await db.execute(
-        select(JobScrapingPreferences).where(
-            JobScrapingPreferences.is_active.is_(True)
-        )
-    )
-    preferences = result.scalar_one_or_none()
+#     This will update the existing active preferences with new values.
+#     Only admins can access this endpoint.
+#     """
+#     # Get current active preferences
+#     result = await db.execute(
+#         select(JobScrapingPreferences).where(
+#             JobScrapingPreferences.is_active.is_(True)
+#         )
+#     )
+#     preferences = result.scalar_one_or_none()
     
-    if not preferences:
-        raise HTTPException(
-            status_code=404,
-            detail="No active preferences found. Cannot update."
-        )
+#     if not preferences:
+#         raise HTTPException(
+#             status_code=404,
+#             detail="No active preferences found. Cannot update."
+#         )
     
-    # Update fields
-    update_data = prefs_update.model_dump(exclude_unset=True)
+#     # Update fields
+#     update_data = prefs_update.model_dump(exclude_unset=True)
     
-    for field, value in update_data.items():
-        setattr(preferences, field, value)
+#     for field, value in update_data.items():
+#         setattr(preferences, field, value)
     
-    # Update metadata
-    preferences.updated_by = current_user.id
-    preferences.updated_at = datetime.now(timezone.utc)
+#     # Update metadata
+#     preferences.updated_by = current_user.id
+#     preferences.updated_at = datetime.now(timezone.utc)
     
-    # Commit changes
-    await db.commit()
-    await db.refresh(preferences)
+#     # Commit changes
+#     await db.commit()
+#     await db.refresh(preferences)
     
-    return preferences
+#     return preferences
 
 
-@router.get(
-    "/job-preferences/stats",
-    response_model=ProcessingStatsResponse,
-    summary="Get processing statistics"
-)
-async def get_processing_stats(
-    days: int = Query(7, description="Number of days to look back"),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_superuser)
-):
-    """
-    Get statistics about message processing and filtering.
+# @router.get(
+#     "/job-preferences/stats",
+#     response_model=ProcessingStatsResponse,
+#     summary="Get processing statistics"
+# )
+# async def get_processing_stats(
+#     days: int = Query(7, description="Number of days to look back"),
+#     db: AsyncSession = Depends(get_db),
+#     current_user: User = Depends(get_current_active_superuser)
+# ):
+#     """
+#     Get statistics about message processing and filtering.
     
-    Parameters:
-    - days: Number of days to look back (default: 7)
+#     Parameters:
+#     - days: Number of days to look back (default: 7)
     
-    Returns statistics from the storage service (local or DynamoDB)
-    and preferences status.
-    """
-    # Get storage service
-    storage = get_storage_service()
+#     Returns statistics from the storage service (local or DynamoDB)
+#     and preferences status.
+#     """
+#     # Get storage service
+#     storage = get_storage_service()
     
-    # Get stats from storage
-    stats = await storage.get_processing_stats(days=days)
+#     # Get stats from storage
+#     stats = await storage.get_processing_stats(days=days)
     
-    # Check if preferences are active
-    result = await db.execute(
-        select(JobScrapingPreferences).where(
-            JobScrapingPreferences.is_active.is_(True)
-        )
-    )
-    preferences = result.scalar_one_or_none()
+#     # Check if preferences are active
+#     result = await db.execute(
+#         select(JobScrapingPreferences).where(
+#             JobScrapingPreferences.is_active.is_(True)
+#         )
+#     )
+#     preferences = result.scalar_one_or_none()
     
-    # Determine storage type
-    storage_type = "dynamodb" if os.getenv('USE_DYNAMODB', 'false').lower() == 'true' else "local"
+#     # Determine storage type
+#     storage_type = "dynamodb" if os.getenv('USE_DYNAMODB', 'false').lower() == 'true' else "local"
     
-    # Get storage size (only for local)
-    storage_size = None
-    if storage_type == "local" and hasattr(storage, 'get_file_size'):
-        storage_size = storage.get_file_size()
+#     # Get storage size (only for local)
+#     storage_size = None
+#     if storage_type == "local" and hasattr(storage, 'get_file_size'):
+#         storage_size = storage.get_file_size()
     
-    return ProcessingStatsResponse(
-        storage_stats=FilteringStats(**stats),
-        storage_type=storage_type,
-        storage_size=storage_size,
-        preferences_active=preferences is not None,
-        last_updated=datetime.now(timezone.utc)
-    )
+#     return ProcessingStatsResponse(
+#         storage_stats=FilteringStats(**stats),
+#         storage_type=storage_type,
+#         storage_size=storage_size,
+#         preferences_active=preferences is not None,
+#         last_updated=datetime.now(timezone.utc)
+#     )

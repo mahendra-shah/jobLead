@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Daily scheduler for job-ingest automation on EC2.
+Scheduler for job-ingest automation on EC2.
 
-Runs once per day at a fixed local time (default: 06:00 Asia/Kolkata),
-and triggers the existing daily pipeline in all-day mode.
+Default mode runs one batch every 30 minutes.
+Optional daily mode is available with --every-minutes 0 and --time HH:MM.
 """
 
 from __future__ import annotations
@@ -47,7 +47,6 @@ def _build_command(args: argparse.Namespace) -> list[str]:
     cmd = [
         str(args.python_bin),
         str(RUNNER),
-        "--all-day",
         "--batch-size",
         str(args.batch_size),
         "--max-jobs-per-source",
@@ -56,37 +55,58 @@ def _build_command(args: argparse.Namespace) -> list[str]:
         str(args.ml_limit),
         "--sync-limit",
         str(args.sync_limit),
-        "--sleep-min",
-        str(args.sleep_min),
-        "--sleep-max",
-        str(args.sleep_max),
-        "--no-append-sheet",
+        "--source-request-delay",
+        str(args.source_request_delay),
+        "--source-request-jitter",
+        str(args.source_request_jitter),
     ]
-    if int(args.spaced_batches) > 0:
-        cmd.extend(["--spaced-batches", str(args.spaced_batches)])
     if args.disable_mongo_fallback:
         cmd.append("--disable-mongo-fallback")
+    if args.mongo_fallback_json:
+        cmd.append("--mongo-fallback-json")
     if args.student_pipeline_only:
         cmd.append("--student-pipeline-only")
+    if args.no_strict_india:
+        cmd.append("--no-strict-india")
+    if args.no_append_sheet:
+        cmd.append("--no-append-sheet")
     return cmd
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Schedule run_daily_ingest_automation.py once daily on EC2",
+        description="Schedule run_daily_ingest_automation.py as single batches",
+    )
+    parser.add_argument(
+        "--every-minutes",
+        type=float,
+        default=30.0,
+        help="Run one batch every N minutes (default: 30). Set 0 to use daily --time mode.",
     )
     parser.add_argument("--time", default="06:00", help="Daily local run time HH:MM (default: 06:00)")
     parser.add_argument("--timezone", default="Asia/Kolkata", help="IANA timezone (default: Asia/Kolkata)")
     parser.add_argument("--python-bin", type=Path, default=DEFAULT_PYTHON, help="Python interpreter path")
-    parser.add_argument("--spaced-batches", type=int, default=0, help="Daily spaced batches count (0 = script default)")
-    parser.add_argument("--batch-size", type=int, default=20, help="Sources per batch")
+    parser.add_argument("--batch-size", type=int, default=12, help="Sources per batch")
     parser.add_argument("--max-jobs-per-source", type=int, default=40, help="Cap jobs per source")
-    parser.add_argument("--ml-limit", type=int, default=600, help="Max ML rows per batch")
-    parser.add_argument("--sync-limit", type=int, default=200, help="Max Postgres sync rows per batch")
-    parser.add_argument("--sleep-min", type=float, default=60.0, help="Seconds between batches (min)")
-    parser.add_argument("--sleep-max", type=float, default=120.0, help="Seconds between batches (max)")
+    parser.add_argument("--ml-limit", type=int, default=500, help="Max ML rows per batch")
+    parser.add_argument("--sync-limit", type=int, default=120, help="Max Postgres sync rows per batch")
+    parser.add_argument(
+        "--source-request-delay",
+        type=float,
+        default=1.8,
+        help="Base delay between source requests (seconds)",
+    )
+    parser.add_argument(
+        "--source-request-jitter",
+        type=float,
+        default=1.0,
+        help="Random extra delay 0..N seconds per request",
+    )
     parser.add_argument("--disable-mongo-fallback", action="store_true", help="Fail if Mongo is unavailable")
+    parser.add_argument("--mongo-fallback-json", action="store_true", help="Allow JSON fallback when Mongo is unavailable")
     parser.add_argument("--student-pipeline-only", action="store_true", help="Use student eligible sources only")
+    parser.add_argument("--no-strict-india", action="store_true", help="Disable strict India gate in ML stage")
+    parser.add_argument("--no-append-sheet", action="store_true", help="Skip appending to Google Sheets")
     parser.add_argument("--run-now", action="store_true", help="Run immediately once, then continue scheduling")
     parser.add_argument("--once", action="store_true", help="Run only one scheduled execution, then exit")
     args = parser.parse_args()
@@ -97,12 +117,15 @@ def main() -> int:
         print(f"Invalid timezone: {args.timezone} ({exc})", file=sys.stderr)
         return 2
 
-    hour, minute = _parse_hhmm(args.time)
     command = _build_command(args)
+    interval_seconds = max(60.0, float(args.every_minutes) * 60.0)
 
     print("Scheduler started")
     print(f"Timezone         : {args.timezone}")
-    print(f"Daily run time   : {args.time}")
+    if float(args.every_minutes) > 0:
+        print(f"Mode             : interval ({args.every_minutes} minutes)")
+    else:
+        print(f"Mode             : daily at {args.time}")
     print(f"Pipeline command : {' '.join(command)}")
 
     if args.run_now:
@@ -111,6 +134,21 @@ def main() -> int:
         print(f">>> Immediate run finished with code {result.returncode}")
         if args.once:
             return result.returncode
+
+    if float(args.every_minutes) > 0:
+        while True:
+            print(f"\nSleeping {int(interval_seconds)} seconds before next batch...")
+            time.sleep(interval_seconds)
+            start_local = datetime.now(tz)
+            print(f"\n>>> Starting scheduled run at {start_local.isoformat(timespec='seconds')}")
+            result = subprocess.run(command, cwd=ROOT)
+            end_local = datetime.now(tz)
+            print(f">>> Scheduled run finished at {end_local.isoformat(timespec='seconds')} code={result.returncode}")
+
+            if args.once:
+                return result.returncode
+
+    hour, minute = _parse_hhmm(args.time)
 
     while True:
         now_local = datetime.now(tz)

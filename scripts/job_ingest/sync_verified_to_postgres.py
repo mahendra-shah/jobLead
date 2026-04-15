@@ -27,16 +27,25 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Sync verified Mongo job_board jobs to Postgres jobs table")
     ap.add_argument("--limit", type=int, default=50000)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument(
+        "--include-synced",
+        action="store_true",
+        help="Also include already-synced verified rows (default: unsynced/changed only).",
+    )
     args = ap.parse_args()
     print(f"sync_verified_to_postgres: loading verified rows from Mongo (limit={int(args.limit)})...")
 
     mongo_rows = None
+    svc: MongoJobIngestService | None = None
     last_err: Exception | None = None
     mongo_retries = 5
     for attempt in range(1, mongo_retries + 1):
         try:
             svc = MongoJobIngestService()
-            mongo_rows = svc.list_verified_payloads(limit=int(args.limit))
+            mongo_rows = svc.list_verified_payloads(
+                limit=int(args.limit),
+                unsynced_only=not bool(args.include_synced),
+            )
             break
         except RuntimeError as e:
             last_err = e
@@ -54,6 +63,11 @@ def main() -> int:
     if mongo_rows is None:
         print(f"sync_verified_to_postgres: {last_err}", file=sys.stderr)
         return 1
+
+    if svc is None:
+        print("sync_verified_to_postgres: Mongo service init failed unexpectedly", file=sys.stderr)
+        return 1
+
     rows = list(mongo_rows)
     print(f"sync_verified_to_postgres: syncing {len(rows)} rows to Postgres...")
 
@@ -89,9 +103,15 @@ def main() -> int:
     finally:
         engine.dispose()
 
+    marked_synced = 0
+    if not bool(args.dry_run):
+        dedupe_keys = [str(r.get("_dedupe_key") or "").strip() for r in rows]
+        marked_synced = svc.mark_pg_synced(dedupe_keys)
+
     print(
         f"synced_verified_to_postgres inserted={stats.inserted} updated={stats.updated} "
-        f"skipped={stats.skipped} dry_run={args.dry_run}"
+        f"skipped={stats.skipped} dry_run={args.dry_run} "
+        f"marked_synced={marked_synced} include_synced={bool(args.include_synced)}"
     )
     return 0
 

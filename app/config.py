@@ -182,6 +182,18 @@ class Settings(BaseSettings):
     TELEGRAM_SCRAPE_INTERVAL_MINUTES: int = 30
     JOB_RETENTION_DAYS: int = 90
 
+    # Job-board single-batch scheduler (safe defaults: one batch every 30 min)
+    JOB_BOARD_SCHEDULER_ENABLED: bool = True
+    JOB_BOARD_SCHEDULER_INTERVAL_MINUTES: int = 30
+    JOB_BOARD_BATCH_SIZE: int = 12
+    JOB_BOARD_MAX_JOBS_PER_SOURCE: int = 40
+    JOB_BOARD_ML_LIMIT: int = 500
+    JOB_BOARD_SYNC_LIMIT: int = 120
+    JOB_BOARD_SOURCE_REQUEST_DELAY: float = 1.8
+    JOB_BOARD_SOURCE_REQUEST_JITTER: float = 1.0
+    JOB_BOARD_STUDENT_PIPELINE_ONLY: bool = True
+    JOB_BOARD_NO_STRICT_INDIA: bool = False
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"

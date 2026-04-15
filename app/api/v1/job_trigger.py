@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from app.core.scheduler import trigger_job_now
+from app.config import settings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -21,15 +22,29 @@ logger = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parents[3]
 JOB_BOARD_RUNNER = ROOT / "scripts" / "run_daily_ingest_automation.py"
 JOB_BOARD_LOG_DIR = ROOT / "logs"
-JOB_BOARD_DEFAULT_ARGS = [
-    "--all-day",
-    "--batch-size",
-    "20",
-    "--sleep-min",
-    "60",
-    "--sleep-max",
-    "120",
-]
+
+
+def _jobboard_default_args() -> list[str]:
+    """Single-batch safe defaults shared by manual trigger runs."""
+    args = [
+        "--batch-size",
+        str(int(settings.JOB_BOARD_BATCH_SIZE)),
+        "--max-jobs-per-source",
+        str(int(settings.JOB_BOARD_MAX_JOBS_PER_SOURCE)),
+        "--ml-limit",
+        str(int(settings.JOB_BOARD_ML_LIMIT)),
+        "--sync-limit",
+        str(int(settings.JOB_BOARD_SYNC_LIMIT)),
+        "--source-request-delay",
+        str(float(settings.JOB_BOARD_SOURCE_REQUEST_DELAY)),
+        "--source-request-jitter",
+        str(float(settings.JOB_BOARD_SOURCE_REQUEST_JITTER)),
+    ]
+    if bool(settings.JOB_BOARD_STUDENT_PIPELINE_ONLY):
+        args.append("--student-pipeline-only")
+    if bool(settings.JOB_BOARD_NO_STRICT_INDIA):
+        args.append("--no-strict-india")
+    return args
 
 # In-process state for the currently running manual JobBoard trigger.
 _jobboard_proc: subprocess.Popen | None = None
@@ -95,7 +110,7 @@ def _jobboard_status_payload(max_output_lines: int = 80) -> dict:
         "last_exit_code": _jobboard_last_exit_code,
         "last_finished_at": _jobboard_last_finished_at.isoformat() if _jobboard_last_finished_at else None,
         "log_file": str(_jobboard_log_path) if _jobboard_log_path else None,
-        "command": [sys.executable, "-u", str(JOB_BOARD_RUNNER), *JOB_BOARD_DEFAULT_ARGS],
+        "command": [sys.executable, "-u", str(JOB_BOARD_RUNNER), *_jobboard_default_args()],
         "output_tail": output_tail,
     }
 
@@ -110,7 +125,7 @@ def _start_jobboard_run() -> dict:
     stamp = started_at.strftime("%Y%m%dT%H%M%SZ")
     log_path = JOB_BOARD_LOG_DIR / f"jobboard_manual_{stamp}.log"
 
-    cmd = [sys.executable, "-u", str(JOB_BOARD_RUNNER), *JOB_BOARD_DEFAULT_ARGS]
+    cmd = [sys.executable, "-u", str(JOB_BOARD_RUNNER), *_jobboard_default_args()]
     with log_path.open("a", encoding="utf-8") as logf:
         logf.write(f"[{started_at.isoformat()}] START {' '.join(cmd)}\n")
 

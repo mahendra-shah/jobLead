@@ -368,128 +368,128 @@ async def update_student_status(
 
 # ==================== Bulk Operations ====================
 
-@router.post("/students/bulk", response_model=BulkUploadResponse)
-async def bulk_create_students(
-    bulk_in: BulkStudentCreate,
-    current_user: User = Depends(require_admin_role),  # Only SuperAdmin/Admin
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Bulk create students from list (SuperAdmin/Admin)
+# @router.post("/students/bulk", response_model=BulkUploadResponse)
+# async def bulk_create_students(
+#     bulk_in: BulkStudentCreate,
+#     current_user: User = Depends(require_admin_role),  # Only SuperAdmin/Admin
+#     db: AsyncSession = Depends(get_db)
+# ):
+#     """
+#     Bulk create students from list (SuperAdmin/Admin)
     
-    **RBAC**: SuperAdmin, Admin
-    """
-    success = 0
-    failed = 0
-    errors = []
+#     **RBAC**: SuperAdmin, Admin
+#     """
+#     success = 0
+#     failed = 0
+#     errors = []
     
-    for idx, student_data in enumerate(bulk_in.students):
-        try:
-            # Check if email exists
-            result = await db.execute(
-                select(Student).where(Student.email == student_data.email)
-            )
-            if result.scalar_one_or_none():
-                failed += 1
-                errors.append({
-                    "index": idx,
-                    "email": student_data.email,
-                    "error": "Email already exists"
-                })
-                continue
+#     for idx, student_data in enumerate(bulk_in.students):
+#         try:
+#             # Check if email exists
+#             result = await db.execute(
+#                 select(Student).where(Student.email == student_data.email)
+#             )
+#             if result.scalar_one_or_none():
+#                 failed += 1
+#                 errors.append({
+#                     "index": idx,
+#                     "email": student_data.email,
+#                     "error": "Email already exists"
+#                 })
+#                 continue
             
-            normalized_status = _normalize_status(status_value=student_data.status)
+#             normalized_status = _normalize_status(status_value=student_data.status)
 
-            # Create student
-            db_student = Student(
-                full_name=student_data.full_name,
-                email=student_data.email,
-                phone=student_data.phone,
-                job_category=student_data.job_category,
-                status=normalized_status or "active",
-                extra_detail=_merge_extra_detail_with_passing_year(None, student_data.passing_year),
-                personal_details=_merge_extra_detail_with_passing_year(None, student_data.passing_year),
-            )
-            db.add(db_student)
-            success += 1
+#             # Create student
+#             db_student = Student(
+#                 full_name=student_data.full_name,
+#                 email=student_data.email,
+#                 phone=student_data.phone,
+#                 job_category=student_data.job_category,
+#                 status=normalized_status or "active",
+#                 extra_detail=_merge_extra_detail_with_passing_year(None, student_data.passing_year),
+#                 personal_details=_merge_extra_detail_with_passing_year(None, student_data.passing_year),
+#             )
+#             db.add(db_student)
+#             success += 1
             
-        except Exception as e:
-            failed += 1
-            errors.append({
-                "index": idx,
-                "email": student_data.email,
-                "error": str(e)
-            })
+#         except Exception as e:
+#             failed += 1
+#             errors.append({
+#                 "index": idx,
+#                 "email": student_data.email,
+#                 "error": str(e)
+#             })
     
-    await db.commit()
+#     await db.commit()
     
-    return BulkUploadResponse(
-        success=success,
-        failed=failed,
-        total=len(bulk_in.students),
-        errors=errors
-    )
+#     return BulkUploadResponse(
+#         success=success,
+#         failed=failed,
+#         total=len(bulk_in.students),
+#         errors=errors
+#     )
 
 
-@router.get("/students/export")
-async def export_students(
-    format: str = Query("csv", pattern="^(csv|json)$"),
-    current_user: User = Depends(require_placement_or_admin),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Export all students to CSV or JSON (Admin/Placement)
+# @router.get("/students/export")
+# async def export_students(
+#     format: str = Query("csv", pattern="^(csv|json)$"),
+#     current_user: User = Depends(require_placement_or_admin),
+#     db: AsyncSession = Depends(get_db)
+# ):
+#     """
+#     Export all students to CSV or JSON (Admin/Placement)
     
-    **RBAC**: SuperAdmin, Admin, Placement
-    """
-    result = await db.execute(
-        select(Student)
-    )
-    students = result.scalars().all()
+#     **RBAC**: SuperAdmin, Admin, Placement
+#     """
+#     result = await db.execute(
+#         select(Student)
+#     )
+#     students = result.scalars().all()
     
-    if format == "json":
-        return {
-            "total": len(students),
-            "students": [
-                {
-                    "id": s.id,
-                    "email": s.email,
-                    "full_name": s.full_name,
-                    "phone": s.phone,
-                    "job_category": s.job_category,
-                    "passing_year": _get_passing_year(s),
-                    "status": s.status
-                }
-                for s in students
-            ]
-        }
+#     if format == "json":
+#         return {
+#             "total": len(students),
+#             "students": [
+#                 {
+#                     "id": s.id,
+#                     "email": s.email,
+#                     "full_name": s.full_name,
+#                     "phone": s.phone,
+#                     "job_category": s.job_category,
+#                     "passing_year": _get_passing_year(s),
+#                     "status": s.status
+#                 }
+#                 for s in students
+#             ]
+#         }
     
-    # CSV export
-    import csv
-    from io import StringIO
-    from fastapi.responses import StreamingResponse
+#     # CSV export
+#     import csv
+#     from io import StringIO
+#     from fastapi.responses import StreamingResponse
     
-    output = StringIO()
-    writer = csv.DictWriter(output, fieldnames=[
-        "id", "email", "full_name", "phone",
-        "job_category", "passing_year", "status"
-    ])
-    writer.writeheader()
+#     output = StringIO()
+#     writer = csv.DictWriter(output, fieldnames=[
+#         "id", "email", "full_name", "phone",
+#         "job_category", "passing_year", "status"
+#     ])
+#     writer.writeheader()
     
-    for s in students:
-        writer.writerow({
-            "id": s.id,
-            "email": s.email,
-            "full_name": s.full_name,
-            "phone": s.phone,
-            "job_category": s.job_category or "",
-            "passing_year": _get_passing_year(s) or "",
-            "status": s.status or ""
-        })
+#     for s in students:
+#         writer.writerow({
+#             "id": s.id,
+#             "email": s.email,
+#             "full_name": s.full_name,
+#             "phone": s.phone,
+#             "job_category": s.job_category or "",
+#             "passing_year": _get_passing_year(s) or "",
+#             "status": s.status or ""
+#         })
     
-    output.seek(0)
-    return StreamingResponse(
-        iter([output.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=students.csv"}
-    )
+#     output.seek(0)
+#     return StreamingResponse(
+#         iter([output.getvalue()]),
+#         media_type="text/csv",
+#         headers={"Content-Disposition": "attachment; filename=students.csv"}
+#     )

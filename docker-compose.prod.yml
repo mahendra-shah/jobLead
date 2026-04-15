@@ -1,7 +1,5 @@
 # Production Docker Compose for t3.small EC2 Instance
 # Optimized for 2 GB RAM with RDS PostgreSQL
-version: '3.8'
-
 services:
   redis:
     image: redis:7-alpine
@@ -39,9 +37,20 @@ services:
       - ENVIRONMENT=production
       - DEBUG=false
       - RELOAD=false
+      - ENABLE_SCHEDULER=true
       - ENABLE_API_DOCS=false
       - ENFORCE_PRODUCTION_CHECKS=true
       - CORS_ORIGINS=${CORS_ORIGINS:-https://your-frontend-domain.com}
+      - JOB_BOARD_SCHEDULER_ENABLED=true
+      - JOB_BOARD_SCHEDULER_INTERVAL_MINUTES=30
+      - JOB_BOARD_BATCH_SIZE=12
+      - JOB_BOARD_MAX_JOBS_PER_SOURCE=40
+      - JOB_BOARD_ML_LIMIT=500
+      - JOB_BOARD_SYNC_LIMIT=120
+      - JOB_BOARD_SOURCE_REQUEST_DELAY=1.8
+      - JOB_BOARD_SOURCE_REQUEST_JITTER=1.0
+      - JOB_BOARD_STUDENT_PIPELINE_ONLY=true
+      - JOB_BOARD_NO_STRICT_INDIA=false
     depends_on:
       redis:
         condition: service_healthy

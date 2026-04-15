@@ -230,6 +230,20 @@ def _sleep_source_delay(base_delay: float, jitter_max: float) -> None:
     time.sleep(d + (random.uniform(0.0, j) if j > 0 else 0.0))
 
 
+def _slice_sources_window(sources_all: list[dict], *, offset: int, limit: int) -> list[dict]:
+    """Return one deterministic batch window and normalize out-of-range offsets."""
+    if not sources_all:
+        return []
+    lim = max(0, int(limit))
+    if lim <= 0:
+        return []
+    total = len(sources_all)
+    off = max(0, int(offset))
+    if off >= total:
+        off = 0
+    return sources_all[off : off + lim]
+
+
 def _normalize_company_name(raw_company: str, title: str, source_domain: str) -> str:
     c = (raw_company or "").strip()
     if c and c.lower() not in {"n/a", "na", "unknown", "none"}:
@@ -733,11 +747,11 @@ def main() -> int:
                 if not sources_file.is_absolute():
                     sources_file = JOBLEAD_ROOT / sources_file
                 sources_all = load_crawl_ready_sources(sources_file)
-                off = int(args.source_offset or 0)
-                if off > 0:
-                    sources = sources_all[off : off + args.max_sources]
-                else:
-                    sources = sources_all[: args.max_sources]
+                sources = _slice_sources_window(
+                    sources_all,
+                    offset=int(args.source_offset or 0),
+                    limit=int(args.max_sources),
+                )
             else:
                 print(
                     f"Mongo load failed ({e}).\n"
@@ -751,11 +765,11 @@ def main() -> int:
         if not sources_file.is_absolute():
             sources_file = JOBLEAD_ROOT / sources_file
         sources_all = load_crawl_ready_sources(sources_file)
-        off = int(args.source_offset or 0)
-        if off > 0:
-            sources = sources_all[off : off + args.max_sources]
-        else:
-            sources = sources_all
+        sources = _slice_sources_window(
+            sources_all,
+            offset=int(args.source_offset or 0),
+            limit=int(args.max_sources),
+        )
 
     if not sources:
         print("No sources to crawl (empty list or missing file).")

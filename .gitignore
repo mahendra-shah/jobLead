@@ -149,10 +149,10 @@ tmp/
 # Documentation (Build/Status Files)
 # ===================================
 # Ignore docs folder (all generated documentation)
-docs/
 
 # Ignore all markdown files except README.md in root
 *.md
+!docs/*.md
 !README.md
 
 

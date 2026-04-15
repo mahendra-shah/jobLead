@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Redis Cache Service
   redis:
@@ -34,6 +32,17 @@ services:
       - .env
     environment:
       - REDIS_HOST=redis  # Override for Docker networking
+      - ENABLE_SCHEDULER=true
+      - JOB_BOARD_SCHEDULER_ENABLED=true
+      - JOB_BOARD_SCHEDULER_INTERVAL_MINUTES=30
+      - JOB_BOARD_BATCH_SIZE=12
+      - JOB_BOARD_MAX_JOBS_PER_SOURCE=40
+      - JOB_BOARD_ML_LIMIT=500
+      - JOB_BOARD_SYNC_LIMIT=120
+      - JOB_BOARD_SOURCE_REQUEST_DELAY=1.8
+      - JOB_BOARD_SOURCE_REQUEST_JITTER=1.0
+      - JOB_BOARD_STUDENT_PIPELINE_ONLY=true
+      - JOB_BOARD_NO_STRICT_INDIA=false
     extra_hosts:
       - "host.docker.internal:host-gateway"  # Access PostgreSQL on host machine
     depends_on:

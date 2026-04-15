@@ -109,6 +109,10 @@ class MongoJobIngestService:
         assert self._col is not None
         self._col.create_index("dedupe_key", unique=True, background=True)
         self._col.create_index([("ml_status", ASCENDING), ("created_at", ASCENDING)], background=True)
+        self._col.create_index(
+            [("ml_status", ASCENDING), ("pg_synced_at", ASCENDING), ("updated_at", ASCENDING)],
+            background=True,
+        )
         self._col.create_index("url_norm", background=True)
         self._col.create_index("updated_at", background=True)
 
@@ -245,18 +249,52 @@ class MongoJobIngestService:
             update["$set"]["ml_scores"] = ml_scores
         self._col.update_one({"dedupe_key": dedupe_key}, update)
 
-    def list_verified_payloads(self, *, limit: int = 50000) -> List[Dict[str, Any]]:
-        """Return payload + ml_scores for verified jobs (for JSON export)."""
+    def list_verified_payloads(
+        self,
+        *,
+        limit: int = 50000,
+        unsynced_only: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """Return payload + ml_scores for verified jobs (for sync/export)."""
         self._ensure_indexes()
         assert self._col is not None
         out: List[Dict[str, Any]] = []
-        for doc in self._col.find({"ml_status": "verified"}).sort("updated_at", -1).limit(int(limit)):
+        query: Dict[str, Any] = {"ml_status": "verified"}
+        if unsynced_only:
+            query = {
+                "$and": [
+                    {"ml_status": "verified"},
+                    {
+                        "$or": [
+                            {"pg_synced_at": {"$exists": False}},
+                            {"pg_synced_at": None},
+                            {"$expr": {"$lt": ["$pg_synced_at", "$updated_at"]}},
+                        ]
+                    },
+                ]
+            }
+
+        for doc in self._col.find(query).sort("updated_at", -1).limit(int(limit)):
             row = dict(doc.get("payload") or {})
             row["_ml_scores"] = doc.get("ml_scores") or {}
             row["_dedupe_key"] = doc.get("dedupe_key")
             row["_verified_at"] = doc.get("updated_at")
             out.append(row)
         return out
+
+    def mark_pg_synced(self, dedupe_keys: List[str]) -> int:
+        """Mark verified docs as synced to Postgres at current UTC time."""
+        self._ensure_indexes()
+        assert self._col is not None
+        keys = [str(k).strip() for k in dedupe_keys if str(k).strip()]
+        if not keys:
+            return 0
+        now = datetime.now(timezone.utc)
+        res = self._col.update_many(
+            {"dedupe_key": {"$in": keys}},
+            {"$set": {"pg_synced_at": now}},
+        )
+        return int(res.modified_count)
 
     def count_by_status(self) -> Dict[str, int]:
         self._ensure_indexes()

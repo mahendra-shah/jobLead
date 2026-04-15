@@ -104,7 +104,7 @@ app.include_router(telegram_scraper.router)
 app.include_router(visibility.router, prefix="/api/visibility", tags=["Visibility"])
 
 # Include ML feedback router (no prefix - uses /api/ml-feedback)
-app.include_router(ml_feedback.router, prefix="/api/ml-feedback", tags=["ML Feedback"])
+app.include_router(ml_feedback.router, prefix="/api/ml-feedback", tags=["ML Clasifier"])
 
 # Include Slack commands router (no prefix - uses /api/slack)
 app.include_router(slack_commands.router)
