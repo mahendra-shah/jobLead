@@ -8,7 +8,6 @@ from sqlalchemy.orm import joinedload
 
 from app.api.deps import get_db
 from app.models.job import Job
-from app.models.company import Company
 from app.schemas.job import JobListResponse, JobDetailResponse, CompanyBrief
 
 router = APIRouter()
@@ -150,12 +149,15 @@ async def list_jobs(
     # Use window function to get total count in same query (if requested)
     if include_total:
         # Single query with COUNT(*) OVER() window function
+        # BOLT OPTIMIZATION: Removed outer join to Company table.
+        # We now use the denormalized Job.company_name field directly,
+        # saving a database join operation on every list API call.
         query = (
             select(
                 Job.id,
                 Job.title,
                 Job.company_id,
-                Company.name.label('company_name'),
+                Job.company_name,
                 Job.description,
                 Job.skills_required,
                 Job.experience,
@@ -173,7 +175,6 @@ async def list_jobs(
                 Job.updated_at,
                 func.count().over().label('total_count')  # Window function for total
             )
-            .outerjoin(Company, Job.company_id == Company.id)
             .where(where_clause)
             .order_by(order_clause)
             .offset((page - 1) * size)
@@ -188,12 +189,15 @@ async def list_jobs(
         total = rows[0].total_count if rows else 0
     else:
         # Fast query without count - just fetch data
+        # BOLT OPTIMIZATION: Removed outer join to Company table.
+        # We now use the denormalized Job.company_name field directly,
+        # saving a database join operation on every list API call.
         query = (
             select(
                 Job.id,
                 Job.title,
                 Job.company_id,
-                Company.name.label('company_name'),
+                Job.company_name,
                 Job.description,
                 Job.skills_required,
                 Job.experience,
@@ -210,7 +214,6 @@ async def list_jobs(
                 Job.created_at,
                 Job.updated_at
             )
-            .outerjoin(Company, Job.company_id == Company.id)
             .where(where_clause)
             .order_by(order_clause)
             .offset((page - 1) * size)
