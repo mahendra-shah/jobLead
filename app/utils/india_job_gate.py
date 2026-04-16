@@ -56,7 +56,7 @@ INDIA_PHRASES = (
 
 
 def _load_india_cities() -> list[str]:
-    from scripts.discovery.base import load_pilot_cities
+    from scripts.job_board_flow.discovery.base import load_pilot_cities
 
     cities = load_pilot_cities()
     out = [c.strip().lower() for c in (cities.get("india") or []) if c and str(c).strip()]

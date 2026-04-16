@@ -181,6 +181,9 @@ class Settings(BaseSettings):
     # Scraping
     TELEGRAM_SCRAPE_INTERVAL_MINUTES: int = 30
     JOB_RETENTION_DAYS: int = 90
+    JOB_BOARD_MONGO_RETENTION_DAYS: int = 7
+    JOB_BOARD_MONGO_CLEANUP_HOUR_IST: int = 3
+    JOB_BOARD_MONGO_CLEANUP_MINUTE_IST: int = 30
 
     # Job-board single-batch scheduler (safe defaults: one batch every 30 min)
     JOB_BOARD_SCHEDULER_ENABLED: bool = True
@@ -193,6 +196,7 @@ class Settings(BaseSettings):
     JOB_BOARD_SOURCE_REQUEST_JITTER: float = 1.0
     JOB_BOARD_STUDENT_PIPELINE_ONLY: bool = True
     JOB_BOARD_NO_STRICT_INDIA: bool = False
+    JOB_BOARD_APPEND_SHEET: bool = False
 
     # Logging
     LOG_LEVEL: str = "INFO"

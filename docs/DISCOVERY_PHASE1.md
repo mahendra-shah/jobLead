@@ -6,7 +6,7 @@ Discover and store **city-wise job boards and programming communities** in India
 
 - **`discovery_sources`** table: stores name, url, source_type (job_board, community, telegram_channel, discord, website, github_repo), platform, city, region, country_code, phase.
 - **Seed data**: `app/data/discovery_sources_seed.json` — 80 sources in 4 phases (India city-wise job boards, Telegram/Discord communities, global boards, niche boards).
-- **Runner**: `scripts/run_discovery_phases.py` — imports seed by phase, dedupes by URL.
+- **Runner**: `scripts/job_board_flow/run_discovery_phases.py` — imports seed by phase, dedupes by URL.
 
 ## Run (phased until 1000)
 
@@ -19,10 +19,10 @@ Discover and store **city-wise job boards and programming communities** in India
 2. **Import seed in phases**:
    ```bash
    # From project root, with venv activated
-   python scripts/run_discovery_phases.py              # all phases
-   python scripts/run_discovery_phases.py --phase 1    # only phase 1
-   python scripts/run_discovery_phases.py --dry-run    # no DB write
-   python scripts/run_discovery_phases.py --target 1000
+   python scripts/job_board_flow/run_discovery_phases.py              # all phases
+   python scripts/job_board_flow/run_discovery_phases.py --phase 1    # only phase 1
+   python scripts/job_board_flow/run_discovery_phases.py --dry-run    # no DB write
+   python scripts/job_board_flow/run_discovery_phases.py --target 1000
    ```
 
 3. **Reach 1000**: The current seed has ~80 sources. To reach 1000:
@@ -39,7 +39,7 @@ Discover and store **city-wise job boards and programming communities** in India
 ## Local run: see discovery + jobs in Swagger
 
 1. **Apply migration** (once): `alembic upgrade head`
-2. **Load seed**: `python scripts/run_discovery_phases.py` (from project root, venv active)
+2. **Load seed**: `python scripts/job_board_flow/run_discovery_phases.py` (from project root, venv active)
 3. **Start API**: `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`
 4. **Open Swagger**: http://localhost:8000/docs
 5. **Discovery** (tag **Discovery**):

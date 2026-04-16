@@ -135,7 +135,7 @@ Phase-2 crawler should read `metadata.crawl_strategy.entry_urls` (e.g. `company.
 | `scripts/discovery/pipeline_4_forum.py` | 4 | Forum discovery → JSON |
 | `scripts/discovery/analyze_source.py` | — | **Visit URL, detect job pages/sitemap, update JSON** |
 | `scripts/discovery/import_discovery_json_to_db.py` | — | Import JSON → DB when ready |
-| `scripts/scrape_all_jobs.py` | Layer 3 | Crawl known sources (Phase 2) |
+| `scripts/job_board_flow/scrape_all_jobs.py` | Layer 3 | Crawl known sources (Phase 2) |
 
 ---
 
