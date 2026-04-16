@@ -88,6 +88,11 @@ def main() -> int:
         action="store_true",
         help="Continue remaining iterations after a failed batch (default: stop immediately).",
     )
+    parser.add_argument(
+        "--no-jobs-json",
+        action="store_true",
+        help="Forwarded to run_job_ingest_pipeline.py to skip jobs_run JSON writes in Mongo mode.",
+    )
     args = parser.parse_args()
 
     py = sys.executable
@@ -131,6 +136,8 @@ def main() -> int:
             cmd.append("--append-sheet")
         if args.no_strict_india:
             cmd.append("--no-strict-india")
+        if args.no_jobs_json:
+            cmd.append("--no-jobs-json")
 
         r = subprocess.run(cmd, cwd=ROOT)
         if r.returncode != 0:

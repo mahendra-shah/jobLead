@@ -741,6 +741,11 @@ def main() -> int:
         help="Output jobs JSON (default: app/data/jobs/jobs_run_<timestamp>.json)",
     )
     parser.add_argument(
+        "--no-write-json",
+        action="store_true",
+        help="Do not write jobs_run JSON output file (useful when DB pipeline is primary).",
+    )
+    parser.add_argument(
         "--from-mongo",
         action="store_true",
         help="Load sources from MongoDB job_board_sources. If Mongo is down, the run fails unless --mongo-fallback-json.",
@@ -1067,16 +1072,19 @@ def main() -> int:
         )
         print(f"Target profile filter: {len(jobs)}/{before} jobs kept.")
 
-    payload = {
-        "meta": {
-            "generated_at_utc": iso_now(),
-            "sources_used": len(to_crawl),
-            "total_jobs": len(jobs),
-        },
-        "jobs": jobs,
-    }
-    out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-    print(f"Saved {len(jobs)} jobs -> {out_path}")
+    if args.no_write_json:
+        print(f"Skipping JSON write (--no-write-json). Jobs in this run: {len(jobs)}")
+    else:
+        payload = {
+            "meta": {
+                "generated_at_utc": iso_now(),
+                "sources_used": len(to_crawl),
+                "total_jobs": len(jobs),
+            },
+            "jobs": jobs,
+        }
+        out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        print(f"Saved {len(jobs)} jobs -> {out_path}")
     return 0
 
 

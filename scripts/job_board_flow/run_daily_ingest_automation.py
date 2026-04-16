@@ -163,6 +163,11 @@ def main() -> int:
             "student-pipeline niche sources only."
         ),
     )
+    parser.add_argument(
+        "--no-jobs-json",
+        action="store_true",
+        help="Skip creating jobs_run JSON files in Mongo-backed pipeline runs.",
+    )
     args = parser.parse_args()
 
     if args.india_remote_fresher_day:
@@ -247,6 +252,8 @@ def main() -> int:
             pilot_cmd.append("--mongo-fallback-json")
         if args.disable_mongo_fallback:
             pilot_cmd.append("--disable-mongo-fallback")
+        if args.no_jobs_json:
+            pilot_cmd.append("--no-jobs-json")
         mode = "all-day spaced" if args.all_day else "spaced pilot"
         print(f">>> Step: {mode} ({args.spaced_batches} parts, batch_size={args.batch_size})")
         return subprocess.run(pilot_cmd, cwd=ROOT).returncode
@@ -288,6 +295,8 @@ def main() -> int:
             pipe_cmd.extend(["--sources-file", str(args.sources_file)])
     if args.reset_checkpoint:
         pipe_cmd.append("--reset-checkpoint")
+    if args.no_jobs_json:
+        pipe_cmd.append("--no-jobs-json")
 
     print(">>> Step: run_job_ingest_pipeline (crawl → ingest → ML → Postgres → sheet, or JSON-fallback → sheet)")
     return subprocess.run(pipe_cmd, cwd=ROOT).returncode

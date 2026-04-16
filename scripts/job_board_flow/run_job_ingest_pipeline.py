@@ -122,6 +122,11 @@ def main() -> int:
         action="store_true",
         help="Ignore saved crawl_batch_state.json and start from source_offset=0 for this run.",
     )
+    parser.add_argument(
+        "--no-jobs-json",
+        action="store_true",
+        help="Skip writing jobs_run JSON during Mongo-backed runs (fallback mode still writes JSON).",
+    )
     args = parser.parse_args()
 
     required_scripts = [
@@ -280,12 +285,14 @@ def main() -> int:
         str(args.source_request_delay),
         "--source-request-jitter",
         str(args.source_request_jitter),
-        "--out",
-        str(daily_jobs_run_out),
         "--write-job-ingest",
         "--crawl-batch-id",
         batch_id,
     ]
+    if not args.no_jobs_json:
+        crawl_cmd.extend(["--out", str(daily_jobs_run_out)])
+    else:
+        crawl_cmd.append("--no-write-json")
     if args.prefer_less_known_sources:
         crawl_cmd.append("--prefer-less-known-sources")
     if args.exclude_popular_sources:
