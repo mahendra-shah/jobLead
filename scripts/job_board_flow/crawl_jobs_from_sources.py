@@ -29,6 +29,7 @@ if str(JOBLEAD_ROOT) not in sys.path:
 import httpx
 from bs4 import BeautifulSoup  # not heavily used here but available for future refinements
 
+from app.utils.job_dedupe import normalize_url
 from app.utils.job_parser import parse_experience
 from app.utils.source_classifier import classify_source
 from scripts.job_board_flow.discovery.domain_rate_limiter import rate_limit_before_request
@@ -1001,7 +1002,8 @@ def main() -> int:
                 crawled_at = iso_now()
                 for j in raw_jobs:
                     url = _to_absolute_url(j.get("url") or "", entry_url)
-                    if not url or url in seen_urls:
+                    url_key = normalize_url(url)
+                    if not url_key or url_key in seen_urls:
                         continue
                     title = (j.get("title") or "").strip()
                     company = _normalize_company_name(j.get("company") or "", title, source_domain)
@@ -1015,7 +1017,7 @@ def main() -> int:
                     )
                     if _is_non_job_or_spam(title, url, early_combined):
                         continue
-                    seen_urls.add(url)
+                    seen_urls.add(url_key)
                     # Fetch job detail page for richer fields (best-effort, but skip on error)
                     extra: dict = {}
                     try:

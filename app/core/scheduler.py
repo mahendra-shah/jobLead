@@ -15,7 +15,7 @@ import signal
 import subprocess
 import sys
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 import pytz
 
@@ -35,7 +35,7 @@ _scheduler_lock_acquired = False
 
 # Job-board runner state (one background process per scheduler instance)
 ROOT = Path(__file__).resolve().parents[2]
-JOB_BOARD_RUNNER = ROOT / "scripts" / "run_daily_ingest_automation.py"
+JOB_BOARD_RUNNER = ROOT / "scripts" / "job_board_flow" / "run_daily_ingest_automation.py"
 JOB_BOARD_LOG_DIR = ROOT / "logs"
 _jobboard_proc: subprocess.Popen | None = None
 _jobboard_log_thread: threading.Thread | None = None
@@ -116,6 +116,8 @@ def _jobboard_runner_args() -> list[str]:
         args.append("--student-pipeline-only")
     if bool(settings.JOB_BOARD_NO_STRICT_INDIA):
         args.append("--no-strict-india")
+    if not bool(getattr(settings, "JOB_BOARD_APPEND_SHEET", False)):
+        args.append("--no-append-sheet")
     return args
 
 
@@ -543,6 +545,45 @@ async def run_job_board_single_batch() -> dict:
     return {"status": "started", **_jobboard_status()}
 
 
+async def run_job_board_mongo_cleanup() -> dict:
+    """
+    Delete old job-board source documents from MongoDB `job_ingest`.
+
+    Filters:
+      - source_platform == "job_board"
+      - created_at < now - JOB_BOARD_MONGO_RETENTION_DAYS
+    """
+    from app.services.mongodb_job_ingest_service import MongoJobIngestService
+
+    days = int(getattr(settings, "JOB_BOARD_MONGO_RETENTION_DAYS", 7) or 7)
+    if days < 1:
+        days = 7
+
+    logger.info(
+        "🧹 Running daily Mongo cleanup for job-board ingest docs (retention_days=%s)...",
+        days,
+    )
+    try:
+        svc = MongoJobIngestService()
+        svc._ensure_indexes()
+        col = svc._col
+        assert col is not None
+
+        cutoff = datetime.now(pytz.utc) - timedelta(days=days)
+        query = {"source_platform": "job_board", "created_at": {"$lt": cutoff}}
+        deleted = int(col.delete_many(query).deleted_count)
+
+        logger.info(
+            "✅ Mongo cleanup completed: deleted=%s source_platform=job_board retention_days=%s",
+            deleted,
+            days,
+        )
+        return {"status": "ok", "deleted": deleted, "retention_days": days}
+    except Exception as e:
+        logger.error(f"❌ Mongo cleanup failed: {e}", exc_info=True)
+        return {"status": "error", "error": str(e)}
+
+
 def setup_jobs():
     """
     Setup all scheduled jobs.
@@ -614,6 +655,30 @@ def setup_jobs():
         )
     else:
         logger.info("   ⏸️  Skipped: job_board_single_batch_interval (disabled by config)")
+
+    # Job 6: Daily Mongo cleanup for old job-board ingest docs
+    cleanup_hour = int(getattr(settings, "JOB_BOARD_MONGO_CLEANUP_HOUR_IST", 3) or 3)
+    cleanup_minute = int(getattr(settings, "JOB_BOARD_MONGO_CLEANUP_MINUTE_IST", 30) or 30)
+    scheduler.add_job(
+        run_job_board_mongo_cleanup,
+        CronTrigger(
+            hour=cleanup_hour,
+            minute=cleanup_minute,
+            timezone="Asia/Kolkata",
+        ),
+        id="job_board_mongo_cleanup_daily",
+        name=f"Job-board Mongo Cleanup ({cleanup_hour:02d}:{cleanup_minute:02d} IST)",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=3600,
+    )
+    logger.info(
+        "   ✅ Added: job_board_mongo_cleanup_daily (%02d:%02d IST, retention=%s days)",
+        cleanup_hour,
+        cleanup_minute,
+        int(getattr(settings, "JOB_BOARD_MONGO_RETENTION_DAYS", 7) or 7),
+    )
     
     logger.info("✅ All scheduled jobs configured")
 

@@ -37,22 +37,42 @@ class JobBoardSheetsService:
     """Export Phase 1/2 discovery + job-board data to Google Sheets."""
 
     def __init__(self) -> None:
+        self.enabled = True
+        self.sheets = None
+
+        # If Sheets configuration is incomplete/invalid, disable exporter gracefully
+        # so the crawl→ML→Postgres pipeline can continue.
         if not settings.JOB_BOARD_SHEET_ID:
-            raise ValueError("JOB_BOARD_SHEET_ID is not configured in settings/.env")
+            logger.warning("JOB_BOARD_SHEET_ID not configured; disabling job-board sheets export.")
+            self.enabled = False
+            return
 
         self.sheet_id = settings.JOB_BOARD_SHEET_ID
-        # Reuse the existing service-account credentials file
-        self.credentials_path = (
-            Path(__file__).parent.parent.parent / "credentials.json"
-        )
+
+        # Reuse the existing service-account credentials file.
+        self.credentials_path = Path(__file__).parent.parent.parent / "credentials.json"
+        if not self.credentials_path.exists() or self.credentials_path.stat().st_size <= 0:
+            logger.warning(
+                "Job-board credentials.json missing/empty (%s); disabling sheets export.",
+                str(self.credentials_path),
+            )
+            self.enabled = False
+            return
 
         scopes = ["https://www.googleapis.com/auth/spreadsheets"]
-        self.credentials = service_account.Credentials.from_service_account_file(
-            str(self.credentials_path),
-            scopes=scopes,
-        )
-        service = build("sheets", "v4", credentials=self.credentials)
-        self.sheets = service.spreadsheets()
+        try:
+            self.credentials = service_account.Credentials.from_service_account_file(
+                str(self.credentials_path),
+                scopes=scopes,
+            )
+            service = build("sheets", "v4", credentials=self.credentials)
+            self.sheets = service.spreadsheets()
+        except Exception as exc:
+            # Includes JSONDecodeError when credentials.json is empty/invalid.
+            logger.warning("Invalid job-board Google credentials; disabling sheets export: %s", exc)
+            self.enabled = False
+            self.sheets = None
+            return
 
     # ── Column width presets (pixels): clear, aligned, readable ──────────────────
     SOURCE_COLUMN_WIDTHS = [50, 180, 140, 90, 80, 80, 70, 60, 100, 100, 90, 50, 200, 60, 90]
@@ -536,12 +556,158 @@ class JobBoardSheetsService:
                 degree = dm.group(0).strip()
 
         return location_type, location_detail, country, work_type, seniority, salary, skills, degree
+
+    @staticmethod
+    def _standardize_location_type(value: str) -> str:
+        """
+        Normalize location_type enum casing/variants into:
+          - "Remote" | "Hybrid" | "Onsite" | ""
+        """
+        v = (value or "").strip()
+        if not v:
+            return ""
+        vl = v.lower()
+
+        # Remote variants
+        if vl in {"remote", "wfh", "work from home", "work-from-home", "anywhere"} or "remote" in vl:
+            return "Remote"
+        # Hybrid variants
+        if vl == "hybrid" or "hybrid" in vl:
+            return "Hybrid"
+        # Onsite variants
+        if vl in {"onsite", "on-site", "on site", "office"} or "onsite" in vl or "on-site" in vl:
+            return "Onsite"
+
+        # Unknown enum: standardize as Unknown instead of blank.
+        return "Unknown"
+
+    @staticmethod
+    def _is_complete_job_record(*, title: str, company: str, apply_url: str, source_domain: str) -> bool:
+        """
+        Hard completeness gate for final export.
+        Required fields: title, company, apply_url, source_domain.
+        """
+        return all(
+            [
+                bool((title or "").strip()),
+                bool((company or "").strip()),
+                bool((apply_url or "").strip()),
+                bool((source_domain or "").strip()),
+            ]
+        )
+
+    @staticmethod
+    def _standardize_seniority(value: str, title: str = "", description: str = "") -> str:
+        """
+        Normalize seniority labels and provide fallback inference from title/description.
+        Canonical values:
+          - "Fresher / Entry"
+          - "Junior"
+          - "Mid"
+          - "Senior"
+          - ""
+        """
+        v = (value or "").strip()
+        vl = v.lower()
+        if vl:
+            if any(k in vl for k in ["fresher", "entry", "intern", "trainee", "graduate", "associate"]):
+                return "Fresher / Entry"
+            if "junior" in vl or vl == "jr":
+                return "Junior"
+            if any(k in vl for k in ["senior", "lead", "principal", "staff", "architect", "manager"]):
+                return "Senior"
+            if any(k in vl for k in ["mid", "intermediate"]):
+                return "Mid"
+
+        text = f"{(title or '').lower()} {(description or '').lower()}"
+        if any(k in text for k in ["intern", "trainee", "fresher", "entry level", "entry-level", "graduate", "associate"]):
+            return "Fresher / Entry"
+        if "junior" in text or " jr " in f" {text} ":
+            return "Junior"
+        if any(k in text for k in ["senior", "lead", "principal", "staff", "architect", "manager"]):
+            return "Senior"
+        if any(k in text for k in ["mid-level", "mid level", "intermediate"]):
+            return "Mid"
+
+        # Default fallback for incomplete records in this pipeline.
+        return "Fresher / Entry"
+
+    @staticmethod
+    def _standardize_salary(value: str) -> str:
+        """
+        Normalize salary text into a compact, human-readable form.
+        Keeps source meaning, but removes noisy spacing/format variants.
+        """
+        v = (value or "").strip()
+        if not v:
+            return ""
+
+        # Normalize spaces and common separators.
+        v = re.sub(r"\s+", " ", v)
+        v = v.replace("–", "-").replace("—", "-")
+        v = re.sub(r"\s*-\s*", " - ", v)
+        v = re.sub(r"\s*/\s*", "/", v)
+        v = re.sub(r"\s*,\s*", ", ", v)
+        v = re.sub(r"\s{2,}", " ", v).strip()
+
+        # Canonical common tokens.
+        token_map = {
+            "per annum": "PA",
+            "per year": "PA",
+            "per month": "PM",
+            "per hour": "PH",
+            "lpa": "LPA",
+            "lakhs": "LPA",
+            "lakh": "LPA",
+            "ctc": "CTC",
+        }
+        out = v
+        for src, tgt in token_map.items():
+            out = re.sub(rf"\b{re.escape(src)}\b", tgt, out, flags=re.IGNORECASE)
+
+        # Collapse duplicate spaces around currency symbols.
+        out = re.sub(r"₹\s+", "₹", out)
+        out = re.sub(r"\$\s+", "$", out)
+
+        return out.strip()
+
+    @staticmethod
+    def _infer_skills_from_text(title: str, description: str, existing: str = "") -> str:
+        """
+        Fill skills with a lightweight keyword extractor when source skills are empty.
+        Keeps output concise and deterministic.
+        """
+        if (existing or "").strip():
+            return existing.strip()
+
+        text = f"{(title or '').lower()} {(description or '').lower()}"
+        if not text.strip():
+            return ""
+
+        skill_terms = [
+            "python", "java", "javascript", "typescript", "react", "node", "node.js",
+            "sql", "mongodb", "postgresql", "aws", "azure", "gcp", "docker",
+            "kubernetes", "html", "css", "seo", "sem", "smo", "google ads",
+            "meta ads", "social media", "content marketing", "salesforce",
+            "excel", "power bi", "tableau", "figma", "canva", "customer support",
+            "crm", "communication", "lead generation", "digital marketing",
+        ]
+        found: List[str] = []
+        for term in skill_terms:
+            if re.search(rf"\b{re.escape(term)}\b", text, re.IGNORECASE):
+                found.append(term.title() if term.islower() else term)
+            if len(found) >= 10:
+                break
+
+        return ", ".join(found)
     # ── Public API: JSON exports ──────────────────────────────────────────────
 
     def export_sources_from_json(
         self, json_path: Path, date_str: Optional[str] = None
     ) -> Dict:
         """Export discovery sources from JSON to a single 'sources' tab (no per-day tabs)."""
+        if not self.enabled or self.sheets is None:
+            return {"status": "skipped_sheets_disabled", "date": date_str, "tab_name": "sources", "sources_exported": 0}
         # We keep one canonical sources tab that is refreshed every time.
         if not date_str:
             date_str = self._default_ist_date_str()
@@ -640,6 +806,16 @@ class JobBoardSheetsService:
         accumulates all verified/export batches for that day without overwriting.
         If validate_apply_urls=True, rows whose apply URL returns 404/410 are skipped.
         """
+        if not self.enabled or self.sheets is None:
+            return {
+                "status": "skipped_sheets_disabled",
+                "date": date_str,
+                "tab_name": f"{date_str}_jobs" if date_str else "",
+                "jobs_exported": 0,
+                "append": append,
+                "apply_urls_skipped": 0,
+            }
+
         if not date_str:
             date_str = self._default_ist_date_str()
         tab_name = f"{date_str}_jobs"
@@ -709,6 +885,7 @@ class JobBoardSheetsService:
 
         rows: List[List[str]] = []
         skipped_bad_url = 0
+        skipped_incomplete = 0
         for job in jobs:
             title = job.get("title") or ""
             source_domain = job.get("source_domain") or ""
@@ -717,30 +894,44 @@ class JobBoardSheetsService:
             meta_job = dict(job)
             meta_job["description"] = desc_full
             lt, ld, co, wt, sr, sal_der, sk_der, deg_der = self._derive_job_metadata(meta_job)
-            location_type = job.get("location_type") or lt
-            location_detail = job.get("location_detail") or job.get("location") or ld
-            country = job.get("country") or co
-            work_type = job.get("work_type") or wt
-            seniority = (job.get("seniority") or "").strip() or sr
-            salary = job.get("salary") or sal_der
-            degree = job.get("degree") or deg_der
+            location_type = self._standardize_location_type(job.get("location_type") or lt)
+            location_detail = (job.get("location_detail") or job.get("location") or ld or "Not specified").strip()
+            country = (job.get("country") or co or "Not specified").strip()
+            work_type = (job.get("work_type") or wt or "Not specified").strip()
+            seniority = self._standardize_seniority(
+                (job.get("seniority") or "").strip() or sr,
+                title=title,
+                description=desc_full,
+            )
+            salary = self._standardize_salary(job.get("salary") or sal_der) or "Not disclosed"
+            degree = (job.get("degree") or deg_der or "Not specified").strip()
             skills_val = job.get("skills")
             if isinstance(skills_val, list):
                 skills = ", ".join(str(s) for s in skills_val) if skills_val else sk_der
             else:
                 skills = (skills_val or sk_der) if isinstance(skills_val, str) else sk_der
+            skills = self._infer_skills_from_text(title, desc_full, skills) or "Not specified"
             description = desc_full[:240]
             apply_url = job.get("apply_url") or job.get("url") or ""
             if validate_apply_urls and invalid_apply:
                 if normalize_url(str(apply_url)) in invalid_apply:
                     skipped_bad_url += 1
                     continue
+            company = job.get("company") or ""
+            if not self._is_complete_job_record(
+                title=title,
+                company=company,
+                apply_url=apply_url,
+                source_domain=source_domain,
+            ):
+                skipped_incomplete += 1
+                continue
 
             row = [
                 segment,
                 category,
                 title,
-                job.get("company") or "",
+                company,
                 location_type,
                 location_detail,
                 country,
@@ -771,6 +962,7 @@ class JobBoardSheetsService:
                 "jobs_exported": 0,
                 "append": append,
                 "apply_urls_skipped": skipped_bad_url,
+                "incomplete_jobs_skipped": skipped_incomplete,
             }
 
         end_col = chr(ord("A") + len(headers) - 1)
@@ -792,12 +984,13 @@ class JobBoardSheetsService:
             )
 
         logger.info(
-            "Exported %d jobs to '%s' (append=%s, start_row=%s, apply_urls_skipped=%s)",
+            "Exported %d jobs to '%s' (append=%s, start_row=%s, apply_urls_skipped=%s, incomplete_jobs_skipped=%s)",
             len(rows),
             tab_name,
             append,
             start_row_1based,
             skipped_bad_url,
+            skipped_incomplete,
         )
         return {
             "status": "success",
@@ -807,6 +1000,7 @@ class JobBoardSheetsService:
             "append": append,
             "start_row": start_row_1based,
             "apply_urls_skipped": skipped_bad_url,
+            "incomplete_jobs_skipped": skipped_incomplete,
         }
 
     def export_jobs_from_postgres(
@@ -819,6 +1013,15 @@ class JobBoardSheetsService:
         validate_apply_urls: bool = True,
     ) -> Dict:
         """Export Postgres jobs (filtered by source + IST date) to <date>_jobs tab."""
+        if not self.enabled or self.sheets is None:
+            return {
+                "status": "skipped_sheets_disabled",
+                "date": date_str,
+                "tab_name": f"{date_str}_jobs" if date_str else "",
+                "jobs_exported": 0,
+                "append": append,
+                "apply_urls_skipped": 0,
+            }
         if not date_str:
             date_str = self._default_ist_date_str()
         tab_name = f"{date_str}_jobs"
@@ -891,6 +1094,7 @@ class JobBoardSheetsService:
 
         rows: List[List[str]] = []
         skipped_bad_url = 0
+        skipped_incomplete = 0
         for j in jobs:
             source_url = j.source_url or ""
             source_domain = j.source_channel_name or (urlparse(source_url).netloc if source_url else "")
@@ -898,9 +1102,19 @@ class JobBoardSheetsService:
                 if normalize_url(str(source_url)) in invalid_apply:
                     skipped_bad_url += 1
                     continue
+            company = j.company_name or ""
+            title = j.title or ""
+            if not self._is_complete_job_record(
+                title=title,
+                company=company,
+                apply_url=source_url,
+                source_domain=source_domain,
+            ):
+                skipped_incomplete += 1
+                continue
 
             desc_full = (j.description or "")[:8000]
-            segment, category = self._classify_job(j.title or "", source_domain or "", desc_full)
+            segment, category = self._classify_job(title, source_domain or "", desc_full)
 
             salary_raw = (j.salary or "").strip() if j.salary else ""
             salary_range = getattr(j, "salary_range", None)
@@ -910,9 +1124,10 @@ class JobBoardSheetsService:
             salary_max = getattr(j, "salary_max", None)
             if not salary_raw and (salary_min is not None or salary_max is not None):
                 salary_raw = f"{salary_min or ''}-{salary_max or ''}".strip("-")
+            salary_raw = self._standardize_salary(salary_raw)
 
             pseudo = {
-                "title": j.title or "",
+                "title": title,
                 "location": j.location or "",
                 "description": desc_full,
                 "skills": j.skills_required if isinstance(j.skills_required, list) else [],
@@ -929,9 +1144,10 @@ class JobBoardSheetsService:
                 location_type = lt or "Onsite"
             else:
                 location_type = lt or ""
+            location_type = self._standardize_location_type(location_type)
 
-            location_detail = ld or (j.location or "") or ""
-            country = co or ""
+            location_detail = (ld or (j.location or "") or "Not specified").strip()
+            country = (co or "Not specified").strip()
 
             emp = (j.employment_type or "").strip().lower()
             if emp in ("fulltime", "full_time", "full-time"):
@@ -947,10 +1163,17 @@ class JobBoardSheetsService:
             else:
                 work_type_col = wt_meta or ""
 
-            seniority = (getattr(j, "experience", None) or "").strip() or sr_meta
+            seniority = self._standardize_seniority(
+                (getattr(j, "experience", None) or "").strip() or sr_meta,
+                title=title,
+                description=desc_full,
+            )
             skills = ", ".join(j.skills_required or []) if isinstance(j.skills_required, list) else ""
             if not skills.strip():
                 skills = sk_der
+            skills = self._infer_skills_from_text(title, desc_full, skills) or "Not specified"
+            salary_raw = salary_raw or "Not disclosed"
+            degree_out = deg_der or "Not specified"
 
             created_utc = j.created_at.isoformat() if j.created_at else ""
             created_ist = ""
@@ -960,8 +1183,8 @@ class JobBoardSheetsService:
             row = [
                 segment,
                 category,
-                j.title or "",
-                j.company_name or "",
+                title,
+                company,
                 location_type,
                 location_detail,
                 country,
@@ -969,7 +1192,7 @@ class JobBoardSheetsService:
                 seniority,
                 salary_raw,
                 skills,
-                deg_der,
+                degree_out,
                 (j.description or "")[:500],
                 source_url,
                 source_domain,
@@ -993,6 +1216,7 @@ class JobBoardSheetsService:
                 "append": append,
                 "source": source_value,
                 "apply_urls_skipped": skipped_bad_url,
+                "incomplete_jobs_skipped": skipped_incomplete,
             }
 
         end_col = chr(ord("A") + len(headers) - 1)
@@ -1022,6 +1246,7 @@ class JobBoardSheetsService:
             "start_row": start_row_1based,
             "source": source_value,
             "apply_urls_skipped": skipped_bad_url,
+            "incomplete_jobs_skipped": skipped_incomplete,
         }
 
 

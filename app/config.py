@@ -196,6 +196,7 @@ class Settings(BaseSettings):
     JOB_BOARD_SOURCE_REQUEST_JITTER: float = 1.0
     JOB_BOARD_STUDENT_PIPELINE_ONLY: bool = True
     JOB_BOARD_NO_STRICT_INDIA: bool = False
+    JOB_BOARD_APPEND_SHEET: bool = False
 
     # Logging
     LOG_LEVEL: str = "INFO"
