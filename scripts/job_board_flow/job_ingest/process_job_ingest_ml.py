@@ -2,7 +2,7 @@
 """
 Drain Mongo job_ingest: pending → processing → verified | rejected.
 
-Uses SklearnClassifier (if loaded) + same profile rules as merge_job_runs._profile_filters.
+Uses SklearnClassifier (if loaded) + the same profile rules used by crawl_jobs_from_sources.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from app.ml.sklearn_classifier import SklearnClassifier
 from app.services.mongodb_job_ingest_service import MongoJobIngestService
 from app.utils.india_job_gate import passes_india_relevance
-from scripts.job_board_flow.merge_job_runs import _profile_filters
+from scripts.crawl_jobs_from_sources import _filter_jobs_for_target_profile
 
 
 def main() -> int:
@@ -82,7 +82,7 @@ def main() -> int:
                 ml_scores["confidence"] = None
                 ml_scores["reason"] = "classifier_not_loaded_skip_to_profile"
 
-            kept = _profile_filters([payload])
+            kept = _filter_jobs_for_target_profile([payload])
             if not kept:
                 ingest.set_ml_outcome(
                     dk,

@@ -173,14 +173,13 @@ def main() -> int:
                 file=sys.stderr,
             )
             return 1
-        print(f"WARNING: Mongo unavailable ({e}); running JSON-only fallback (crawl → merge → sheets).")
+        print(f"WARNING: Mongo unavailable ({e}); running JSON-only fallback (crawl → sheets).")
 
-        def _count_jobs_master() -> int:
-            master_path = ROOT / "app" / "data" / "jobs" / "jobs_master.json"
-            if not master_path.exists():
+        def _count_jobs_in_file(path: Path) -> int:
+            if not path.exists():
                 return 0
             try:
-                payload = json.loads(master_path.read_text(encoding="utf-8"))
+                payload = json.loads(path.read_text(encoding="utf-8"))
                 return len(payload.get("jobs") or [])
             except Exception:
                 return 0
@@ -234,7 +233,7 @@ def main() -> int:
             if r2.returncode != 0:
                 return r2.returncode
 
-            jobs_count = _count_jobs_master()
+            jobs_count = _count_jobs_in_file(jobs_run_out)
             if jobs_count > 0:
                 break
             if attempt < max_retries:
@@ -246,7 +245,7 @@ def main() -> int:
                 py,
                 "scripts/job_board_flow/export_job_board_jobs_to_sheets.py",
                 "--jobs-json",
-                "app/data/jobs/jobs_master.json",
+                str(daily_jobs_run_out),
             ]
             if args.append_sheet:
                 cmd.append("--append-jobs")
