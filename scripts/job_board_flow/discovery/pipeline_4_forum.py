@@ -9,6 +9,7 @@ Usage:
 import argparse
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 JOBLEAD_ROOT = SCRIPT_DIR.parent.parent.parent
@@ -27,7 +28,35 @@ from scripts.job_board_flow.discovery.base import (
 from scripts.job_board_flow.discovery.query_generator import pipeline_4_forum_queries
 from scripts.job_board_flow.discovery.run_search import duckduckgo_search
 
-FORUM_DOMAINS = {"reddit.com", "news.ycombinator.com", "dev.to", "hashnode.dev", "indiehackers.com", "medium.com"}
+FORUM_DOMAINS = {
+    "reddit.com",
+    "news.ycombinator.com",
+    "dev.to",
+    "hashnode.dev",
+    "indiehackers.com",
+    "medium.com",
+    "quora.com",
+    "teamblind.com",
+}
+EXCLUDED_BIG_BOARDS = {
+    "linkedin.com",
+    "naukri.com",
+    "indeed.com",
+    "foundit.in",
+    "glassdoor.com",
+    "apna.co",
+    "internshala.com",
+}
+
+
+def _is_forum_candidate(url: str) -> bool:
+    d = (extract_domain(url) or "").lower()
+    p = (urlparse(url).path or "").lower()
+    if any(ex in d for ex in EXCLUDED_BIG_BOARDS):
+        return False
+    if d in FORUM_DOMAINS:
+        return True
+    return any(token in d or token in p for token in ("forum", "community", "discuss", "discussion", "thread"))
 
 
 def run(simulation: bool, delay_sec: float, max_queries: int | None, out_path: Path) -> tuple[int, int]:
@@ -48,7 +77,7 @@ def run(simulation: bool, delay_sec: float, max_queries: int | None, out_path: P
         except Exception as e:
             print(f"FAILED: {e}")
             continue
-        urls = [u for u in urls if extract_domain(u) in FORUM_DOMAINS]
+        urls = [u for u in urls if _is_forum_candidate(u)]
         print(f"{len(urls)} forum links")
         for u in urls:
             if upsert_discovery_source_into_list(

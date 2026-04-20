@@ -1,0 +1,20 @@
+{
+  "meta": {
+    "total_sources": 3,
+    "description": "Sources ranked by number of unique jobs in jobs_master.json"
+  },
+  "sources": [
+    {
+      "source_domain": "in.linkedin.com",
+      "job_count": 5
+    },
+    {
+      "source_domain": "www.foundit.in",
+      "job_count": 1
+    },
+    {
+      "source_domain": "www.getclera.com",
+      "job_count": 1
+    }
+  ]
+}

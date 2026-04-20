@@ -111,59 +111,45 @@ def _profile_filters(jobs: list[dict]) -> list[dict]:
     cities = load_pilot_cities()
     india_cities = [c.strip().lower() for c in (cities.get("india") or []) if c and c.strip()]
 
-    # Keep only jobs that match your tech/non-tech intent.
-    TECH_WORDS = (
-        "mern",
-        "pern",
-        "react",
-        "javascript",
-        "nodejs",
-        "node.js",
-        "express",
-        "mongodb",
-        "mongo",
-        "python",
+    TARGET_TITLE_PATTERNS = (
+        r"\bdigital marketing (executive|specialist)\b",
+        r"\bcrm (executive|manager)\b",
+        r"\bperformance marketing specialist\b",
+        r"\b(web designer|front[\s-]?end developer)\b",
+        r"\bmarketing automation specialist\b",
+        r"\bseo specialist\b",
+        r"\bbusiness analyst\b",
+        r"\becommerce manager\b",
+        r"\bfreelancer\b",
+    )
+    RELATED_DOMAIN_WORDS = (
+        "digital marketing",
+        "performance marketing",
+        "seo",
+        "crm",
+        "salesforce",
+        "zoho",
+        "marketing automation",
+        "hubspot",
+        "mailchimp",
+        "google ads",
+        "meta ads",
+        "facebook ads",
+        "web design",
+        "front-end",
+        "frontend",
         "html",
         "css",
-        "full stack",
-        "fullstack",
-        "full-stack",
-        "software engineer",
-        "software developer",
-        "developer",
-        "engineer",
-        "backend",
-        "frontend",
-        "microservices",
-        "programmer",
-        "programming",
-        "code",
-    )
-    NONTECH_WORDS = (
-        "data analyst",
-        "data analytics",
-        "data analysis",
-        "data manager",
-        "data entry",
-        "marketing",
-        "digital marketing",
-        "sales",
-        "account executive",
-        "business development",
-        "hr",
-        "human resources",
-        "recruiter",
-        "talent acquisition",
-        "customer support",
-        "customer care",
-        "customer success",
-        "management",
-        "project manager",
-        "product manager",
-        "admin",
-        "recruitment",
-        "analyst",
-        "coordinator",
+        "javascript",
+        "react",
+        "business analyst",
+        "requirement gathering",
+        "excel",
+        "power bi",
+        "tableau",
+        "ecommerce",
+        "shopify",
+        "woocommerce",
     )
 
     def experience_ok(desc: str) -> bool:
@@ -207,7 +193,27 @@ def _profile_filters(jobs: list[dict]) -> list[dict]:
         wt = (job.get("work_type") or "").strip()
         if not wt:
             return True
-        return wt in ("Internship", "Part-time", "Full-time")
+        return wt in ("Internship", "Part-time", "Full-time", "Contract", "Freelance")
+
+    def _matches_target_title(title: str) -> bool:
+        title_l = (title or "").strip().lower()
+        if not title_l:
+            return False
+        return any(re.search(pattern, title_l, re.IGNORECASE) for pattern in TARGET_TITLE_PATTERNS)
+
+    def _is_freelance_related(job: dict, text: str) -> bool:
+        title_l = (job.get("title") or "").strip().lower()
+        wt = (job.get("work_type") or "").strip().lower()
+        has_freelance_signal = (
+            ("freelance" in title_l)
+            or ("freelancer" in title_l)
+            or ("freelance" in wt)
+            or ("contract" in wt)
+            or ("project based" in text)
+        )
+        if not has_freelance_signal:
+            return False
+        return any(word in text for word in RELATED_DOMAIN_WORDS)
 
     def seniority_ok(job: dict) -> bool:
         if (job.get("seniority") or "").strip() == "Senior":
@@ -237,7 +243,7 @@ def _profile_filters(jobs: list[dict]) -> list[dict]:
         if _is_non_job_or_spam(title, url, combined):
             continue
         text = f"{title} {desc}".lower()
-        if not (any(w in text for w in TECH_WORDS) or any(w in text for w in NONTECH_WORDS)):
+        if not (_matches_target_title(title) or _is_freelance_related(job, text)):
             continue
         if not location_ok(job):
             continue

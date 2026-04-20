@@ -27,60 +27,23 @@ def pipeline_1_search_engine_queries() -> list[tuple[str, str | None, str | None
     # (keyword_template, city, country)
     rows = []
 
-    # Tech: stacks you care about (HTML/CSS/JS, React, MERN/PERN, Python)
     tech_roles = [
-        "html css javascript jobs",
-        "frontend developer jobs",
-        "react developer jobs",
-        "javascript developer jobs",
-        "mern stack developer jobs",
-        "mern developer jobs",
-        "pern stack developer jobs",
-        "nodejs react jobs",
-        "python developer jobs",
-        "python jobs",
-        "full stack developer jobs",
-        "software engineer jobs",
-        "backend developer jobs",
-        "web developer jobs",
-        "startup hiring developers",
-        "fresher react developer jobs",
-        "entry level python developer jobs",
+        "web designer jobs",
+        "front-end developer jobs",
     ]
-    # Non-tech: digital marketing, analytics, CRM, HR/recruiters
     non_tech_roles = [
-        "digital marketing jobs",
-        "performance marketing jobs",
+        "digital marketing executive jobs",
+        "digital marketing specialist jobs",
+        "crm executive jobs",
+        "crm manager jobs",
+        "performance marketing specialist jobs",
+        "marketing automation specialist jobs",
         "seo specialist jobs",
-        "social media marketing jobs",
-        "data analytics jobs",
-        "business analyst data jobs",
-        "crm jobs",
-        "salesforce jobs",
-        "zoho crm jobs",
-        "hr jobs",
-        "hr executive jobs",
-        "recruiter jobs",
-        "talent acquisition jobs",
-        "technical recruiter jobs",
-        "marketing jobs",
-        "sales jobs",
-        "finance jobs",
-        "accounting jobs",
-        "operations jobs",
-        "project manager jobs",
-        "customer support jobs",
-        "customer success jobs",
-        "call center jobs",
-        "bpo jobs",
-        "content writer jobs",
-        "graphic designer jobs",
-        "admin jobs",
-        "office assistant jobs",
-        "data entry jobs",
+        "business analyst entry level jobs",
+        "ecommerce manager jobs",
+        "freelancer jobs",
         "fresher jobs",
         "entry level jobs",
-        "graduate jobs",
     ]
 
     # Employment + location modifiers (paired in india_wide_queries below)
@@ -92,80 +55,53 @@ def pipeline_1_search_engine_queries() -> list[tuple[str, str | None, str | None
         for kw in role_kw[:18]:
             rows.append((f"{kw} {city}", city, "India"))
     for city in outside[:10]:
-        for kw in non_tech_roles[:8] + tech_roles[:5]:
+        for kw in non_tech_roles[:8] + tech_roles[:2]:
             rows.append((f"{kw} {city}", city, None))
 
     # India-wide: full-time / part-time / internship / remote / on-site
     india_wide = [
-        # Non-tech + employment / location
-        ("digital marketing jobs india full time", None, "India"),
-        ("digital marketing internship india", None, "India"),
-        ("digital marketing jobs india remote", None, "India"),
-        ("data analytics jobs india", None, "India"),
-        ("data analytics internship india", None, "India"),
-        ("data analyst jobs india work from home", None, "India"),
-        ("crm jobs india", None, "India"),
-        ("salesforce jobs india remote", None, "India"),
-        ("hr jobs india full time", None, "India"),
-        ("recruiter jobs india", None, "India"),
-        ("technical recruiter jobs india remote", None, "India"),
-        ("marketing jobs india remote", None, "India"),
-        ("sales jobs india work from office", None, "India"),
-        ("customer support jobs india", None, "India"),
-        ("data entry jobs india part time", None, "India"),
-        ("fresher jobs india", None, "India"),
-        ("graduate trainee jobs india", None, "India"),
-        ("internship jobs india", None, "India"),
-        # Tech stacks + employment / location
-        ("react developer jobs india remote", None, "India"),
-        ("mern stack jobs india", None, "India"),
-        ("pern stack jobs india", None, "India"),
-        ("python developer jobs india full time", None, "India"),
-        ("python internship india", None, "India"),
-        ("javascript developer jobs india", None, "India"),
-        ("html css jobs india", None, "India"),
-        ("frontend developer jobs india hybrid", None, "India"),
-        ("full stack developer jobs india remote", None, "India"),
-        ("nodejs developer jobs india", None, "India"),
-        ("web developer internship india", None, "India"),
-        ("fresher developer jobs india", None, "India"),
-        ("startup hiring india", None, "India"),
-        ("tech jobs india", None, "India"),
+        ("digital marketing executive jobs india fresher", None, "India"),
+        ("digital marketing specialist jobs india fresher", None, "India"),
+        ("crm executive jobs india fresher", None, "India"),
+        ("crm manager jobs india entry level", None, "India"),
+        ("performance marketing specialist jobs india fresher", None, "India"),
+        ("web designer jobs india fresher", None, "India"),
+        ("front-end developer jobs india fresher", None, "India"),
+        ("marketing automation specialist jobs india fresher", None, "India"),
+        ("seo specialist jobs india fresher", None, "India"),
+        ("business analyst entry level jobs india", None, "India"),
+        ("ecommerce manager jobs india fresher", None, "India"),
+        ("freelancer marketing jobs india", None, "India"),
+        ("freelancer web designer jobs india", None, "India"),
+        ("fresher jobs india digital marketing", None, "India"),
+        ("entry level jobs india crm", None, "India"),
     ]
     rows.extend(india_wide)
 
     # Site-specific (for Pipeline 3/4 we also use these; here we get generic results)
     site_queries = [
-        # Tech communities / boards
-        'site:t.me developer jobs',
-        'site:t.me react jobs india',
-        'site:t.me python jobs',
-        'site:t.me internship developer',
-        'site:t.me hiring engineers',
+        'site:t.me digital marketing jobs',
+        'site:t.me seo specialist jobs',
+        'site:t.me performance marketing jobs',
+        'site:t.me crm jobs',
+        'site:t.me front-end developer jobs',
+        'site:t.me web designer jobs',
+        'site:t.me business analyst fresher jobs',
+        'site:t.me ecommerce jobs',
+        'site:t.me freelancer jobs',
         'site:discord.gg jobs developer',
         'site:discord.gg developer jobs',
         'site:github.com "job board"',
         'site:github.com "remote jobs"',
-        'site:github.com mern jobs',
         'site:medium.com hiring engineer',
-        'site:reddit.com "jobs india developer"',
-        'site:reddit.com react jobs india',
-        'site:reddit.com python jobs india',
-        'site:news.ycombinator.com hiring',
-        # Non-tech communities / boards
-        'site:t.me marketing jobs',
-        'site:t.me digital marketing jobs',
-        'site:t.me data analytics jobs',
-        'site:t.me sales jobs',
-        'site:t.me hr jobs',
-        'site:t.me fresher jobs',
-        'site:discord.gg marketing jobs',
-        'site:reddit.com "marketing jobs india"',
         'site:reddit.com "digital marketing jobs india"',
-        'site:reddit.com "data analytics jobs india"',
-        'site:reddit.com "sales jobs india"',
-        'site:reddit.com "customer support jobs india"',
-        'site:reddit.com "hr jobs india"',
+        'site:reddit.com "crm jobs india"',
+        'site:reddit.com "seo jobs india"',
+        'site:reddit.com "front-end developer jobs india"',
+        'site:reddit.com "business analyst fresher jobs india"',
+        'site:news.ycombinator.com hiring',
+        'site:discord.gg marketing jobs',
+        'site:t.me fresher jobs',
     ]
     for q in site_queries:
         rows.append((q, None, None))
@@ -182,16 +118,20 @@ def pipeline_2_github_queries() -> list[str]:
     return [
         "job boards language:markdown",
         "telegram job groups language:markdown",
-        "developer communities language:markdown",
+        "marketing communities language:markdown",
         "remote jobs language:markdown",
         "awesome job boards language:markdown",
-        "india dev communities language:markdown",
+        "india marketing communities language:markdown",
         "hiring lists language:markdown",
-        "react developer jobs language:markdown",
-        "internship india jobs language:markdown",
         "digital marketing jobs language:markdown",
-        "data analytics careers language:markdown",
-        "crm salesforce jobs language:markdown",
+        "crm jobs language:markdown",
+        "performance marketing jobs language:markdown",
+        "seo jobs language:markdown",
+        "front-end developer jobs language:markdown",
+        "web designer jobs language:markdown",
+        "business analyst fresher jobs language:markdown",
+        "ecommerce manager jobs language:markdown",
+        "freelancer jobs language:markdown",
     ]
 
 
@@ -201,26 +141,18 @@ def pipeline_3_community_queries() -> list[tuple[str, str]]:
     Returns (query, type_hint). type_hint = telegram | discord.
     """
     base = [
-        # Tech
-        "developer jobs",
-        "react jobs",
-        "mern jobs",
-        "python jobs",
-        "javascript jobs",
-        "internship developer",
-        "hiring engineers",
-        "tech jobs",
-        "backend jobs",
-        "startup jobs",
-        # Non-tech
-        "digital marketing jobs",
-        "data analytics jobs",
-        "crm jobs",
-        "marketing jobs",
-        "sales jobs",
-        "hr jobs",
-        "recruiter jobs",
-        "customer support jobs",
+        "digital marketing executive jobs",
+        "digital marketing specialist jobs",
+        "crm executive jobs",
+        "crm manager jobs",
+        "performance marketing specialist jobs",
+        "web designer jobs",
+        "front-end developer jobs",
+        "marketing automation specialist jobs",
+        "seo specialist jobs",
+        "business analyst entry level jobs",
+        "ecommerce manager jobs",
+        "freelancer jobs",
         "fresher jobs",
     ]
     rows = []
@@ -236,22 +168,42 @@ def pipeline_4_forum_queries() -> list[tuple[str, str]]:
     Pipeline 4 — Forum Discovery.
     Returns (query, type_hint). type_hint = forum.
     """
+    local_city_forum_queries = [
+        ('site:reddit.com "digital marketing" "bangalore" "fresher"', "forum"),
+        ('site:reddit.com "seo specialist" "mumbai" "job"', "forum"),
+        ('site:reddit.com "front-end developer" "delhi" "entry level"', "forum"),
+        ('site:reddit.com "business analyst" "hyderabad" "fresher"', "forum"),
+        ('site:reddit.com "ecommerce manager" "pune" "job"', "forum"),
+        ('site:reddit.com "crm executive" "chennai" "job"', "forum"),
+        ('site:quora.com "digital marketing jobs bangalore"', "forum"),
+        ('site:quora.com "seo jobs mumbai fresher"', "forum"),
+        ('site:quora.com "frontend developer jobs delhi"', "forum"),
+        ('site:teamblind.com "digital marketing jobs india"', "forum"),
+        ('site:internals forum "digital marketing jobs bangalore"', "forum"),
+        ('site:discuss "seo jobs india" "fresher"', "forum"),
+        ('inurl:forum "digital marketing jobs" "bangalore"', "forum"),
+        ('inurl:community "crm jobs" "india"', "forum"),
+        ('inurl:discussion "front-end developer jobs" "india"', "forum"),
+        ('"digital marketing jobs" "HSR Layout" "Bangalore"', "forum"),
+        ('"seo jobs" "Andheri" "Mumbai"', "forum"),
+        ('"front-end developer jobs" "Saket" "Delhi"', "forum"),
+        ('"business analyst fresher jobs" "Madhapur" "Hyderabad"', "forum"),
+        ('"ecommerce jobs" "Kothrud" "Pune"', "forum"),
+    ]
+
     return [
-        # Tech-focused
-        ('site:reddit.com "jobs india developer"', "forum"),
         ('site:reddit.com "hiring" india', "forum"),
         ("site:news.ycombinator.com hiring", "forum"),
-        ("site:dev.to jobs", "forum"),
-        ("site:hashnode.dev hiring developer", "forum"),
+        ("site:dev.to marketing jobs", "forum"),
+        ("site:hashnode.dev front-end jobs", "forum"),
         ("site:indiehackers.com jobs", "forum"),
-        # Non-tech focused
         ('site:reddit.com "marketing jobs india"', "forum"),
         ('site:reddit.com "digital marketing jobs india"', "forum"),
-        ('site:reddit.com "data analytics jobs india"', "forum"),
-        ('site:reddit.com "sales jobs india"', "forum"),
-        ('site:reddit.com \"customer support jobs\" india', "forum"),
-        ('site:reddit.com internship india developer', "forum"),
-    ]
+        ('site:reddit.com "crm jobs india"', "forum"),
+        ('site:reddit.com "seo jobs india"', "forum"),
+        ('site:reddit.com "front-end developer jobs india"', "forum"),
+        ('site:reddit.com "business analyst fresher jobs india"', "forum"),
+    ] + local_city_forum_queries
 
 
 def get_all_pipeline_1_queries(max_per_category: int | None = None) -> list[tuple[str, str | None, str | None]]:
