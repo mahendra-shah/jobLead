@@ -4,6 +4,7 @@ Processes unprocessed messages from MongoDB, classifies them, and stores jobs to
 """
 
 import logging
+import hashlib
 import re as _re
 import unicodedata as _ud
 from datetime import datetime, timezone
@@ -21,6 +22,7 @@ from app.ml.sklearn_classifier import SklearnClassifier
 from app.ml.spacy_extractor import SpacyExtractor
 from app.ml.enhanced_extractor import get_enhanced_extractor
 from app.services.job_quality_scorer import get_quality_scorer
+from app.utils.job_dedupe import clean_url_candidate
 from app.utils.job_parser import parse_experience
 
 # Load settings
@@ -263,6 +265,98 @@ _NON_JOB_PATTERNS = [
             _re.IGNORECASE,
         ),
     ),
+    # Recruitment agency bulk announcements / shortlist notifications (not direct job posts)
+    (
+        "recruitment_agency_announcement",
+        _re.compile(
+            r'(?:congratulations.*shortlist'
+            r'|shortlisted\s+for\s+(?:an\s+)?online\s+group\s+discussion'
+            r'|congratulations.*online\s+group\s+discussion'
+            r'|congratulations.*next\s+process\s+(?:is|:)'
+            r'|shortlisted.*next\s+process'
+            r'|greetings?\s+from\s+(?:vibrant\s*minds|[a-z\s]*recruitment(?:\s+&\s+hiring)?|[a-z\s]*campus\s+recruitment)'
+            r'|recruitment\s+drive\s+organized\s+by'
+            r'|campus\s+recruitment\s+drive'
+            r'|hiring\s+for\s+(?:fresher|fresher\s+candidates?|entry\s+level)'
+            r'|congratulations.*have\s+been\s+(?:selected|shortlisted)'
+            r'|interview\s+(?:drive|round).*(?:scheduled|notification|alert)'
+            r'|(?:vibrant\s*minds|campus\s+recruitment|hiring\s+drive)[^.]*(?:online\s+group\s+discussion|interview\s+round|next\s+process)'
+            r')\b',
+            _re.IGNORECASE,
+        ),
+    ),
+    # Career guidance / webinar / event registrations (not direct jobs)
+    (
+        "career_webinar_event",
+        _re.compile(
+            r'(?:free\s+(?:career\s+)?(?:guidance|counseling|session|webinar|workshop|masterclass)'
+            r'|still\s+confused\s+about\s+your\s+career'
+            r'|career\s+guidance.*session'
+            r'|live\s+online\s+session\s+with\s+(?:it\s+)?experts'
+            r'|register\s+for\s+free\s+(?:now|today|here)'
+            r'|limited\s+slots?\s+(?:available|remain|only)'
+            r'|role-?specific\s+interview\s+guidance'
+            r'|actionable\s+career\s+roadmap'
+            r'|hear\s+real.*unfiltered\s+success\s+stories'
+            r'|registration.*date\s*:\s*\d+\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)'
+            r'|event\s+details\s*:\s*|venue\s*:[^a-z]*(?:zoom|teams|google\s+meet|online|virtual)'
+            r'|cost\s*:\s*[~₹]*\s*(?:free|complimentary|no\s+charge)'
+            r'|free\s+session\s+will\s+help\s+you\s+decide'
+            r'|register\s+on\s+(?:the\s+)?link\s+below'
+            r')\b',
+            _re.IGNORECASE,
+        ),
+    ),
+    # Aviation / travel / hospitality recruitment events (not general job boards)
+    (
+        "industry_recruitment_event",
+        _re.compile(
+            r'(?:cabin\s+crew(?:\s+recruitment)?(?:\s+drive)?'
+            r'|malaysia\s+aviation\s+group|air(?:\s+)?india(?:\s+airlines)?'
+            r'|(?:recruitment|hiring)\s+(?:drive|fair)(?:.*(?:flight\s+attendant|cabin\s+crew|pilot|hospitality))?'
+            r'|recruitment.*(?:cabin\s+crew|flight\s+attendant|pilot|air(?:\s+)?hostess?|hospitality)'
+            r'|join\s+our\s+recruitment\s+drive.*(?:cabin\s+crew|aviation|hospitality)'
+            r'|register\s+at\s+(?:mag|airlines|forms\.)?(?:town\s+office|venue|location)\s+[a-z\s]*(?:mall|office|location)'
+            r'|bring\s+the\s+warmth\s+of.*hospitality\s+to\s+the\s+skies'
+            r'|date\s*:\s*\d+\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+\d{4}'
+            r'|time\s*:\s*\d{1,2}:\d{2}(?:\s*(?:am|pm|—))?'
+            r'|venue\s*:\s*[a-z].*(?:office|location|mall|center|venue)'
+            r')\b',
+            _re.IGNORECASE,
+        ),
+    ),
+    # Corporate social-media hiring campaigns (brand promos, not direct job cards)
+    (
+        "corporate_hiring_campaign",
+        _re.compile(
+            r'(?:#comejoinus|#engineeringabetterworld'
+            r'|ready\s+to\s+apply\s+your\s+investigation\s+expertise'
+            r'|tatatechnologies\s+collaborates\s+with\s+the\s+world\'s\s+leading\s+aerospace\s+businesses'
+            r'|engineer\s+the\s+future\s+of\s+aerospace\s+reliability'
+            r'|manage\s+end-to-end\s+modifications\s*\(rfc/pcr\)'
+            r'|final\s+assembly\s+line\s*\(fal\)\s+production\s+issues'
+            r'|return\s+to\s+service\s+for\s+major\s+aircraft\s+programs'
+            r'|catia\s+v5,\s*sap,\s*and\s+customized\s+tools'
+            r'|tatatechnologies\.com/.+hiring-campaign)\b',
+            _re.IGNORECASE,
+        ),
+    ),
+    # School/college faculty recruitment announcements (outside target tech-job pipeline)
+    (
+        "education_faculty_hiring",
+        _re.compile(
+            r'(?:\bpost\s+graduate\s+teachers?\b'
+            r'|\b(?:pgt|tgt|prt|ukg)\b'
+            r'|\b(?:army\s+public\s+school|public\s+school|school\s+faculty)\b'
+            r'|\bawesindia\.edu\.in\b'
+            r'|\bteaching\s+certification/license\b'
+            r'|\bshape\s+the\s+leaders\s+of\s+tomorrow\b'
+            r'|\bmaster\'?s\s+degree\s+in\s+the\s+relevant\s+field\b'
+            r'|\b(?:chemistry|history|accountancy|economics|social\s+studies)\b.{0,80}\b(?:teacher|pgt|tgt)\b'
+            r'|\bapsbelagavi\.in\b)\b',
+            _re.IGNORECASE,
+        ),
+    ),
 ]
 
 
@@ -413,6 +507,45 @@ class MLProcessorService:
         )
 
         return has_apply_path and has_entry_level_signal
+
+    @staticmethod
+    def _normalize_message_text(text: str) -> str:
+        """Normalize full message text for robust duplicate checks."""
+        raw = _ud.normalize("NFKC", text or "")
+        # Collapse whitespace and lower-case so cosmetic edits do not bypass dedupe.
+        return " ".join(raw.lower().split())
+
+    def _message_text_hash(self, text: str) -> str:
+        """Stable hash for normalized message text."""
+        normalized = self._normalize_message_text(text)
+        return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+    def _build_processed_message_hashes(self) -> set:
+        """
+        Build hash set for already processed messages.
+        Handles legacy documents where message_text_hash was not stored yet.
+        """
+        hashes = set()
+        cursor = self.messages_collection.find(
+            {"is_processed": True},
+            {
+                "ml_classification.message_text_hash": 1,
+                "text": 1,
+                "content": 1,
+            },
+        )
+
+        for doc in cursor:
+            stored_hash = (((doc.get("ml_classification") or {}).get("message_text_hash")) or "").strip()
+            if stored_hash:
+                hashes.add(stored_hash)
+                continue
+
+            legacy_text = (doc.get("text") or doc.get("content") or "").strip()
+            if legacy_text:
+                hashes.add(self._message_text_hash(legacy_text))
+
+        return hashes
     
     def process_unprocessed_messages(
         self,
@@ -457,6 +590,7 @@ class MLProcessorService:
                 "individual_jobs_created": 0,
                 "companies_created": 0,
                 "non_jobs": 0,
+                "duplicate_text_skipped": 0,
                 "low_confidence": 0,
                 "stored_to_postgres": 0,
                 "errors": 0,
@@ -469,6 +603,7 @@ class MLProcessorService:
             "job_messages": 0,  # Messages classified as jobs
             "individual_jobs_created": 0,  # Actual job entries (can be > job_messages if splitting)
             "non_jobs": 0,
+            "duplicate_text_skipped": 0,
             "low_confidence": 0,
             "stored_to_postgres": 0,
             "companies_created": 0,  # New companies added
@@ -483,6 +618,8 @@ class MLProcessorService:
         
         # Get DB session for PostgreSQL (synchronous)
         db = next(get_sync_db())
+        processed_text_hashes = self._build_processed_message_hashes()
+        seen_text_hashes = set()
         
         try:
             for idx, message in enumerate(messages, 1):
@@ -490,8 +627,49 @@ class MLProcessorService:
                     logger.info(f"\n📝 Processing message {idx}/{total_messages}")
                     logger.info(f"   Channel: {message.get('channel_username', 'Unknown')}")  # Changed from channel_name
                     logger.info(f"   Message ID: {message.get('message_id')}")
-                    
-                    result = self._process_single_message(message, db, min_confidence)
+
+                    raw_text = (message.get("text") or message.get("content") or "").strip()
+                    text_hash = self._message_text_hash(raw_text)
+
+                    if text_hash in seen_text_hashes:
+                        logger.info("   ⏭️  Duplicate full text in current batch, skipping")
+                        result = {
+                            "is_job": False,
+                            "confidence": 0.0,
+                            "reason": "dedupe:duplicate_full_text_batch",
+                            "low_confidence": False,
+                            "stored_to_postgres": False,
+                            "jobs_created": 0,
+                            "companies_created": 0,
+                            "quality_filtered": 0,
+                            "spam_rejected": 0,
+                            "relevant_jobs": 0,
+                            "job_ids": [],
+                            "channel_id": None,
+                        }
+                        stats['duplicate_text_skipped'] += 1
+                    elif text_hash in processed_text_hashes:
+                        logger.info("   ⏭️  Duplicate full text already processed earlier, skipping")
+                        seen_text_hashes.add(text_hash)
+                        result = {
+                            "is_job": False,
+                            "confidence": 0.0,
+                            "reason": "dedupe:duplicate_full_text_processed",
+                            "low_confidence": False,
+                            "stored_to_postgres": False,
+                            "jobs_created": 0,
+                            "companies_created": 0,
+                            "quality_filtered": 0,
+                            "spam_rejected": 0,
+                            "relevant_jobs": 0,
+                            "job_ids": [],
+                            "channel_id": None,
+                        }
+                        stats['duplicate_text_skipped'] += 1
+                    else:
+                        seen_text_hashes.add(text_hash)
+                        processed_text_hashes.add(text_hash)
+                        result = self._process_single_message(message, db, min_confidence)
                     
                     # Update stats with enhanced tracking
                     if result['is_job']:
@@ -520,7 +698,8 @@ class MLProcessorService:
                                 "ml_classification": {
                                     "is_job": result['is_job'],
                                     "confidence": result['confidence'],
-                                    "reason": result['reason']
+                                    "reason": result['reason'],
+                                    "message_text_hash": text_hash,
                                 }
                             }
                         }
@@ -570,6 +749,7 @@ class MLProcessorService:
         logger.info(f"   Spam pre-filtered: {stats['spam_rejected']}")
         logger.info(f"   Companies auto-created: {stats['companies_created']}")
         logger.info(f"   Non-jobs: {stats['non_jobs']}")
+        logger.info(f"   Duplicate full-text skipped: {stats['duplicate_text_skipped']}")
         logger.info(f"   Low confidence jobs: {stats['low_confidence']}")
         logger.info(f"   Errors: {stats['errors']}")
         logger.info(f"   Processing time: {stats['processing_time_ms']:.2f}ms")
@@ -589,8 +769,12 @@ class MLProcessorService:
         Returns:
             Processing result dict with jobs_created and companies_created counts
         """
-        text = message.get("text", "")
-        links = message.get("links", [])
+        text = (message.get("text") or message.get("content") or "")
+        links = []
+        for raw_link in message.get("links", []) or []:
+            cleaned_link = clean_url_candidate(str(raw_link or ""))
+            if cleaned_link:
+                links.append(cleaned_link)
 
         # 0. Pre-filter: reject known non-job spam patterns before hitting the ML model.
         #    This is faster and more reliable than relying on ML for these edge cases.
@@ -676,6 +860,7 @@ class MLProcessorService:
 
                     # Require at least one way to apply: link or email in text.
                     # If there is no apply link and no email address, drop this job.
+                    extraction.apply_link = clean_url_candidate(extraction.apply_link or "") or None
                     has_apply_link = bool(extraction.apply_link)
                     has_email_in_text = bool(
                         _re.search(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", text)
