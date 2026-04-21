@@ -357,6 +357,37 @@ _NON_JOB_PATTERNS = [
             _re.IGNORECASE,
         ),
     ),
+    # Passive-income / referral earning scams on Telegram (not jobs)
+    (
+        "passive_income_scam",
+        _re.compile(
+            r'(?:\b(?:smart\s+earning\s+system|passive\s+income\s+tool)\b'
+            r'|\bturn\s+your\s+paytm\s+into\b'
+            r'|\bearn\s+₹?\s*\d+\s*[–-]\s*₹?\s*\d+\s*(?:daily|per\s+day)\b'
+            r'|\bup\s+to\s+₹?\s*\d+\s*(?:lakh|lac|lacs|lakhs)\b'
+            r'|\binvite\s*&\s*earn\b|\breferral\b.{0,50}\bbonus\b'
+            r'|\binstant\s+paytm\s+payouts?\b'
+            r'|\blimited\s+slots\s+open\s+now\b|\bearly\s+users\s+earn\s+more\b'
+            r'|\bmessage\s+now\s+to\s+activate\s+your\s+account\b'
+            r'|\bcustomer\s+service\b\s*@\w+'
+            r'|\btrizo\b|\btrizo\.vip\b'
+            r'|\bt\.me/\w+\b)',
+            _re.IGNORECASE,
+        ),
+    ),
+    # Generic congratulation/selection advertisements and link-dump promos
+    (
+        "selection_congrats_ad",
+        _re.compile(
+            r'(?:\bcongratulations?\b.{0,80}\b(?:selected|shortlisted|qualified)\b'
+            r'|\b(?:you\s+have\s+been|candidate[s]?\s+have\s+been)\s+(?:selected|shortlisted)\b'
+            r'|\bnext\s+process\b.{0,40}\b(?:group\s+discussion|gd|interview\s+round)\b'
+            r'|\bregister\s+for\s+free\s+now\b.{0,80}\b(?:limited\s+slots?|apply\s+asap)\b'
+            r'|\bhype\b\s*(?:like|share|subscribe)\b'
+            r'|\byoutu\.be/\w+\b)',
+            _re.IGNORECASE,
+        ),
+    ),
 ]
 
 
