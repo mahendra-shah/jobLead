@@ -2,7 +2,7 @@
 """
 Drain Mongo job_ingest: pending → processing → verified | rejected.
 
-Uses SklearnClassifier (if loaded) + same profile rules as merge_job_runs._profile_filters.
+Uses SklearnClassifier (if loaded) + the same profile rules used by crawl_jobs_from_sources.
 """
 
 from __future__ import annotations

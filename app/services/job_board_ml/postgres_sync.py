@@ -14,6 +14,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
 
 from app.config import settings
+from app.utils.job_dedupe import normalize_url
 
 
 @dataclass
@@ -114,7 +115,8 @@ def sync_job_board_rows(
 
     with engine.begin() as conn:
         for idx, row in enumerate(rows, start=1):
-            source_url = str(row.get("apply_url") or row.get("url") or "").strip()
+            source_url_raw = str(row.get("apply_url") or row.get("url") or "").strip()
+            source_url = normalize_url(source_url_raw) or source_url_raw
             dedupe_key = str(row.get("_dedupe_key") or "").strip()
 
             if not source_url and not dedupe_key:

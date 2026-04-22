@@ -20,7 +20,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[3]
-JOB_BOARD_RUNNER = ROOT / "scripts" / "run_daily_ingest_automation.py"
+JOB_BOARD_RUNNER = ROOT / "scripts" / "job_board_flow" / "run_daily_ingest_automation.py"
 JOB_BOARD_LOG_DIR = ROOT / "logs"
 
 

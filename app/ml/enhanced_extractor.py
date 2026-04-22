@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 from app.models.company import Company
 from app.ml.base_classifier import ExtractionResult
+from app.utils.job_dedupe import clean_url_candidate
 
 
 @dataclass
@@ -1441,22 +1442,29 @@ class EnhancedJobExtractor:
         apply_pattern = r'(?:Apply|Click|Visit).*?(https?://[^\s]+)'
         match = re.search(apply_pattern, text, re.IGNORECASE)
         if match:
-            return match.group(1).strip()
+            cleaned = clean_url_candidate(match.group(1))
+            return cleaned or None
         
         # Otherwise, return first career/job link
         if links:
             for link in links:
-                if any(keyword in link.lower() for keyword in ['career', 'job', 'apply', 'ashby', 'lever', 'greenhouse', 'workday']):
-                    return link
+                cleaned = clean_url_candidate(str(link or ""))
+                if not cleaned:
+                    continue
+                if any(keyword in cleaned.lower() for keyword in ['career', 'job', 'apply', 'ashby', 'lever', 'greenhouse', 'workday']):
+                    return cleaned
             # Return first link if no career link found
             if links:
-                return links[0]
+                cleaned = clean_url_candidate(str(links[0] or ""))
+                if cleaned:
+                    return cleaned
         
         # Extract any URL from text
         url_pattern = r'https?://[^\s]+'
         match = re.search(url_pattern, text)
         if match:
-            return match.group(0)
+            cleaned = clean_url_candidate(match.group(0))
+            return cleaned or None
         
         return None
     

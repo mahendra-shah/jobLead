@@ -50,7 +50,6 @@ class GoogleSheetsService:
             job.created_at.strftime('%Y-%m-%d'),
             company_name,
             job.job_type or '',
-            ', '.join(job.skills_required) if job.skills_required else '',
             sender_id,
             account_used,
             source_platform,
@@ -153,7 +152,7 @@ class GoogleSheetsService:
             'Date',
             'Company',
             'Job Type',
-            'Skills',
+            # 'Skills',
             'Sender ID',
             'Account Used',
             'Source',
@@ -165,7 +164,7 @@ class GoogleSheetsService:
         }
         self.sheets.values().update(
             spreadsheetId=self.sheet_id,
-            range=f"{tab_name}!A1:K1",  # 11 columns (A-K)
+            range=f"{tab_name}!A1:J1",  # 10 columns (A-J)
             valueInputOption='RAW',
             body=body
         ).execute()
