@@ -14,9 +14,30 @@ from app.db.base import Base
 # Load environment variables
 load_dotenv()
 
+
+def _normalize_async_database_url(database_url: str) -> str:
+    """Convert a sync-style PostgreSQL URL into an asyncpg URL when needed."""
+    url = (database_url or "").strip()
+    if not url:
+        return url
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    elif url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+    return url.replace("sslmode=require", "ssl=require")
+
+
+async_database_url = os.getenv("LOCAL_DATABASE_URL")
+if async_database_url:
+    async_database_url = _normalize_async_database_url(async_database_url)
+    print(f"✅ Using LOCAL_DATABASE_URL for async engine: {async_database_url}")
+else:
+    async_database_url = settings.DATABASE_URL
+    print(f"⚠️  Using DATABASE_URL for async engine: {async_database_url}")
+
 # Create async engine
 engine = create_async_engine(
-    settings.DATABASE_URL,
+    async_database_url,
     echo=settings.DEBUG,
     pool_size=settings.DATABASE_POOL_SIZE,
     max_overflow=settings.DATABASE_MAX_OVERFLOW,

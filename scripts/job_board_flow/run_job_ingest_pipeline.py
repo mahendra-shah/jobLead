@@ -29,6 +29,22 @@ from app.utils.timezone import ist_today_utc_window
 STATE_PATH = ROOT / "app" / "data" / "pipeline" / "crawl_batch_state.json"
 
 
+def _resolve_sources_file(explicit: Path | None) -> Path | None:
+    """Resolve fallback JSON source file from explicit path or known defaults."""
+    candidates: list[Path] = []
+    if explicit is not None:
+        p = explicit if explicit.is_absolute() else (ROOT / explicit)
+        candidates.append(p)
+    candidates.extend(
+        [
+            ROOT / "app" / "data" / "crawl_ready_sources.json",
+            ROOT / "app" / "data" / "discovery_sources_test.json",
+            ROOT / "app" / "data" / "discovery_sources_seed.json",
+        ]
+    )
+    return next((p for p in candidates if p.exists()), None)
+
+
 def _load_state() -> dict:
     if not STATE_PATH.exists():
         return {"source_offset": 0}
@@ -109,13 +125,17 @@ def main() -> int:
     parser.add_argument(
         "--mongo-fallback-json",
         action="store_true",
-        help="If Mongo is unavailable, still run crawl using app/data/crawl_ready_sources.json (or --sources-file).",
+        help="If Mongo is unavailable, still run crawl using resolved JSON sources file (or --sources-file).",
     )
     parser.add_argument(
         "--sources-file",
         type=Path,
-        default=Path("app/data/crawl_ready_sources.json"),
-        help="Sources JSON used when --mongo-fallback-json is enabled.",
+        default=None,
+        help=(
+            "Optional sources JSON for fallback mode. If omitted, resolves first existing from "
+            "app/data/crawl_ready_sources.json, app/data/discovery_sources_test.json, "
+            "app/data/discovery_sources_seed.json."
+        ),
     )
     parser.add_argument(
         "--reset-checkpoint",
@@ -158,13 +178,26 @@ def main() -> int:
     src = MongoJobBoardSourcesService()
     st = _load_state()
     off = 0 if args.reset_checkpoint else int(st.get("source_offset") or 0)
+    resolved_sources_file = _resolve_sources_file(args.sources_file)
+
+    if bool(args.mongo_fallback_json) and resolved_sources_file is None:
+        print(
+            "ERROR: --mongo-fallback-json is enabled but no sources JSON file was found.\n"
+            "Checked: app/data/crawl_ready_sources.json, app/data/discovery_sources_test.json, "
+            "app/data/discovery_sources_seed.json",
+            file=sys.stderr,
+        )
+        return 1
+
+    use_json_fallback = bool(args.mongo_fallback_json)
+
     try:
         total = src.count_crawl_ready_active(
             student_pipeline_priority=True,
             student_pipeline_only=bool(args.student_pipeline_only),
         )
     except Exception as e:
-        if not args.mongo_fallback_json:
+        if not use_json_fallback:
             print(
                 "ERROR: MongoDB is required for this run but is not reachable.\n"
                 f"  {e}\n"
@@ -173,6 +206,7 @@ def main() -> int:
                 file=sys.stderr,
             )
             return 1
+        use_json_fallback = True
         print(f"WARNING: Mongo unavailable ({e}); running JSON-only fallback (crawl → sheets).")
 
         def _count_jobs_in_file(path: Path) -> int:
@@ -202,7 +236,7 @@ def main() -> int:
                 py,
                 "scripts/job_board_flow/crawl_jobs_from_sources.py",
                 "--sources-file",
-                str(args.sources_file),
+                str(resolved_sources_file),
                 "--max-sources",
                 str(args.batch_size),
                 "--source-offset",
@@ -264,6 +298,100 @@ def main() -> int:
         print(f"Saved checkpoint: next source_offset={new_off}")
         return 0
 
+    if total == 0 and resolved_sources_file is not None:
+        use_json_fallback = True
+        print(f"WARNING: No crawl-ready Mongo sources found; enabling JSON fallback using {resolved_sources_file}")
+
+    if use_json_fallback:
+        if resolved_sources_file is None:
+            print(
+                "ERROR: JSON fallback is enabled but no sources JSON file was found.\n"
+                "Checked: app/data/crawl_ready_sources.json, app/data/discovery_sources_test.json, "
+                "app/data/discovery_sources_seed.json",
+                file=sys.stderr,
+            )
+            return 1
+
+        if off > 0:
+            # Keep checkpointed offsets stable for Mongo-backed runs, but JSON fallback should still start at 0 when the
+            # source list is shorter than the saved offset.
+            off = max(0, off)
+
+        batch_id = f"fallback_{off}_{args.batch_size}"
+        print(f"Checkpoint source_offset={off} batch_size={args.batch_size} total_active_sources=0")
+
+        crawl_cmd = [
+            py,
+            "scripts/job_board_flow/crawl_jobs_from_sources.py",
+            "--sources-file",
+            str(resolved_sources_file),
+            "--max-sources",
+            str(args.batch_size),
+            "--source-offset",
+            str(off),
+            "--max-jobs-per-source",
+            str(args.max_jobs_per_source),
+            "--out",
+            str(daily_jobs_run_out),
+        ]
+        if args.source_request_delay > 0:
+            crawl_cmd.extend(["--source-request-delay", str(args.source_request_delay)])
+        if args.source_request_jitter > 0:
+            crawl_cmd.extend(["--source-request-jitter", str(args.source_request_jitter)])
+        if args.prefer_less_known_sources:
+            crawl_cmd.append("--prefer-less-known-sources")
+        if args.exclude_popular_sources:
+            crawl_cmd.append("--exclude-popular-sources")
+        if args.focus_digital_marketing:
+            crawl_cmd.append("--focus-digital-marketing")
+
+        r1 = subprocess.run(crawl_cmd, cwd=ROOT)
+        if r1.returncode != 0:
+            return r1.returncode
+
+        if args.sleep_after_crawl > 0:
+            time.sleep(float(args.sleep_after_crawl))
+
+        ml_cmd = [py, "scripts/job_board_flow/job_ingest/process_job_ingest_ml.py", "--limit", str(args.ml_limit)]
+        if args.no_strict_india:
+            ml_cmd.append("--no-strict-india")
+        r2 = subprocess.run(ml_cmd, cwd=ROOT)
+        if r2.returncode != 0:
+            return r2.returncode
+
+        sync_limit = int(max(1, int(args.sync_limit)))
+        print(f">>> Step: sync_verified_to_postgres (limit={sync_limit})")
+        r3 = subprocess.run(
+            [py, "scripts/job_board_flow/job_ingest/sync_verified_to_postgres.py", "--limit", str(sync_limit)],
+            cwd=ROOT,
+        )
+        if r3.returncode != 0:
+            return r3.returncode
+
+        if not args.no_sheet:
+            print(">>> Step: export_job_board_jobs_to_sheets (--from-postgres)")
+            cmd = [
+                py,
+                "scripts/job_board_flow/export_job_board_jobs_to_sheets.py",
+                "--from-postgres",
+            ]
+            if args.append_sheet:
+                cmd.append("--append-jobs")
+            r4 = subprocess.run(cmd, cwd=ROOT)
+            if r4.returncode != 0:
+                return r4.returncode
+
+        new_off = off + int(args.batch_size)
+        _save_state(
+            {
+                "source_offset": new_off,
+                "total_crawl_ready_last": 0,
+                "last_batch_id": batch_id,
+            }
+        )
+        print(f"Saved checkpoint: next source_offset={new_off}")
+        return 0
+
     if total > 0 and off >= total:
         off = 0
 
@@ -300,7 +428,7 @@ def main() -> int:
         crawl_cmd.append("--focus-digital-marketing")
     if args.mongo_fallback_json:
         crawl_cmd.append("--mongo-fallback-json")
-        crawl_cmd.extend(["--sources-file", str(args.sources_file)])
+        crawl_cmd.extend(["--sources-file", str(resolved_sources_file)])
     if args.student_pipeline_only:
         crawl_cmd.append("--student-pipeline-only")
 
