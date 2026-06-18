@@ -371,6 +371,28 @@ def setup_jobs():
         replace_existing=True
     )
     logger.info("   ✅ Added: daily_morning_update (09:00 IST)")
+
+    # Job 2b: Send matched jobs email to students at 9:00 AM IST
+    from app.services.scheduled_jobs.send_matched_jobs_emails_job import send_matched_jobs_emails_job
+    scheduler.add_job(
+        send_matched_jobs_emails_job,
+        CronTrigger(hour=9, minute=0, timezone='Asia/Kolkata'),
+        id='send_matched_jobs_emails',
+        name='Send Matched Jobs Emails (9:00 AM IST)',
+        replace_existing=True
+    )
+    logger.info("   ✅ Added: send_matched_jobs_emails (09:00 IST)")
+
+    # Job 2c: Export student matches to Google Sheets at 9:05 AM IST
+    from app.services.scheduled_jobs.export_student_matches_to_sheet_job import export_student_matches_to_sheet_job
+    scheduler.add_job(
+        export_student_matches_to_sheet_job,
+        CronTrigger(hour=9, minute=5, timezone='Asia/Kolkata'),
+        id='export_student_matches_to_sheet',
+        name='Export Student Matches to Sheet (9:05 AM IST)',
+        replace_existing=True
+    )
+    logger.info("   ✅ Added: export_student_matches_to_sheet (09:05 IST)")
     
     # Job 3: ML Processor - 15 minutes after scraper (catches any missed messages)
     for hour in scraping_hours:
